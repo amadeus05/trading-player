@@ -221,6 +221,18 @@ main {
   width: 42px;
   height: 42px;
 }
+.select-start {
+  min-width: 132px;
+}
+.select-start.active {
+  color: #fff !important;
+  border-color: #7c6cf2 !important;
+  background: #2a244d !important;
+}
+.selecting-replay-start,
+.selecting-replay-start * {
+  cursor: crosshair !important;
+}
 .clock {
   margin-left: auto;
   font-size: 12px;

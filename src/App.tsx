@@ -3,7 +3,9 @@ import {
   App as AntApp,
   Button,
   Card,
+  DatePicker,
   Divider,
+  Dropdown,
   Empty,
   Input,
   InputNumber,
@@ -23,14 +25,19 @@ import {
   HistogramSeries,
 } from "lightweight-charts";
 import Papa from "papaparse";
+import dayjs from "dayjs";
 import {
   BarChart3,
   BookOpen,
+  CalendarDays,
   ChevronRight,
   Clock3,
+  Crosshair,
+  Dices,
   Download,
   Pause,
   Play,
+  Flag,
   RotateCcw,
   Trash2,
   Upload as UploadIcon,
@@ -81,12 +88,20 @@ function Chart({
   barriers,
   trades,
   onBarrierChange,
+  selectingStart,
+  onStartSelected,
+  focusRevision,
+  onInteractionChange,
 }: {
   candles: Candle[];
   index: number;
   barriers: Barrier[];
   trades: Trade[];
   onBarrierChange: (id: string, kind: "tp" | "sl", price: number) => void;
+  selectingStart: boolean;
+  onStartSelected: (time: number) => void;
+  focusRevision: number;
+  onInteractionChange: (active: boolean) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const savedLogicalRange = useRef<any>(null);
@@ -94,6 +109,7 @@ function Chart({
   const followRealtime = useRef(true);
   const savedPriceRange = useRef<{from:number;to:number}|null>(null);
   const manualPriceScale = useRef(false);
+  const appliedFocusRevision = useRef(focusRevision);
   useEffect(() => {
     if (!ref.current || !candles.length) return;
     const safeIndex = Math.max(0, Math.min(index, candles.length - 1));
@@ -200,20 +216,34 @@ function Chart({
       });
       */
     });
+    const selectStart = (event: any) => {
+      if (selectingStart && typeof event.time === "number") onStartSelected(Number(event.time));
+    };
+    if (selectingStart) chart.subscribeClick(selectStart);
     const replayMoved = renderedIndex.current !== null && renderedIndex.current !== index;
-    if (savedLogicalRange.current && (!replayMoved || !followRealtime.current)) {
+    const forceFocus = appliedFocusRevision.current !== focusRevision;
+    if (forceFocus) {
+      const span = savedLogicalRange.current
+        ? Math.max(20, savedLogicalRange.current.to - savedLogicalRange.current.from)
+        : 100;
+      chart.timeScale().setVisibleLogicalRange({ from: safeIndex - span / 2, to: safeIndex + span / 2 });
+    } else if (savedLogicalRange.current && (!replayMoved || !followRealtime.current)) {
       chart.timeScale().setVisibleLogicalRange(savedLogicalRange.current);
     } else {
       chart.timeScale().scrollToRealTime();
     }
+    appliedFocusRevision.current = focusRevision;
     renderedIndex.current = index;
+    const priceScaleWidth = chart.priceScale("right").width();
     const markManualScale=(event:PointerEvent)=>{
-      const bounds=ref.current!.getBoundingClientRect();
-      if(event.clientX-bounds.left>=bounds.width-chart.priceScale("right").width()-4)manualPriceScale.current=true;
+      const element=ref.current;if(!element)return;
+      const bounds=element.getBoundingClientRect();
+      if(event.clientX-bounds.left>=bounds.width-priceScaleWidth-4)manualPriceScale.current=true;
     };
     const resetManualScale=(event:MouseEvent)=>{
-      const bounds=ref.current!.getBoundingClientRect();
-      if(event.clientX-bounds.left>=bounds.width-chart.priceScale("right").width()-4){manualPriceScale.current=false;savedPriceRange.current=null}
+      const element=ref.current;if(!element)return;
+      const bounds=element.getBoundingClientRect();
+      if(event.clientX-bounds.left>=bounds.width-priceScaleWidth-4){manualPriceScale.current=false;savedPriceRange.current=null}
     };
     ref.current.addEventListener("pointerdown",markManualScale);
     ref.current.addEventListener("dblclick",resetManualScale);
@@ -225,15 +255,24 @@ function Chart({
       ref.current?.removeEventListener("pointerdown",markManualScale);
       ref.current?.removeEventListener("dblclick",resetManualScale);
       handles.forEach((handle) => handle.remove());
+      if (selectingStart) chart.unsubscribeClick(selectStart);
       chart.remove();
     };
-  }, [candles, index, barriers, trades, onBarrierChange]);
-  return <div className="chart" ref={ref}/>;
+  }, [candles, index, barriers, trades, onBarrierChange, selectingStart, onStartSelected, focusRevision]);
+  return <div
+    className={`chart ${selectingStart ? "selecting-replay-start" : ""}`}
+    ref={ref}
+    onPointerDownCapture={() => onInteractionChange(true)}
+    onPointerUpCapture={() => onInteractionChange(false)}
+    onPointerCancel={() => onInteractionChange(false)}
+    onLostPointerCapture={() => onInteractionChange(false)}
+  />;
 }
 export default function App() {
   const { message, notification } = AntApp.useApp();
   const hydrated = useRef(false);
   const notifiedTrades = useRef(new Set<string>());
+  const chartInteractionActive = useRef(false);
   const [state, setState] = useState(initial),
     [dataset, setDataset] = useState(""),
     [tf, setTf] = useState(15),
@@ -242,6 +281,9 @@ export default function App() {
     [speed, setSpeed] = useState(1),
     [tradeOpen, setTradeOpen] = useState(false),
     [journal, setJournal] = useState(false),
+    [selectingStart, setSelectingStart] = useState(false),
+    [datePickerOpen, setDatePickerOpen] = useState(false),
+    [focusRevision,setFocusRevision]=useState(0),
     [loadedMarket,setLoadedMarket]=useState<{id:string;name:string;candles:Candle[]}|null>(null),
     [form, setForm] = useState({
       side: "LONG" as "LONG" | "SHORT",
@@ -250,6 +292,15 @@ export default function App() {
       tp: 0,
       comment: "",
     });
+  useEffect(() => {
+    const release = () => { chartInteractionActive.current = false; };
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    return () => {
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+    };
+  }, []);
   useEffect(() => {
     fetch("/api/state")
       .then((r) => r.json())
@@ -298,6 +349,7 @@ export default function App() {
     const h = setInterval(
       () =>
         setIdx((i) => {
+          if (chartInteractionActive.current) return i;
           if (i >= lastIndex) {
             setPlaying(false);
             return lastIndex;
@@ -321,6 +373,23 @@ export default function App() {
     }
     setTf(nextTf);
     setIdx(nextIndex);
+  }
+  function selectReplayIndex(nextIndex: number) {
+    setPlaying(false);
+    setIdx(Math.max(0, Math.min(nextIndex, lastIndex)));
+    setSelectingStart(false);
+    setFocusRevision((value) => value + 1);
+  }
+  function selectReplayTime(time: number) {
+    const found = candles.findIndex((candle) => candle.time >= time);
+    selectReplayIndex(found === -1 ? lastIndex : found);
+  }
+  function handleReplayStartAction(key: string) {
+    setPlaying(false);
+    if (key === "bar") setSelectingStart(true);
+    if (key === "date") setDatePickerOpen(true);
+    if (key === "first") selectReplayIndex(0);
+    if (key === "random") selectReplayIndex(Math.floor(Math.random() * Math.max(1, lastIndex)));
   }
   useEffect(() => {
     if (!cur) return;
@@ -630,10 +699,14 @@ export default function App() {
             {candles.length ? (
               <Chart
                 candles={candles}
-                index={replayIndex}
+                index={selectingStart ? lastIndex : replayIndex}
                 barriers={activeBarriers}
                 trades={activeTrade ? [activeTrade] : []}
                 onBarrierChange={moveBarrier}
+                selectingStart={selectingStart}
+                onStartSelected={selectReplayTime}
+                focusRevision={focusRevision}
+                onInteractionChange={(active) => { chartInteractionActive.current = active; }}
               />
             ) : (
               <Empty />
@@ -644,6 +717,22 @@ export default function App() {
             </div>
           </div>
           <div className="replay">
+            <Dropdown
+              trigger={["click"]}
+              menu={{
+                onClick: ({ key }) => handleReplayStartAction(key),
+                items: [
+                  { key: "bar", icon: <Crosshair size={15} />, label: "Выбрать свечу" },
+                  { key: "date", icon: <CalendarDays size={15} />, label: "Выбрать дату" },
+                  { key: "first", icon: <Flag size={15} />, label: "Первая доступная" },
+                  { key: "random", icon: <Dices size={15} />, label: "Случайная свеча" },
+                ],
+              }}
+            >
+              <Button className={selectingStart ? "select-start active" : "select-start"} icon={<Crosshair size={16} />}>
+                {selectingStart ? "Кликните по свече" : "Выбрать старт"}
+              </Button>
+            </Dropdown>
             <Button
               type="text"
               icon={<RotateCcw size={18} />}
@@ -741,6 +830,18 @@ export default function App() {
           </div>
         </aside>
       </main>
+      <Modal title="Выберите дату начала replay" open={datePickerOpen} footer={null} onCancel={() => setDatePickerOpen(false)} width={360}>
+        <DatePicker
+          style={{ width: "100%" }}
+          minDate={candles[0] ? dayjs(candles[0].time * 1000) : undefined}
+          maxDate={candles.at(-1) ? dayjs(candles.at(-1)!.time * 1000) : undefined}
+          onChange={(value) => {
+            if (!value) return;
+            selectReplayTime(value.startOf("day").unix());
+            setDatePickerOpen(false);
+          }}
+        />
+      </Modal>
       <Modal
         title={`Открыть ${form.side}`}
         open={tradeOpen}
