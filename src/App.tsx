@@ -154,12 +154,14 @@ function Chart({
       })),
     );
     const handles: HTMLButtonElement[] = [];
+    const handlePositions: Array<{ handle: HTMLButtonElement; price: () => number }> = [];
     barriers.forEach((b) => {
       const trade = trades.find((t) => t.id === b.id);
       if (!trade) return;
       (["tp", "sl"] as const).forEach((kind) => {
         const color = kind === "tp" ? "#2bd9a8" : "#ff5c73";
         const initialPrice = trade[kind];
+        let displayedPrice = initialPrice;
         const line = cs.createPriceLine({
           price: initialPrice,
           color,
@@ -173,6 +175,7 @@ function Chart({
         handle.textContent = `${kind.toUpperCase()} ${initialPrice.toFixed(2)}`;
         ref.current!.appendChild(handle);
         handles.push(handle);
+        handlePositions.push({ handle, price: () => displayedPrice });
         const place = (price: number) => {
           const y = cs.priceToCoordinate(price);
           if (y !== null) handle.style.top = `${y}px`;
@@ -181,12 +184,13 @@ function Chart({
         handle.onpointerdown = (event) => {
           event.preventDefault();
           handle.setPointerCapture(event.pointerId);
-          let currentPrice = initialPrice;
+          let currentPrice = displayedPrice;
           const move = (e: PointerEvent) => {
             const bounds = ref.current!.getBoundingClientRect();
             const price = cs.coordinateToPrice(e.clientY - bounds.top);
             if (price === null || price <= 0) return;
             currentPrice = price;
+            displayedPrice = price;
             line.applyOptions({ price });
             handle.textContent = `${kind.toUpperCase()} ${price.toFixed(2)}`;
             place(price);
@@ -221,6 +225,15 @@ function Chart({
       });
       */
     });
+    let handleAnimationFrame = 0;
+    const syncHandlePositions = () => {
+      handlePositions.forEach(({ handle, price }) => {
+        const y = cs.priceToCoordinate(price());
+        if (y !== null) handle.style.top = `${y}px`;
+      });
+      handleAnimationFrame = requestAnimationFrame(syncHandlePositions);
+    };
+    handleAnimationFrame = requestAnimationFrame(syncHandlePositions);
     const selectStart = (event: any) => {
       if (selectingStart && typeof event.time === "number") onStartSelected(Number(event.time));
     };
@@ -282,6 +295,7 @@ function Chart({
       ref.current?.removeEventListener("dblclick",resetManualScale);
       ref.current?.removeEventListener("wheel",zoomPriceScale,{capture:true});
       handles.forEach((handle) => handle.remove());
+      cancelAnimationFrame(handleAnimationFrame);
       if (selectingStart) chart.unsubscribeClick(selectStart);
       chart.remove();
     };
