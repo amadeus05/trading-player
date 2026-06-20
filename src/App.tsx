@@ -114,6 +114,11 @@ function Chart({
     if (!ref.current || !candles.length) return;
     const safeIndex = Math.max(0, Math.min(index, candles.length - 1));
     const visible = candles.slice(0, safeIndex + 1);
+    const forceFocus = appliedFocusRevision.current !== focusRevision;
+    if (forceFocus) {
+      manualPriceScale.current = false;
+      savedPriceRange.current = null;
+    }
     if (!visible.length) return;
     const chart = createChart(ref.current, {
       autoSize: true,
@@ -221,7 +226,6 @@ function Chart({
     };
     if (selectingStart) chart.subscribeClick(selectStart);
     const replayMoved = renderedIndex.current !== null && renderedIndex.current !== index;
-    const forceFocus = appliedFocusRevision.current !== focusRevision;
     if (forceFocus) {
       const span = savedLogicalRange.current
         ? Math.max(20, savedLogicalRange.current.to - savedLogicalRange.current.from)
@@ -396,6 +400,7 @@ export default function App() {
     }
     setTf(nextTf);
     setIdx(nextIndex);
+    setFocusRevision((value) => value + 1);
   }
   function selectReplayIndex(nextIndex: number) {
     setPlaying(false);
