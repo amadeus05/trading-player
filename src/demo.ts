@@ -1,0 +1,2 @@
+import type {Candle} from './types';
+export function demoCandles():Candle[]{let p=64200,seed=17;const a:Candle[]=[];const start=Date.UTC(2025,0,1)/1000;for(let i=0;i<500;i++){seed=(seed*9301+49297)%233280;const r=seed/233280-.49;const o=p;const c=Math.max(100,o*(1+r*.012));const wick=o*.002*(.4+Math.abs(r));a.push({time:start+i*900,open:o,high:Math.max(o,c)+wick,low:Math.min(o,c)-wick,close:c,volume:120+Math.abs(r)*900});p=c}return a}
