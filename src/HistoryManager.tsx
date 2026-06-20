@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, DatePicker, Form, Input, Modal, Progress, Select, Space, Table, Tag, message } from "antd";
+import { Alert, App as AntApp, Button, DatePicker, Form, Input, Modal, Progress, Select, Space, Table, Tag } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { Database, Download, RefreshCw } from "lucide-react";
 import type { Candle } from "./types";
@@ -9,6 +9,7 @@ type Job={id:string;status:string;progress:number;completedPages:number;totalPag
 const date=(ms:number)=>dayjs(ms).format("YYYY-MM-DD");
 
 export function HistoryManager({onOpen}:{onOpen:(market:{id:string;name:string;candles:Candle[]})=>void}){
+  const {message}=AntApp.useApp();
   const [open,setOpen]=useState(false),[catalog,setCatalog]=useState<CatalogItem[]>([]),[job,setJob]=useState<Job|null>(null),[loading,setLoading]=useState(false);
   const [form]=Form.useForm<{category:string;symbol:string;range:[Dayjs,Dayjs]}>();
   const refresh=()=>fetch("/api/market/catalog").then(r=>r.json()).then(setCatalog).catch(()=>message.error("Не удалось прочитать каталог"));
@@ -24,6 +25,6 @@ export function HistoryManager({onOpen}:{onOpen:(market:{id:string;name:string;c
       <Form.Item><Button type="primary" icon={<Download size={15}/>} loading={loading} onClick={download}>Загрузить</Button></Form.Item>
     </Form>
     {job&&!["completed","failed"].includes(job.status)&&<div className="download-progress"><Space><RefreshCw size={15}/><b>{job.status}</b><span>{job.completedPages}/{job.totalPages} страниц · {job.candles.toLocaleString()} свечей</span></Space><Progress percent={job.progress} status="active"/></div>}
-    {!catalog.length?<Alert type="info" showIcon message="Локальной истории пока нет"/>:<Table rowKey={r=>`${r.category}:${r.symbol}`} dataSource={catalog} columns={columns} pagination={false} size="small"/>}
+    {!catalog.length?<Alert type="info" showIcon title="Локальной истории пока нет"/>:<Table rowKey={r=>`${r.category}:${r.symbol}`} dataSource={catalog} columns={columns} pagination={false} size="small"/>}
   </Modal></>;
 }

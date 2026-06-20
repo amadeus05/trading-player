@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  App as AntApp,
   Button,
   Card,
   Divider,
@@ -9,15 +10,12 @@ import {
   Modal,
   Popconfirm,
   Select,
-  Slider,
   Space,
   Statistic,
   Table,
   Tag,
   Tooltip,
   Upload,
-  message,
-  notification,
 } from "antd";
 import {
   CandlestickSeries,
@@ -233,6 +231,7 @@ function Chart({
   return <div className="chart" ref={ref}/>;
 }
 export default function App() {
+  const { message, notification } = AntApp.useApp();
   const hydrated = useRef(false);
   const notifiedTrades = useRef(new Set<string>());
   const [state, setState] = useState(initial),
@@ -325,37 +324,31 @@ export default function App() {
   }
   useEffect(() => {
     if (!cur) return;
-    setState((s) => {
-      let changed = false;
-      const trades: Trade[] = s.trades.map((t) => {
-        if (t.status !== "OPEN" || t.entryTime >= cur.time) return t;
-        const barrier = s.annotations.find((b) => b.id === t.id);
-        if (!barrier) return t;
-        const slHit = t.side === "LONG" ? cur.low <= t.sl : cur.high >= t.sl;
-        const tpHit = t.side === "LONG" ? cur.high >= t.tp : cur.low <= t.tp;
-        const timedOut = cur.time >= barrier.timeLimit;
-        if (!slHit && !tpHit && !timedOut) return t;
-        changed = true;
-        const outcome: Trade["outcome"] = slHit
-          ? "SL"
-          : tpHit
-            ? "TP"
-            : "TIMEOUT";
-        const exit = slHit ? t.sl : tpHit ? t.tp : cur.close;
-        const result =
-          (t.side === "LONG" ? exit - t.entry : t.entry - exit) * t.size;
-        notifyTradeClosed(t, outcome, exit, result);
-        return {
-          ...t,
-          status: "CLOSED",
-          exitTime: cur.time,
-          exit,
-          result,
-          outcome,
-        };
-      });
-      return changed ? { ...s, trades } : s;
+    const closures = state.trades.flatMap((trade) => {
+      if (trade.status !== "OPEN" || trade.entryTime >= cur.time) return [];
+      const barrier = state.annotations.find((item) => item.id === trade.id);
+      if (!barrier) return [];
+      const slHit = trade.side === "LONG" ? cur.low <= trade.sl : cur.high >= trade.sl;
+      const tpHit = trade.side === "LONG" ? cur.high >= trade.tp : cur.low <= trade.tp;
+      const timedOut = cur.time >= barrier.timeLimit;
+      if (!slHit && !tpHit && !timedOut) return [];
+      const outcome: NonNullable<Trade["outcome"]> = slHit ? "SL" : tpHit ? "TP" : "TIMEOUT";
+      const exit = slHit ? trade.sl : tpHit ? trade.tp : cur.close;
+      const result = (trade.side === "LONG" ? exit - trade.entry : trade.entry - exit) * trade.size;
+      return [{ trade, outcome, exit, result }];
     });
+    if (!closures.length) return;
+    const byId = new Map(closures.map((item) => [item.trade.id, item]));
+    setState((current) => ({
+      ...current,
+      trades: current.trades.map((trade) => {
+        const closed = byId.get(trade.id);
+        return closed ? { ...trade, status: "CLOSED", exitTime: cur.time, exit: closed.exit, result: closed.result, outcome: closed.outcome } : trade;
+      }),
+    }));
+    closures.forEach(({ trade, outcome, exit, result }) =>
+      notifyTradeClosed(trade, outcome, exit, result),
+    );
   }, [cur?.time]);
   const openTrades = state.trades.filter((t) => t.status === "OPEN");
   const activeTrade = openTrades.at(-1);
@@ -673,18 +666,6 @@ export default function App() {
               options={[1, 5, 10].map((v) => ({ value: v, label: `${v}×` }))}
               style={{ width: 70 }}
             />
-            <div className="timeline">
-              <Slider
-                min={0}
-                max={lastIndex}
-                value={replayIndex}
-                onChange={setIdx}
-                tooltip={{
-                  formatter: (v) =>
-                    candles[v || 0] ? dt(candles[v || 0].time) : "",
-                }}
-              />
-            </div>
             <div className="clock">
               <Clock3 size={15} />
               {cur ? dt(cur.time) : "—"}{" "}
