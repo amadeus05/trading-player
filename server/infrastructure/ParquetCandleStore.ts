@@ -1,5 +1,5 @@
 import { DuckDBInstance, type DuckDBConnection } from "@duckdb/node-api";
-import { mkdir, rm, rename, writeFile } from "node:fs/promises";
+import { mkdir, rm, rename, writeFile, readdir, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Candle, Timeframe } from "../domain/Candle.js";
@@ -103,5 +103,24 @@ export class ParquetCandleStore implements CandleRepository {
       ORDER BY bucket`, { bucket, alignedFrom, to, factor });
     const rows = await result.getRowObjectsJS() as Array<Record<string, number | bigint>>;
     return rows.map((r) => ({ openTime:Number(r.open_time), open:Number(r.open), high:Number(r.high), low:Number(r.low), close:Number(r.close), volume:Number(r.volume), turnover:Number(r.turnover) }));
+  }
+
+  async catalog():Promise<Array<{category:MarketCategory;symbol:string;from:number;to:number;candles:number;bytes:number}>>{
+    const bybit=join(this.root,"bybit");if(!existsSync(bybit))return [];
+    const result:Array<{category:MarketCategory;symbol:string;from:number;to:number;candles:number;bytes:number}>=[];
+    for(const categoryName of await readdir(bybit)){
+      if(!["linear","inverse","spot"].includes(categoryName))continue;
+      const category=categoryName as MarketCategory,categoryDir=join(bybit,category);
+      for(const symbol of await readdir(categoryDir)){
+        const dir=this.marketDir(category,symbol);if(!existsSync(dir))continue;
+        try{
+          const query=await this.connection.run(`SELECT min(open_time) AS min_time,max(open_time) AS max_time,count(*)::INTEGER AS n FROM read_parquet('${this.glob(category,symbol)}', union_by_name=true)`);
+          const [row]=await query.getRowObjectsJS() as Array<{min_time:number;max_time:number;n:number}>;
+          let bytes=0;for(const year of await readdir(dir)){const yearDir=join(dir,year);if(!(await stat(yearDir)).isDirectory())continue;for(const file of await readdir(yearDir)){if(file.endsWith(".parquet"))bytes+=(await stat(join(yearDir,file))).size}}
+          if(row)result.push({category,symbol,from:Number(row.min_time),to:Number(row.max_time)+BASE_INTERVAL_MS,candles:Number(row.n),bytes});
+        }catch{}
+      }
+    }
+    return result.sort((a,b)=>a.symbol.localeCompare(b.symbol));
   }
 }

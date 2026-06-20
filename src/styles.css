@@ -164,6 +164,30 @@ main {
   grid-column: 1 / -1;
   font-size: 16px;
 }
+.history-form {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid #282d38;
+  border-radius: 8px;
+  background: #0d0f15;
+}
+.history-form .ant-form-item {
+  margin: 0;
+}
+.download-progress {
+  margin-bottom: 18px;
+  padding: 12px 14px 5px;
+  border: 1px solid #39315f;
+  border-radius: 8px;
+  background: #17152a;
+}
+.download-progress .ant-space span {
+  color: #9da3b4;
+  font-size: 12px;
+}
 .symbol {
   position: absolute;
   top: 20px;

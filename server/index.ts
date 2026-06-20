@@ -8,6 +8,7 @@ import { RangePlanner } from "./application/RangePlanner.js";
 import { CandleValidator } from "./application/CandleValidator.js";
 import { MarketDataService } from "./application/MarketDataService.js";
 import { MarketDataController } from "./http/MarketDataController.js";
+import { DownloadJobManager } from "./application/DownloadJobManager.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const dataRoot = join(root, "../data");
@@ -28,7 +29,8 @@ async function bootstrap() {
   const marketService = new MarketDataService(
     new BybitKlineClient(), parquetStore, new RangePlanner(), new CandleValidator(), 8,
   );
-  app.use("/api/market", new MarketDataController(marketService).router);
+  const jobs=new DownloadJobManager(marketService);
+  app.use("/api/market", new MarketDataController(marketService,jobs).router);
   app.get("/api/health", (_req, res) => res.json({ ok: true, marketData: "ready" }));
   app.listen(4174, () => console.log("Replay API: http://localhost:4174"));
 }

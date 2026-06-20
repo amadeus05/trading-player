@@ -38,7 +38,7 @@ import {
   Upload as UploadIcon,
 } from "lucide-react";
 import type { Barrier, Candle, Persisted, Trade } from "./types";
-import { demoCandles } from "./demo";
+import { HistoryManager } from "./HistoryManager";
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 const dt = (t: number) =>
@@ -48,8 +48,16 @@ const dt = (t: number) =>
     hour: "2-digit",
     minute: "2-digit",
   });
+const formatMarketPair = (name?: string) => {
+  if (!name) return "Нет данных";
+  const symbol = name.split(/[·\s]/)[0].toUpperCase();
+  const quote = ["USDT", "USDC", "BUSD", "USD", "BTC", "ETH"].find(
+    (value) => symbol.endsWith(value) && symbol.length > value.length,
+  );
+  return quote ? `${symbol.slice(0, -quote.length)} / ${quote}` : symbol;
+};
 const initial: Persisted = {
-  datasets: [{ id: "demo", name: "BTCUSDT · Demo", candles: demoCandles() }],
+  datasets: [],
   trades: [],
   annotations: [],
 };
@@ -83,6 +91,11 @@ function Chart({
   onBarrierChange: (id: string, kind: "tp" | "sl", price: number) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const savedLogicalRange = useRef<any>(null);
+  const renderedIndex = useRef<number | null>(null);
+  const followRealtime = useRef(true);
+  const savedPriceRange = useRef<{from:number;to:number}|null>(null);
+  const manualPriceScale = useRef(false);
   useEffect(() => {
     if (!ref.current || !candles.length) return;
     const safeIndex = Math.max(0, Math.min(index, candles.length - 1));
@@ -106,6 +119,9 @@ function Chart({
       borderVisible: false,
     });
     cs.setData(visible as any);
+    if (manualPriceScale.current && savedPriceRange.current) {
+      cs.priceScale().setVisibleRange(savedPriceRange.current);
+    }
     const vs = chart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
       priceScaleId: "vol",
@@ -186,8 +202,30 @@ function Chart({
       });
       */
     });
-    chart.timeScale().scrollToRealTime();
+    const replayMoved = renderedIndex.current !== null && renderedIndex.current !== index;
+    if (savedLogicalRange.current && (!replayMoved || !followRealtime.current)) {
+      chart.timeScale().setVisibleLogicalRange(savedLogicalRange.current);
+    } else {
+      chart.timeScale().scrollToRealTime();
+    }
+    renderedIndex.current = index;
+    const markManualScale=(event:PointerEvent)=>{
+      const bounds=ref.current!.getBoundingClientRect();
+      if(event.clientX-bounds.left>=bounds.width-chart.priceScale("right").width()-4)manualPriceScale.current=true;
+    };
+    const resetManualScale=(event:MouseEvent)=>{
+      const bounds=ref.current!.getBoundingClientRect();
+      if(event.clientX-bounds.left>=bounds.width-chart.priceScale("right").width()-4){manualPriceScale.current=false;savedPriceRange.current=null}
+    };
+    ref.current.addEventListener("pointerdown",markManualScale);
+    ref.current.addEventListener("dblclick",resetManualScale);
     return () => {
+      const range = chart.timeScale().getVisibleLogicalRange();
+      savedLogicalRange.current = range;
+      if (range) followRealtime.current = Math.abs(range.to - (visible.length - 1)) < 0.75;
+      if(manualPriceScale.current)savedPriceRange.current=cs.priceScale().getVisibleRange();
+      ref.current?.removeEventListener("pointerdown",markManualScale);
+      ref.current?.removeEventListener("dblclick",resetManualScale);
       handles.forEach((handle) => handle.remove());
       chart.remove();
     };
@@ -198,13 +236,14 @@ export default function App() {
   const hydrated = useRef(false);
   const notifiedTrades = useRef(new Set<string>());
   const [state, setState] = useState(initial),
-    [dataset, setDataset] = useState("demo"),
+    [dataset, setDataset] = useState(""),
     [tf, setTf] = useState(15),
     [idx, setIdx] = useState(120),
     [playing, setPlaying] = useState(false),
     [speed, setSpeed] = useState(1),
     [tradeOpen, setTradeOpen] = useState(false),
     [journal, setJournal] = useState(false),
+    [loadedMarket,setLoadedMarket]=useState<{id:string;name:string;candles:Candle[]}|null>(null),
     [form, setForm] = useState({
       side: "LONG" as "LONG" | "SHORT",
       size: 1,
@@ -216,9 +255,12 @@ export default function App() {
     fetch("/api/state")
       .then((r) => r.json())
       .then((s: Persisted) => {
-        if (s.datasets?.length) {
-          setState(s);
-          setDataset(s.datasets[0].id);
+        const datasets=(s.datasets??[]).filter((item)=>item.id!=="demo");
+        if (datasets.length) {
+          setState({...s,datasets});
+          setDataset(datasets[0].id);
+        } else {
+          setState({...s,datasets:[]});
         }
       })
       .catch(() => {})
@@ -239,7 +281,9 @@ export default function App() {
     );
     return () => clearTimeout(h);
   }, [state]);
-  const raw = state.datasets.find((d) => d.id === dataset)?.candles || [];
+  const availableDatasets=loadedMarket?[loadedMarket,...state.datasets.filter(d=>d.id!==loadedMarket.id)]:state.datasets;
+  const activeDataset=availableDatasets.find((d)=>d.id===dataset);
+  const raw = availableDatasets.find((d) => d.id === dataset)?.candles || [];
   const candles = useMemo(() => aggregate(raw, tf), [raw, tf]);
   const lastIndex = Math.max(0, candles.length - 1);
   const replayIndex = Math.max(
@@ -266,6 +310,19 @@ export default function App() {
     return () => clearInterval(h);
   }, [playing, speed, lastIndex]);
   const cur = candles[replayIndex];
+  function changeTimeframe(nextTf: number) {
+    const replayTime = cur?.time;
+    const nextCandles = aggregate(raw, nextTf);
+    let nextIndex = 0;
+    if (replayTime != null) {
+      for (let i = 0; i < nextCandles.length; i++) {
+        if (nextCandles[i].time > replayTime) break;
+        nextIndex = i;
+      }
+    }
+    setTf(nextTf);
+    setIdx(nextIndex);
+  }
   useEffect(() => {
     if (!cur) return;
     setState((s) => {
@@ -528,6 +585,7 @@ export default function App() {
           </div>
         </div>
         <div className="headerRight">
+          <HistoryManager onOpen={(market)=>{setLoadedMarket(market);setDataset(market.id);setIdx(Math.min(120,market.candles.length-1))}}/>
           <span className="live">
             <i /> LOCAL
           </span>
@@ -543,12 +601,13 @@ export default function App() {
         <section className="workspace">
           <div className="toolbar">
             <Select
-              value={dataset}
+              value={dataset || undefined}
+              placeholder="Выберите историю"
               onChange={(v) => {
                 setDataset(v);
                 setIdx(120);
               }}
-              options={state.datasets.map((d) => ({
+              options={availableDatasets.map((d) => ({
                 value: d.id,
                 label: d.name,
               }))}
@@ -559,7 +618,7 @@ export default function App() {
                 <Button
                   key={v}
                   type={tf === v ? "primary" : "text"}
-                  onClick={() => setTf(v)}
+                  onClick={() => changeTimeframe(v)}
                 >
                   {v < 60 ? v + "m" : v / 60 + "h"}
                 </Button>
@@ -587,7 +646,7 @@ export default function App() {
               <Empty />
             )}
             <div className="symbol">
-              <b>{state.datasets.find((d) => d.id === dataset)?.name}</b>
+              <b>{availableDatasets.find((d) => d.id === dataset)?.name}</b>
               <span>{tf < 60 ? tf + "m" : tf / 60 + "h"} · Historical</span>
             </div>
           </div>
@@ -638,7 +697,7 @@ export default function App() {
         <aside>
           <div className="sideTitle">ТЕКУЩАЯ СВЕЧА</div>
           <Card className="price">
-            <span>{cur ? "BTC / USDT" : "Нет данных"}</span>
+            <span>{cur ? formatMarketPair(activeDataset?.name) : "Нет данных"}</span>
             <strong>{cur ? fmt(cur.close) : "—"}</strong>
             <small className={cur && cur.close >= cur.open ? "pos" : "neg"}>
               {cur
