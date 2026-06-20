@@ -437,13 +437,10 @@ export default function App() {
     if (!cur) return;
     const closures = state.trades.flatMap((trade) => {
       if (trade.status !== "OPEN" || trade.entryTime >= cur.time) return [];
-      const barrier = state.annotations.find((item) => item.id === trade.id);
-      if (!barrier) return [];
       const slHit = trade.side === "LONG" ? cur.low <= trade.sl : cur.high >= trade.sl;
       const tpHit = trade.side === "LONG" ? cur.high >= trade.tp : cur.low <= trade.tp;
-      const timedOut = cur.time >= barrier.timeLimit;
-      if (!slHit && !tpHit && !timedOut) return [];
-      const outcome: NonNullable<Trade["outcome"]> = slHit ? "SL" : tpHit ? "TP" : "TIMEOUT";
+      if (!slHit && !tpHit) return [];
+      const outcome: NonNullable<Trade["outcome"]> = slHit ? "SL" : "TP";
       const exit = slHit ? trade.sl : tpHit ? trade.tp : cur.close;
       const result = (trade.side === "LONG" ? exit - trade.entry : trade.entry - exit) * trade.size;
       return [{ trade, outcome, exit, result }];
@@ -922,7 +919,7 @@ export default function App() {
             />
           </label>
           <div className="barrierNote">
-            Временной барьер: 24 свечи. Линии TP и SL появятся на графике.
+            Позиция закрывается только по TP, SL или вручную. Линии можно перемещать на графике.
           </div>
         </div>
       </Modal>
