@@ -89,19 +89,39 @@ main {
 }
 .tf {
   display: flex;
+  gap: 1px;
   border-left: 1px solid #282b35;
-  padding-left: 12px;
+  padding-left: 9px;
 }
 .tf .ant-btn {
+  position: relative;
+  min-width: 0;
+  height: 30px;
+  padding: 0 7px;
+  border: 0 !important;
+  border-radius: 4px;
+  background: transparent !important;
+  box-shadow: none !important;
   color: #9da3b4;
+  font-size: 13px;
 }
 .tf .ant-btn:hover {
   color: #d7d9e2 !important;
 }
 .tf .ant-btn-primary,
 .tf .ant-btn-primary:hover {
-  color: #fff !important;
+  color: #9b8cff !important;
   font-weight: 600;
+}
+.tf .ant-btn-primary::after {
+  content: "";
+  position: absolute;
+  right: 7px;
+  bottom: 1px;
+  left: 7px;
+  height: 2px;
+  border-radius: 2px;
+  background: #7c6cf2;
 }
 .spacer {
   flex: 1;

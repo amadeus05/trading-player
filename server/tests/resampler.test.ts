@@ -56,7 +56,7 @@ test("every supported timeframe has the expected number of complete UTC buckets"
   await store.write("linear", "COUNTTEST", source);
   const expected: Record<Timeframe, number> = {
     "5m": 288, "10m": 144, "15m": 96, "30m": 48,
-    "1h": 24, "2h": 12, "4h": 6, "6h": 4, "12h": 2, "1d": 1,
+    "1h": 24, "2h": 12, "3h": 8, "4h": 6, "6h": 4, "12h": 2, "1d": 1,
   };
   for (const [timeframe, count] of Object.entries(expected) as [Timeframe, number][]) {
     const result = await store.read("linear", "COUNTTEST", timeframe, START, START + 86_400_000);

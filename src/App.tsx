@@ -61,6 +61,23 @@ const formatMarketPair = (name?: string) => {
   );
   return quote ? `${symbol.slice(0, -quote.length)} / ${quote}` : symbol;
 };
+const formatTimeframe = (minutes: number) =>
+  minutes < 60 ? `${minutes}m` : minutes === 1440 ? "1d" : `${minutes / 60}h`;
+const decimalPlaces = (value: number) => {
+  const text = value.toString().toLowerCase();
+  if (text.includes("e-")) return Number(text.split("e-")[1]);
+  return text.includes(".") ? text.length - text.indexOf(".") - 1 : 0;
+};
+const inferPricePrecision = (candles: Candle[]) => {
+  let precision = 2;
+  const step = Math.max(1, Math.floor(candles.length / 4000));
+  for (let i = 0; i < candles.length; i += step) {
+    precision = Math.max(precision, decimalPlaces(candles[i].open), decimalPlaces(candles[i].high), decimalPlaces(candles[i].low), decimalPlaces(candles[i].close));
+  }
+  return Math.min(10, precision);
+};
+const formatPrice = (value: number, precision: number) =>
+  value.toLocaleString("en-US", { minimumFractionDigits: precision, maximumFractionDigits: precision });
 const initial: Persisted = {
   datasets: [],
   trades: [],
@@ -92,6 +109,7 @@ function Chart({
   onStartSelected,
   focusRevision,
   onInteractionChange,
+  pricePrecision,
 }: {
   candles: Candle[];
   index: number;
@@ -102,6 +120,7 @@ function Chart({
   onStartSelected: (time: number) => void;
   focusRevision: number;
   onInteractionChange: (active: boolean) => void;
+  pricePrecision: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const savedLogicalRange = useRef<any>(null);
@@ -136,6 +155,7 @@ function Chart({
       wickUpColor: "#2bd9a8",
       wickDownColor: "#ff5c73",
       borderVisible: false,
+      priceFormat: { type: "price", precision: pricePrecision, minMove: 10 ** -pricePrecision },
     });
     cs.setData(visible as any);
     if (manualPriceScale.current && savedPriceRange.current) {
@@ -172,7 +192,7 @@ function Chart({
         });
         const handle = document.createElement("button");
         handle.className = `barrier-handle ${kind}`;
-        handle.textContent = `${kind.toUpperCase()} ${initialPrice.toFixed(2)}`;
+        handle.textContent = `${kind.toUpperCase()} ${initialPrice.toFixed(pricePrecision)}`;
         ref.current!.appendChild(handle);
         handles.push(handle);
         handlePositions.push({ handle, price: () => displayedPrice });
@@ -192,7 +212,7 @@ function Chart({
             currentPrice = price;
             displayedPrice = price;
             line.applyOptions({ price });
-            handle.textContent = `${kind.toUpperCase()} ${price.toFixed(2)}`;
+            handle.textContent = `${kind.toUpperCase()} ${price.toFixed(pricePrecision)}`;
             place(price);
           };
           const up = () => {
@@ -299,7 +319,7 @@ function Chart({
       if (selectingStart) chart.unsubscribeClick(selectStart);
       chart.remove();
     };
-  }, [candles, index, barriers, trades, onBarrierChange, selectingStart, onStartSelected, focusRevision]);
+  }, [candles, index, barriers, trades, onBarrierChange, selectingStart, onStartSelected, focusRevision, pricePrecision]);
   return <div
     className={`chart ${selectingStart ? "selecting-replay-start" : ""}`}
     ref={ref}
@@ -375,6 +395,7 @@ export default function App() {
   const availableDatasets=loadedMarket?[loadedMarket,...state.datasets.filter(d=>d.id!==loadedMarket.id)]:state.datasets;
   const activeDataset=availableDatasets.find((d)=>d.id===dataset);
   const raw = availableDatasets.find((d) => d.id === dataset)?.candles || [];
+  const pricePrecision = useMemo(() => inferPricePrecision(raw), [raw]);
   const candles = useMemo(() => aggregate(raw, tf), [raw, tf]);
   const lastIndex = Math.max(0, candles.length - 1);
   const replayIndex = Math.max(
@@ -481,8 +502,8 @@ export default function App() {
     setForm({
       side,
       size: 1,
-      sl: +(cur.close * (side === "LONG" ? 0.99 : 1.01)).toFixed(2),
-      tp: +(cur.close * (side === "LONG" ? 1.02 : 0.98)).toFixed(2),
+      sl: +(cur.close * (side === "LONG" ? 0.99 : 1.01)).toFixed(pricePrecision),
+      tp: +(cur.close * (side === "LONG" ? 1.02 : 0.98)).toFixed(pricePrecision),
       comment: "",
     });
     setTradeOpen(true);
@@ -575,7 +596,7 @@ export default function App() {
     message.success("Сделка удалена");
   }
   function moveBarrier(id: string, kind: "tp" | "sl", price: number) {
-    const rounded = Number(price.toFixed(2));
+    const rounded = Number(price.toFixed(pricePrecision));
     setState((s) => {
       const trades = s.trades.map((t) =>
         t.id === id ? { ...t, [kind]: rounded } : t,
@@ -715,13 +736,13 @@ export default function App() {
               style={{ width: 190 }}
             />
             <div className="tf">
-              {[5, 15, 60, 240].map((v) => (
+              {[5, 15, 30, 60, 180, 240, 1440].map((v) => (
                 <Button
                   key={v}
                   type={tf === v ? "primary" : "text"}
                   onClick={() => changeTimeframe(v)}
                 >
-                  {v < 60 ? v + "m" : v / 60 + "h"}
+                  {formatTimeframe(v)}
                 </Button>
               ))}
             </div>
@@ -745,6 +766,7 @@ export default function App() {
                 selectingStart={selectingStart}
                 onStartSelected={selectReplayTime}
                 focusRevision={focusRevision}
+                pricePrecision={pricePrecision}
                 onInteractionChange={(active) => { chartInteractionActive.current = active; }}
               />
             ) : (
@@ -752,7 +774,7 @@ export default function App() {
             )}
             <div className="symbol">
               <b>{availableDatasets.find((d) => d.id === dataset)?.name}</b>
-              <span>{tf < 60 ? tf + "m" : tf / 60 + "h"} · Historical</span>
+              <span>{formatTimeframe(tf)} · Historical</span>
             </div>
           </div>
           <div className="replay">
@@ -807,7 +829,7 @@ export default function App() {
           <div className="sideTitle">ТЕКУЩАЯ СВЕЧА</div>
           <Card className="price">
             <span>{cur ? formatMarketPair(activeDataset?.name) : "Нет данных"}</span>
-            <strong>{cur ? fmt(cur.close) : "—"}</strong>
+            <strong>{cur ? formatPrice(cur.close, pricePrecision) : "—"}</strong>
             <small className={cur && cur.close >= cur.open ? "pos" : "neg"}>
               {cur
                 ? `${cur.close >= cur.open ? "+" : ""}${((cur.close / cur.open - 1) * 100).toFixed(2)}%`
@@ -820,7 +842,9 @@ export default function App() {
                   <span>{x}</span>
                   <b>
                     {cur
-                      ? fmt([cur.open, cur.high, cur.low, cur.volume][i])
+                      ? i === 3
+                        ? fmt(cur.volume)
+                        : formatPrice([cur.open, cur.high, cur.low][i], pricePrecision)
                       : "—"}
                   </b>
                 </div>
@@ -901,6 +925,8 @@ export default function App() {
             Stop loss
             <InputNumber
               value={form.sl}
+              precision={pricePrecision}
+              step={10 ** -pricePrecision}
               onChange={(v) => setForm({ ...form, sl: v || 0 })}
             />
           </label>
@@ -908,6 +934,8 @@ export default function App() {
             Take profit
             <InputNumber
               value={form.tp}
+              precision={pricePrecision}
+              step={10 ** -pricePrecision}
               onChange={(v) => setForm({ ...form, tp: v || 0 })}
             />
           </label>
