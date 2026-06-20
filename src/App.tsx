@@ -234,7 +234,8 @@ function Chart({
     }
     appliedFocusRevision.current = focusRevision;
     renderedIndex.current = index;
-    const priceScaleWidth = chart.priceScale("right").width();
+    const priceScaleWidth = Math.max(70, chart.priceScale("right").width());
+    let chartAlive = true;
     const markManualScale=(event:PointerEvent)=>{
       const element=ref.current;if(!element)return;
       const bounds=element.getBoundingClientRect();
@@ -245,15 +246,37 @@ function Chart({
       const bounds=element.getBoundingClientRect();
       if(event.clientX-bounds.left>=bounds.width-priceScaleWidth-4){manualPriceScale.current=false;savedPriceRange.current=null}
     };
+    const zoomPriceScale = (event: WheelEvent) => {
+      if (!chartAlive) return;
+      const element = ref.current;
+      if (!element) return;
+      const bounds = element.getBoundingClientRect();
+      if (event.clientX - bounds.left < bounds.width - priceScaleWidth - 4) return;
+      const range = cs.priceScale().getVisibleRange();
+      if (!range) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      const factor = Math.min(1.35, Math.max(0.74, Math.exp(event.deltaY * 0.0015)));
+      const center = (range.from + range.to) / 2;
+      const half = ((range.to - range.from) * factor) / 2;
+      const nextRange = { from: center - half, to: center + half };
+      manualPriceScale.current = true;
+      savedPriceRange.current = nextRange;
+      cs.priceScale().setVisibleRange(nextRange);
+    };
     ref.current.addEventListener("pointerdown",markManualScale);
     ref.current.addEventListener("dblclick",resetManualScale);
+    ref.current.addEventListener("wheel",zoomPriceScale,{capture:true,passive:false});
     return () => {
+      chartAlive = false;
       const range = chart.timeScale().getVisibleLogicalRange();
       savedLogicalRange.current = range;
       if (range) followRealtime.current = Math.abs(range.to - (visible.length - 1)) < 0.75;
       if(manualPriceScale.current)savedPriceRange.current=cs.priceScale().getVisibleRange();
       ref.current?.removeEventListener("pointerdown",markManualScale);
       ref.current?.removeEventListener("dblclick",resetManualScale);
+      ref.current?.removeEventListener("wheel",zoomPriceScale,{capture:true});
       handles.forEach((handle) => handle.remove());
       if (selectingStart) chart.unsubscribeClick(selectStart);
       chart.remove();
