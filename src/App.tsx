@@ -33,6 +33,7 @@ import {
   BarChart3,
   BookOpen,
   CalendarDays,
+  Check,
   ChevronRight,
   Clock3,
   CircleHelp,
@@ -40,6 +41,7 @@ import {
   Dices,
   Download,
   Pause,
+  Pencil,
   Play,
   Flag,
   RotateCcw,
@@ -474,7 +476,8 @@ export default function App() {
     [protectionEnabled,setProtectionEnabled]=useState(false),
     [limitTakeProfit,setLimitTakeProfit]=useState(0),
     [limitStopLoss,setLimitStopLoss]=useState(0),
-    [focusedTradeId,setFocusedTradeId]=useState<string|null>(null);
+    [focusedTradeId,setFocusedTradeId]=useState<string|null>(null),
+    [tradeEditDraft,setTradeEditDraft]=useState<{id:string;entry:number;tp:number;sl:number}|null>(null);
   useEffect(() => {
     const release = () => { chartInteractionActive.current = false; };
     window.addEventListener("pointerup", release);
@@ -488,11 +491,12 @@ export default function App() {
     const clearTradeFocus = (event: PointerEvent) => {
       const target = event.target;
       if (target instanceof Element && (target.closest("[data-trade-focus-id]") || target.closest(".barrier-handle"))) return;
+      if (tradeEditDraft) return;
       setFocusedTradeId(null);
     };
     document.addEventListener("pointerdown", clearTradeFocus, true);
     return () => document.removeEventListener("pointerdown", clearTradeFocus, true);
-  }, []);
+  }, [tradeEditDraft]);
   useEffect(() => {
     fetch("/api/state")
       .then((r) => r.json())
@@ -650,7 +654,10 @@ export default function App() {
   }, [cur?.time]);
   const workingTrades = state.trades.filter((t) => t.status === "OPEN" || t.status === "PENDING");
   const blockingTrade = workingTrades.at(-1);
-  const chartTrade = workingTrades.find((trade) => trade.id === focusedTradeId);
+  const focusedTrade = workingTrades.find((trade) => trade.id === focusedTradeId);
+  const chartTrade = focusedTrade && tradeEditDraft?.id === focusedTrade.id
+    ? { ...focusedTrade, entry: tradeEditDraft.entry, tp: tradeEditDraft.tp, sl: tradeEditDraft.sl }
+    : focusedTrade;
   const activeBarriers = chartTrade
     ? state.annotations.filter(
         (b) => b.id === chartTrade.id && b.entryTime <= (cur?.time || 0),
@@ -725,9 +732,9 @@ export default function App() {
     }));
     setProtectionEnabled(false);
     setFocusedTradeId(t.id);
+    setTradeEditDraft(null);
     setLimitTakeProfit(0);
     setLimitStopLoss(0);
-    setProtectionEnabled(false);
     message.success(orderType === "MARKET" ? `${side} открыт` : `${side} limit размещён`);
   }
   function cancelOrder(id: string) {
@@ -806,6 +813,10 @@ export default function App() {
       else setLimitStopLoss(rounded);
       return;
     }
+    if (tradeEditDraft?.id === id) {
+      setTradeEditDraft((draft) => draft?.id === id ? { ...draft, [kind]: rounded } : draft);
+      return;
+    }
     setState((s) => {
       const trades = s.trades.map((t) =>
         t.id === id ? { ...t, [kind]: rounded } : t,
@@ -830,12 +841,54 @@ export default function App() {
       setLimitPrice(rounded);
       return;
     }
+    if (tradeEditDraft?.id === id) {
+      setTradeEditDraft((draft) => draft?.id === id ? { ...draft, entry: rounded } : draft);
+      return;
+    }
     setState((current) => ({
       ...current,
       trades: current.trades.map((trade) =>
         trade.id === id && trade.status === "PENDING" ? { ...trade, entry: rounded } : trade,
       ),
     }));
+  }
+  function startTradeEditing(trade: Trade) {
+    setFocusedTradeId(trade.id);
+    setTradeEditDraft({ id: trade.id, entry: trade.entry, tp: trade.tp, sl: trade.sl });
+  }
+  function cancelTradeEditing() {
+    setTradeEditDraft(null);
+  }
+  function saveTradeEditing() {
+    if (!tradeEditDraft) return;
+    const trade = state.trades.find((item) => item.id === tradeEditDraft.id);
+    if (!trade) return setTradeEditDraft(null);
+    const valid = trade.side === "LONG"
+      ? tradeEditDraft.sl < tradeEditDraft.entry && tradeEditDraft.tp > tradeEditDraft.entry
+      : tradeEditDraft.tp < tradeEditDraft.entry && tradeEditDraft.sl > tradeEditDraft.entry;
+    if (!valid) {
+      message.warning(trade.side === "LONG" ? "Для LONG: SL ниже входа, TP выше входа" : "Для SHORT: TP ниже входа, SL выше входа");
+      return;
+    }
+    setState((current) => ({
+      ...current,
+      trades: current.trades.map((item) => item.id === trade.id ? {
+        ...item,
+        entry: tradeEditDraft.entry,
+        tp: tradeEditDraft.tp,
+        sl: tradeEditDraft.sl,
+        entryFee: item.status === "PENDING"
+          ? tradeEditDraft.entry * item.size * (item.makerFeePct ?? simulationSettings.makerFeePct) / 100
+          : item.entryFee,
+      } : item),
+      annotations: current.annotations.map((barrier) => barrier.id === trade.id ? {
+        ...barrier,
+        upper: trade.side === "LONG" ? tradeEditDraft.tp : tradeEditDraft.sl,
+        lower: trade.side === "LONG" ? tradeEditDraft.sl : tradeEditDraft.tp,
+      } : barrier),
+    }));
+    setTradeEditDraft(null);
+    message.success("Параметры сделки обновлены");
   }
   function importCsv(file: File) {
     Papa.parse(file, {
@@ -882,10 +935,12 @@ export default function App() {
     size: 0, sl: limitStopLoss, tp: limitTakeProfit, status: "OPEN", comment: "",
   } : undefined;
   const displayedChartTrade = chartTrade ?? draftProtectionTrade;
-  const markersEditable = displayedChartTrade?.id === "__draft_protection__";
+  const markersEditable = displayedChartTrade?.id === "__draft_protection__" || tradeEditDraft?.id === displayedChartTrade?.id;
   const chartTrades = displayedChartTrade?.id === "__draft_protection__"
     ? [...state.trades, displayedChartTrade]
-    : state.trades;
+    : tradeEditDraft && chartTrade
+      ? state.trades.map((trade) => trade.id === chartTrade.id ? chartTrade : trade)
+      : state.trades;
   const displayedBarriers: Barrier[] = chartTrade ? activeBarriers : draftProtectionTrade ? [{
     id: draftProtectionTrade.id, entryTime: cur?.time ?? 0,
     upper: draftProtectionTrade.tp, lower: draftProtectionTrade.sl,
@@ -1101,9 +1156,10 @@ export default function App() {
             <div className="priceInput"><InputNumber controls={false} value={limitPrice || cur?.close} precision={pricePrecision} step={10 ** -pricePrecision} onChange={(value)=>setLimitPrice(value||0)}/><button onClick={()=>cur&&setLimitPrice(cur.close)}>Last</button></div>
           </div>}
           <div className="protectionToggle">
-            <Checkbox checked={protectionEnabled} onChange={(event)=>{
+            <Checkbox disabled={Boolean(tradeEditDraft)} checked={protectionEnabled} onChange={(event)=>{
               const enabled=event.target.checked;
               setFocusedTradeId(null);
+              setTradeEditDraft(null);
               setProtectionEnabled(enabled);
               if(enabled&&cur?.close){
                 const currentPrice=cur.close;
@@ -1160,18 +1216,27 @@ export default function App() {
                     <b>{unrealizedPnl >= 0 ? "+" : ""}{fmt(unrealizedPnl)} {quoteAsset}</b>
                     <em>{unrealizedRoi != null && unrealizedRoi >= 0 ? "+" : ""}{unrealizedRoi?.toFixed(2)}%</em>
                   </div>}
-                  <Tooltip title={t.status === "PENDING" ? "Отменить заявку" : "Закрыть позицию"}>
-                  <Button
-                    className={`positionAction ${t.status === "PENDING" ? "cancel" : "close"}`}
-                    aria-label={t.status === "PENDING" ? "Отменить заявку" : "Закрыть позицию"}
-                    icon={<X size={14} />}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      t.status === "PENDING" ? cancelOrder(t.id) : closeTrade(t);
-                      setFocusedTradeId(null);
-                    }}
-                  />
-                  </Tooltip>
+                  <div className="positionActions">
+                    {tradeEditDraft?.id === t.id ? <>
+                      <Tooltip title="Сохранить изменения"><Button className="positionAction save" aria-label="Сохранить изменения" icon={<Check size={14}/>} onClick={(event)=>{event.stopPropagation();saveTradeEditing()}}/></Tooltip>
+                      <Tooltip title="Отменить изменения"><Button className="positionAction" aria-label="Отменить изменения" icon={<X size={14}/>} onClick={(event)=>{event.stopPropagation();cancelTradeEditing()}}/></Tooltip>
+                    </> : <>
+                      <Tooltip title="Редактировать"><Button className="positionAction edit" aria-label="Редактировать" icon={<Pencil size={13}/>} onClick={(event)=>{event.stopPropagation();startTradeEditing(t)}}/></Tooltip>
+                      <Tooltip title={t.status === "PENDING" ? "Отменить заявку" : "Закрыть позицию"}>
+                        <Button
+                          className={`positionAction ${t.status === "PENDING" ? "cancel" : "close"}`}
+                          aria-label={t.status === "PENDING" ? "Отменить заявку" : "Закрыть позицию"}
+                          icon={<X size={14} />}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            t.status === "PENDING" ? cancelOrder(t.id) : closeTrade(t);
+                            setFocusedTradeId(null);
+                            setTradeEditDraft(null);
+                          }}
+                        />
+                      </Tooltip>
+                    </>}
+                  </div>
                 </div>
               </Card>
             );

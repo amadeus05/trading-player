@@ -570,6 +570,7 @@ aside {
 .positionPnl.positive em { color: #2bd9a8; }
 .positionPnl.negative b,
 .positionPnl.negative em { color: #ff687d; }
+.positionActions { display: flex; align-items: center; gap: 2px; }
 .sideTitle {
   font-size: 10px;
   color: #5e6472;
@@ -675,6 +676,13 @@ aside {
 .positionAction.cancel.ant-btn {
   background: transparent;
   color: #a69d89;
+}
+.positionAction.edit.ant-btn { color: #7f8494; }
+.positionAction.save.ant-btn { color: #2bd9a8; }
+.positionAction.save.ant-btn:hover,
+.positionAction.save.ant-btn:focus-visible {
+  background: #10251f !important;
+  color: #48e3b8 !important;
 }
 .positionAction.ant-btn:hover,
 .positionAction.ant-btn:focus-visible {
