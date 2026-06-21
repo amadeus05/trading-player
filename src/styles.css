@@ -234,6 +234,15 @@ main {
   color: #9da3b4;
   font-size: 12px;
 }
+.settingsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.settingsGrid label { display: flex; min-width: 0; flex-direction: column; gap: 6px; }
+.settingsGrid label > span { color: #d8dbe5; font-size: 12px; font-weight: 600; }
+.settingsGrid .ant-input-number { width: 100%; }
+.settingsGrid small { color: #687083; font-size: 10px; line-height: 1.35; }
 .symbol {
   position: absolute;
   top: 20px;

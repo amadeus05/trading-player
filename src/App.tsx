@@ -42,10 +42,11 @@ import {
   Play,
   Flag,
   RotateCcw,
+  Settings,
   Trash2,
   Upload as UploadIcon,
 } from "lucide-react";
-import type { Barrier, Candle, Persisted, Trade } from "./types";
+import type { Barrier, Candle, Persisted, SimulationSettings, Trade } from "./types";
 import { HistoryManager } from "./HistoryManager";
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -82,10 +83,17 @@ const inferPricePrecision = (candles: Candle[]) => {
 const formatPrice = (value: number, precision: number) =>
   value.toLocaleString("en-US", { minimumFractionDigits: precision, maximumFractionDigits: precision });
 const PAPER_BALANCE_USDT = 1000;
+const DEFAULT_SIMULATION_SETTINGS: SimulationSettings = {
+  makerFeePct: 0.02,
+  takerFeePct: 0.055,
+  slippagePct: 0.02,
+  stopSlippagePct: 0.05,
+};
 const initial: Persisted = {
   datasets: [],
   trades: [],
   annotations: [],
+  settings: DEFAULT_SIMULATION_SETTINGS,
 };
 function aggregate(xs: Candle[], min: number) {
   const s = min * 60,
@@ -381,6 +389,7 @@ export default function App() {
     [playing, setPlaying] = useState(false),
     [speed, setSpeed] = useState(1),
     [journal, setJournal] = useState(false),
+    [settingsOpen,setSettingsOpen]=useState(false),
     [selectingStart, setSelectingStart] = useState(false),
     [datePickerOpen, setDatePickerOpen] = useState(false),
     [focusRevision,setFocusRevision]=useState(0),
@@ -409,10 +418,10 @@ export default function App() {
       .then((s: Persisted) => {
         const datasets=(s.datasets??[]).filter((item)=>item.id!=="demo");
         if (datasets.length) {
-          setState({...s,datasets});
+          setState({...s,datasets,settings:s.settings??DEFAULT_SIMULATION_SETTINGS});
           setDataset(datasets[0].id);
         } else {
-          setState({...s,datasets:[]});
+          setState({...s,datasets:[],settings:s.settings??DEFAULT_SIMULATION_SETTINGS});
         }
       })
       .catch(() => {})
@@ -434,6 +443,7 @@ export default function App() {
     return () => clearTimeout(h);
   }, [state]);
   const availableDatasets=loadedMarket?[loadedMarket,...state.datasets.filter(d=>d.id!==loadedMarket.id)]:state.datasets;
+  const simulationSettings=state.settings??DEFAULT_SIMULATION_SETTINGS;
   const activeDataset=availableDatasets.find((d)=>d.id===dataset);
   const marketSymbol=(activeDataset?.name.split(/[·\s]/)[0]??"").toUpperCase();
   const quoteAsset=["USDT","USDC","BUSD","USD","BTC","ETH"].find((value)=>marketSymbol.endsWith(value)&&marketSymbol.length>value.length)??"USDT";
@@ -522,9 +532,15 @@ export default function App() {
       const tpHit = trade.side === "LONG" ? cur.high >= trade.tp : cur.low <= trade.tp;
       if (!slHit && !tpHit) return [];
       const outcome: NonNullable<Trade["outcome"]> = slHit ? "SL" : "TP";
-      const exit = slHit ? trade.sl : tpHit ? trade.tp : cur.close;
-      const result = (trade.side === "LONG" ? exit - trade.entry : trade.entry - exit) * trade.size;
-      return [{ trade, outcome, exit, result }];
+      const rawExit = slHit ? trade.sl : trade.tp;
+      const stopSlip = (trade.stopSlippagePct ?? simulationSettings.stopSlippagePct) / 100;
+      const exit = slHit ? rawExit * (trade.side === "LONG" ? 1 - stopSlip : 1 + stopSlip) : rawExit;
+      const grossResult = (trade.side === "LONG" ? exit - trade.entry : trade.entry - exit) * trade.size;
+      const exitFeePct = outcome === "TP" ? (trade.makerFeePct ?? simulationSettings.makerFeePct) : (trade.takerFeePct ?? simulationSettings.takerFeePct);
+      const exitFee = exit * trade.size * exitFeePct / 100;
+      const fees = (trade.entryFee ?? 0) + exitFee;
+      const result = grossResult - fees;
+      return [{ trade, outcome, exit, grossResult, fees, result }];
     });
     if (!closures.length) return;
     const byId = new Map(closures.map((item) => [item.trade.id, item]));
@@ -532,7 +548,7 @@ export default function App() {
       ...current,
       trades: current.trades.map((trade) => {
         const closed = byId.get(trade.id);
-        return closed ? { ...trade, status: "CLOSED", exitTime: cur.time, exit: closed.exit, result: closed.result, outcome: closed.outcome } : trade;
+        return closed ? { ...trade, status: "CLOSED", exitTime: cur.time, exit: closed.exit, grossResult: closed.grossResult, fees: closed.fees, result: closed.result, outcome: closed.outcome } : trade;
       }),
     }));
     closures.forEach(({ trade, outcome, exit, result }) =>
@@ -560,12 +576,16 @@ export default function App() {
       message.warning("Сначала закройте позицию или отмените лимитную заявку");
       return;
     }
-    const entry = orderType === "MARKET" ? cur.close : (limitPrice || cur.close);
+    const requestedEntry = orderType === "MARKET" ? cur.close : (limitPrice || cur.close);
+    const entrySlip = simulationSettings.slippagePct / 100;
+    const entry = orderType === "MARKET" ? requestedEntry * (side === "LONG" ? 1 + entrySlip : 1 - entrySlip) : requestedEntry;
     if (!Number.isFinite(entry) || entry <= 0 || orderValue <= 0) {
       message.warning("Проверьте цену и размер заявки");
       return;
     }
     const size = amountUnit === "USDT" ? orderValue / entry : orderValue;
+    const entryFeePct = orderType === "MARKET" ? simulationSettings.takerFeePct : simulationSettings.makerFeePct;
+    const entryFee = entry * size * entryFeePct / 100;
     if (!protectionEnabled || limitStopLoss <= 0 || limitTakeProfit <= 0) {
       message.warning("Включите TP/SL и укажите обе цены");
       return;
@@ -591,6 +611,11 @@ export default function App() {
       leverage,
       inputUnit: amountUnit,
       inputValue: orderValue,
+      entryFee,
+      makerFeePct: simulationSettings.makerFeePct,
+      takerFeePct: simulationSettings.takerFeePct,
+      slippagePct: simulationSettings.slippagePct,
+      stopSlippagePct: simulationSettings.stopSlippagePct,
       comment: "",
     };
     const b: Barrier = {
@@ -621,8 +646,12 @@ export default function App() {
   function closeTrade(t: Trade) {
     if (t.status === "PENDING") return cancelOrder(t.id);
     if (!cur) return;
-    const result =
-      (t.side === "LONG" ? cur.close - t.entry : t.entry - cur.close) * t.size;
+    const slippage = (t.slippagePct ?? simulationSettings.slippagePct) / 100;
+    const exit = cur.close * (t.side === "LONG" ? 1 - slippage : 1 + slippage);
+    const grossResult = (t.side === "LONG" ? exit - t.entry : t.entry - exit) * t.size;
+    const exitFee = exit * t.size * (t.takerFeePct ?? simulationSettings.takerFeePct) / 100;
+    const fees = (t.entryFee ?? 0) + exitFee;
+    const result = grossResult - fees;
     setState((s) => ({
       ...s,
       trades: s.trades.map((x) =>
@@ -631,14 +660,16 @@ export default function App() {
               ...x,
               status: "CLOSED",
               exitTime: cur.time,
-              exit: cur.close,
+              exit,
+              grossResult,
+              fees,
               result,
               outcome: "MANUAL",
             }
           : x,
       ),
     }));
-    notifyTradeClosed(t, "MANUAL", cur.close, result);
+    notifyTradeClosed(t, "MANUAL", exit, result);
   }
   function notifyTradeClosed(
     trade: Trade,
@@ -766,6 +797,12 @@ export default function App() {
     : !chartTrade && protectionEnabled && orderType === "LIMIT" && ticketPrice > 0
       ? { id: "__draft_limit_entry__", price: ticketPrice }
       : undefined;
+  function updateSimulationSetting(key: keyof SimulationSettings, value: number | null) {
+    setState((current) => ({
+      ...current,
+      settings: { ...(current.settings ?? DEFAULT_SIMULATION_SETTINGS), [key]: Math.max(0, value ?? 0) },
+    }));
+  }
   const cols = [
     { title: "Вход", dataIndex: "entryTime", render: dt },
     {
@@ -786,6 +823,7 @@ export default function App() {
         </span>
       ),
     },
+    { title: "Комиссии", dataIndex: "fees", render: (value?: number) => value == null ? "—" : fmt(value) },
     {
       title: "Действия",
       render: (_: any, t: Trade) => (
@@ -828,6 +866,7 @@ export default function App() {
           <span className="live">
             <i /> LOCAL
           </span>
+          <Button icon={<Settings size={16}/>} onClick={()=>setSettingsOpen(true)}>Настройки</Button>
           <Button
             icon={<BookOpen size={16} />}
             onClick={() => setJournal(true)}
@@ -1011,6 +1050,14 @@ export default function App() {
           </div>
         </aside>
       </main>
+      <Modal title="Настройки симуляции" open={settingsOpen} onCancel={()=>setSettingsOpen(false)} footer={<><Button onClick={()=>setState((current)=>({...current,settings:DEFAULT_SIMULATION_SETTINGS}))}>По умолчанию</Button><Button type="primary" onClick={()=>setSettingsOpen(false)}>Готово</Button></>}>
+        <div className="settingsGrid">
+          <label><span>Maker fee</span><InputNumber value={simulationSettings.makerFeePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value)=>updateSimulationSetting("makerFeePct",value)}/><small>Limit-вход и Take Profit</small></label>
+          <label><span>Taker fee</span><InputNumber value={simulationSettings.takerFeePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value)=>updateSimulationSetting("takerFeePct",value)}/><small>Market, Stop Loss и ручное закрытие</small></label>
+          <label><span>Market slippage</span><InputNumber value={simulationSettings.slippagePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value)=>updateSimulationSetting("slippagePct",value)}/><small>Вход и ручное закрытие по рынку</small></label>
+          <label><span>Stop slippage</span><InputNumber value={simulationSettings.stopSlippagePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value)=>updateSimulationSetting("stopSlippagePct",value)}/><small>Ухудшение цены исполнения Stop Loss</small></label>
+        </div>
+      </Modal>
       <Modal title="Выберите дату начала replay" open={datePickerOpen} footer={null} onCancel={() => setDatePickerOpen(false)} width={360}>
         <DatePicker
           style={{ width: "100%" }}
