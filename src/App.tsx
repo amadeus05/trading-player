@@ -47,12 +47,14 @@ import {
   RotateCcw,
   Settings,
   Trash2,
+  TrendingUp,
   Upload as UploadIcon,
   X,
 } from "lucide-react";
-import type { Barrier, Candle, Persisted, SimulationSettings, Trade } from "./types";
+import type { Barrier, Candle, Persisted, SimulationSettings, Trade, TrendLine } from "./types";
 import { HistoryManager } from "./HistoryManager";
 import { IntrabarExitResolver } from "./simulation/IntrabarExitResolver";
+import { attachTrendLineTool, type DrawingMode } from "./TrendLineTool";
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 const dt = (t: number) =>
@@ -102,6 +104,7 @@ const initial: Persisted = {
   settings: DEFAULT_SIMULATION_SETTINGS,
 };
 const intrabarExitResolver = new IntrabarExitResolver();
+const NO_BARRIERS: Barrier[] = [];
 function aggregate(xs: Candle[], min: number) {
   const s = min * 60,
     m = new Map<number, Candle>();
@@ -133,6 +136,13 @@ function Chart({
   onEntryMarkerChange,
   showClosedTradeOverlays,
   markersEditable,
+  trendLines,
+  drawingMode,
+  datasetId,
+  onTrendLineCreate,
+  onTrendLineUpdate,
+  onTrendLineDelete,
+  onDrawingComplete,
 }: {
   candles: Candle[];
   index: number;
@@ -148,14 +158,24 @@ function Chart({
   onEntryMarkerChange: (id: string, price: number) => void;
   showClosedTradeOverlays: boolean;
   markersEditable: boolean;
+  trendLines: TrendLine[];
+  drawingMode: DrawingMode;
+  datasetId: string;
+  onTrendLineCreate: (line: TrendLine) => void;
+  onTrendLineUpdate: (line: TrendLine) => void;
+  onTrendLineDelete: (id: string) => void;
+  onDrawingComplete: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const selectedTrendLineId = useRef<string | null>(null);
   const savedLogicalRange = useRef<any>(null);
   const renderedIndex = useRef<number | null>(null);
   const followRealtime = useRef(true);
   const savedPriceRange = useRef<{from:number;to:number}|null>(null);
   const manualPriceScale = useRef(false);
   const appliedFocusRevision = useRef(focusRevision);
+  const callbacksRef = useRef({ onBarrierChange, onStartSelected, onEntryMarkerChange, onTrendLineCreate, onTrendLineUpdate, onTrendLineDelete, onDrawingComplete });
+  callbacksRef.current = { onBarrierChange, onStartSelected, onEntryMarkerChange, onTrendLineCreate, onTrendLineUpdate, onTrendLineDelete, onDrawingComplete };
   useEffect(() => {
     if (!ref.current || !candles.length) return;
     const safeIndex = Math.max(0, Math.min(index, candles.length - 1));
@@ -306,7 +326,7 @@ function Chart({
           const up = () => {
             window.removeEventListener("pointermove", move);
             window.removeEventListener("pointerup", up);
-            onBarrierChange(b.id, kind, currentPrice);
+            callbacksRef.current.onBarrierChange(b.id, kind, currentPrice);
           };
           window.addEventListener("pointermove", move);
           window.addEventListener("pointerup", up, { once: true });
@@ -357,7 +377,7 @@ function Chart({
         const up = () => {
           window.removeEventListener("pointermove", move);
           window.removeEventListener("pointerup", up);
-          onEntryMarkerChange(entryMarker.id, displayedPrice);
+          callbacksRef.current.onEntryMarkerChange(entryMarker.id, displayedPrice);
         };
         window.addEventListener("pointermove", move);
         window.addEventListener("pointerup", up, { once: true });
@@ -374,7 +394,7 @@ function Chart({
     };
     handleAnimationFrame = requestAnimationFrame(syncHandlePositions);
     const selectStart = (event: any) => {
-      if (selectingStart && typeof event.time === "number") onStartSelected(Number(event.time));
+      if (selectingStart && typeof event.time === "number") callbacksRef.current.onStartSelected(Number(event.time));
     };
     if (selectingStart) chart.subscribeClick(selectStart);
     const replayMoved = renderedIndex.current !== null && renderedIndex.current !== index;
@@ -424,6 +444,23 @@ function Chart({
     ref.current.addEventListener("pointerdown",markManualScale);
     ref.current.addEventListener("dblclick",resetManualScale);
     ref.current.addEventListener("wheel",zoomPriceScale,{capture:true,passive:false});
+    const cleanupTrendLines = attachTrendLineTool({
+      container: ref.current!,
+      chart,
+      series: cs,
+      candles: visible,
+      trendLines: trendLines.filter((l) => l.datasetId === datasetId),
+      drawingMode,
+      datasetId,
+      selectedId: selectedTrendLineId.current,
+      onSelect: (id) => { selectedTrendLineId.current = id; },
+      callbacks: {
+        onCreate: (line) => callbacksRef.current.onTrendLineCreate(line),
+        onUpdate: (line) => callbacksRef.current.onTrendLineUpdate(line),
+        onDelete: (id) => callbacksRef.current.onTrendLineDelete(id),
+        onDrawingComplete: () => callbacksRef.current.onDrawingComplete(),
+      },
+    });
     return () => {
       chartAlive = false;
       const range = chart.timeScale().getVisibleLogicalRange();
@@ -438,9 +475,10 @@ function Chart({
       removablePriceLines.forEach((line) => { try { cs.removePriceLine(line); } catch {} });
       cancelAnimationFrame(handleAnimationFrame);
       if (selectingStart) chart.unsubscribeClick(selectStart);
+      cleanupTrendLines();
       chart.remove();
     };
-  }, [candles, index, barriers, trades, onBarrierChange, selectingStart, onStartSelected, focusRevision, pricePrecision, entryMarker, onEntryMarkerChange, showClosedTradeOverlays, markersEditable]);
+  }, [candles, index, barriers, trades, selectingStart, focusRevision, pricePrecision, entryMarker, showClosedTradeOverlays, markersEditable, drawingMode, datasetId]);
   return <div
     className={`chart ${selectingStart ? "selecting-replay-start" : ""}`}
     ref={ref}
@@ -477,7 +515,8 @@ export default function App() {
     [limitTakeProfit,setLimitTakeProfit]=useState(0),
     [limitStopLoss,setLimitStopLoss]=useState(0),
     [focusedTradeId,setFocusedTradeId]=useState<string|null>(null),
-    [tradeEditDraft,setTradeEditDraft]=useState<{id:string;entry:number;tp:number;sl:number}|null>(null);
+    [tradeEditDraft,setTradeEditDraft]=useState<{id:string;entry:number;tp:number;sl:number}|null>(null),
+    [drawingMode,setDrawingMode]=useState<DrawingMode>("none");
   useEffect(() => {
     const release = () => { chartInteractionActive.current = false; };
     window.addEventListener("pointerup", release);
@@ -658,11 +697,11 @@ export default function App() {
   const chartTrade = focusedTrade && tradeEditDraft?.id === focusedTrade.id
     ? { ...focusedTrade, entry: tradeEditDraft.entry, tp: tradeEditDraft.tp, sl: tradeEditDraft.sl }
     : focusedTrade;
-  const activeBarriers = chartTrade
+  const activeBarriers = useMemo(() => chartTrade
     ? state.annotations.filter(
         (b) => b.id === chartTrade.id && b.entryTime <= (cur?.time || 0),
       )
-    : [];
+    : NO_BARRIERS, [chartTrade?.id, state.annotations, cur?.time]);
   function step() {
     setIdx((i) => Math.min(i + 1, lastIndex));
   }
@@ -806,6 +845,21 @@ export default function App() {
     }));
     message.success("Сделка удалена");
   }
+  function handleTrendLineCreate(line: TrendLine) {
+    setState((s) => ({ ...s, trendLines: [...(s.trendLines ?? []), line] }));
+  }
+  function handleTrendLineUpdate(line: TrendLine) {
+    setState((s) => ({
+      ...s,
+      trendLines: (s.trendLines ?? []).map((l) => (l.id === line.id ? line : l)),
+    }));
+  }
+  function handleTrendLineDelete(id: string) {
+    setState((s) => ({
+      ...s,
+      trendLines: (s.trendLines ?? []).filter((l) => l.id !== id),
+    }));
+  }
   function moveBarrier(id: string, kind: "tp" | "sl", price: number) {
     const rounded = Number(price.toFixed(pricePrecision));
     if (id === "__draft_protection__") {
@@ -945,7 +999,7 @@ export default function App() {
     id: draftProtectionTrade.id, entryTime: cur?.time ?? 0,
     upper: draftProtectionTrade.tp, lower: draftProtectionTrade.sl,
     timeLimit: Number.MAX_SAFE_INTEGER,
-  }] : [];
+  }] : NO_BARRIERS;
   const displayedEntryMarker = chartTrade?.status === "PENDING"
     ? { id: chartTrade.id, price: chartTrade.entry }
     : protectionEnabled && orderType === "LIMIT" && ticketPrice > 0
@@ -1057,6 +1111,16 @@ export default function App() {
                 </Button>
               ))}
             </div>
+            <div className="drawing-tools">
+              <Button
+                type="text"
+                className={`drawing-tool-btn ${drawingMode === "trendline" ? "is-active" : ""}`}
+                onClick={() => setDrawingMode(m => m === "trendline" ? "none" : "trendline")}
+                title="Трендовая линия"
+              >
+                <TrendingUp size={15} />
+              </Button>
+            </div>
             <div className="spacer" />
             <Upload
               beforeUpload={importCsv}
@@ -1082,6 +1146,13 @@ export default function App() {
                 onEntryMarkerChange={moveEntryMarker}
                 showClosedTradeOverlays={simulationSettings.showClosedTradeOverlays}
                 markersEditable={markersEditable}
+                trendLines={state.trendLines ?? []}
+                drawingMode={drawingMode}
+                datasetId={dataset}
+                onTrendLineCreate={handleTrendLineCreate}
+                onTrendLineUpdate={handleTrendLineUpdate}
+                onTrendLineDelete={handleTrendLineDelete}
+                onDrawingComplete={() => setDrawingMode("none")}
                 onInteractionChange={(active) => { chartInteractionActive.current = active; }}
               />
             ) : (

@@ -149,6 +149,137 @@ main {
   border-radius: 2px;
   background: #7c6cf2;
 }
+.drawing-tools {
+  display: flex;
+  gap: 8px;
+  border-left: 1px solid #282b35;
+  padding-left: 16px;
+}
+.drawing-tool-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 6px;
+  color: #7f8494;
+}
+.drawing-tool-btn:hover {
+  background: #1c1f28 !important;
+  color: #d7d9e2 !important;
+}
+.drawing-tool-btn.is-active {
+  background: #25213f !important;
+  color: #9b8cff !important;
+}
+
+/* Trend Line SVG Overlay */
+.trend-line-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.trend-main-line, .trend-ext-line {
+  pointer-events: none;
+}
+.trend-hit-area {
+  stroke: transparent;
+  stroke-width: 12;
+  cursor: pointer;
+  pointer-events: stroke;
+}
+.trend-handle {
+  cursor: grab;
+  pointer-events: fill;
+  stroke: #ffffff33;
+  stroke-width: 2;
+}
+.trend-handle:active {
+  cursor: grabbing;
+}
+.trend-ghost-line {
+  stroke: #ff4976;
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+  opacity: 0.6;
+}
+.trend-label {
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+  text-anchor: middle;
+}
+g[data-trend-id].selected .trend-main-line {
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.2));
+}
+
+/* Floating Toolbar */
+.trend-toolbar {
+  position: absolute;
+  z-index: 10;
+  background: #1e222d;
+  border: 1px solid #2a2e39;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  padding: 4px;
+  display: flex;
+  user-select: none;
+}
+.trend-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.trend-toolbar-sep {
+  width: 1px;
+  height: 16px;
+  background: #363a45;
+  margin: 0 4px;
+}
+.trend-toolbar button, .trend-toolbar-color {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: #a3a6af;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.trend-toolbar button:hover, .trend-toolbar-color:hover {
+  background: #2a2e39;
+  color: #d1d4dc;
+}
+.trend-toolbar button[data-active="1"] {
+  background: #2962ff33;
+  color: #2962ff;
+}
+.trend-toolbar-color {
+  position: relative;
+  overflow: hidden;
+}
+.trend-toolbar-color input[type="color"] {
+  position: absolute;
+  width: 200%;
+  height: 200%;
+  top: -50%;
+  left: -50%;
+  cursor: pointer;
+}
+.trend-toolbar-text { font: 17px Georgia, serif !important; }
+.trend-text-editor {
+  position: absolute; z-index: 11; display: flex; gap: 4px; padding: 6px; border: 1px solid #2a2e39; border-radius: 6px; background: #1e222d; box-shadow: 0 6px 18px #0008;
+}
+.trend-text-editor input { width: 180px; height: 30px; padding: 0 9px; border: 1px solid #3a3e49; border-radius: 4px; outline: 0; background: #131722; color: #e5e7eb; }
+.trend-text-editor input:focus { border-color: #2962ff; }
+.trend-text-editor button { width: 30px; border: 0; border-radius: 4px; background: transparent; color: #9ca3af; cursor: pointer; }
+.trend-text-editor button:hover { background: #2a2e39; color: #f23645; }
 .spacer {
   flex: 1;
 }
