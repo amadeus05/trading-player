@@ -24,6 +24,7 @@ import {
 } from "antd";
 import {
   CandlestickSeries,
+  CrosshairMode,
   createChart,
   HistogramSeries,
 } from "lightweight-charts";
@@ -45,6 +46,7 @@ import {
   Play,
   Flag,
   RotateCcw,
+  Ruler,
   Settings,
   Trash2,
   TrendingUp,
@@ -55,6 +57,7 @@ import type { Barrier, Candle, Persisted, SimulationSettings, Trade, TrendLine }
 import { HistoryManager } from "./HistoryManager";
 import { IntrabarExitResolver } from "./simulation/IntrabarExitResolver";
 import { attachTrendLineTool, type DrawingMode } from "./TrendLineTool";
+import { attachMeasureTool } from "./MeasureTool";
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 const dt = (t: number) =>
@@ -75,8 +78,12 @@ const formatMarketPair = (name?: string) => {
 const formatTimeframe = (minutes: number) =>
   minutes < 60 ? `${minutes}m` : minutes === 1440 ? "1d" : `${minutes / 60}h`;
 const decimalPlaces = (value: number) => {
+  if (!Number.isFinite(value)) return 0;
   const text = value.toString().toLowerCase();
-  if (text.includes("e-")) return Number(text.split("e-")[1]);
+  if (text.includes("e-")) {
+    const places = Number(text.split("e-")[1]);
+    return Number.isFinite(places) ? places : 0;
+  }
   return text.includes(".") ? text.length - text.indexOf(".") - 1 : 0;
 };
 const inferPricePrecision = (candles: Candle[]) => {
@@ -85,7 +92,7 @@ const inferPricePrecision = (candles: Candle[]) => {
   for (let i = 0; i < candles.length; i += step) {
     precision = Math.max(precision, decimalPlaces(candles[i].open), decimalPlaces(candles[i].high), decimalPlaces(candles[i].low), decimalPlaces(candles[i].close));
   }
-  return Math.min(10, precision);
+  return Math.min(10, Number.isFinite(precision) ? precision : 2);
 };
 const formatPrice = (value: number, precision: number) =>
   value.toLocaleString("en-US", { minimumFractionDigits: precision, maximumFractionDigits: precision });
@@ -192,6 +199,9 @@ function Chart({
       grid: {
         vertLines: { color: "#171a22" },
         horzLines: { color: "#171a22" },
+      },
+      crosshair: {
+        mode: drawingMode === "measure" ? CrosshairMode.Hidden : CrosshairMode.Normal,
       },
       rightPriceScale: { borderColor: "#232632" },
       timeScale: { borderColor: "#232632", timeVisible: true },
@@ -461,6 +471,15 @@ function Chart({
         onDrawingComplete: () => callbacksRef.current.onDrawingComplete(),
       },
     });
+    const cleanupMeasure = attachMeasureTool({
+      container: ref.current!,
+      chart,
+      series: cs,
+      candles: visible,
+      active: drawingMode === "measure",
+      pricePrecision,
+      onComplete: () => callbacksRef.current.onDrawingComplete(),
+    });
     return () => {
       chartAlive = false;
       const range = chart.timeScale().getVisibleLogicalRange();
@@ -476,6 +495,7 @@ function Chart({
       cancelAnimationFrame(handleAnimationFrame);
       if (selectingStart) chart.unsubscribeClick(selectStart);
       cleanupTrendLines();
+      cleanupMeasure();
       chart.remove();
     };
   }, [candles, index, barriers, trades, selectingStart, focusRevision, pricePrecision, entryMarker, showClosedTradeOverlays, markersEditable, drawingMode, datasetId]);
@@ -1119,6 +1139,14 @@ export default function App() {
                 title="Трендовая линия"
               >
                 <TrendingUp size={15} />
+              </Button>
+              <Button
+                type="text"
+                className={`drawing-tool-btn ${drawingMode === "measure" ? "is-active" : ""}`}
+                onClick={() => setDrawingMode(m => m === "measure" ? "none" : "measure")}
+                title="Линейка"
+              >
+                <Ruler size={15} />
               </Button>
             </div>
             <div className="spacer" />

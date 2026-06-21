@@ -1283,3 +1283,95 @@ aside {
     display: none;
   }
 }
+
+/* Measure / Ruler Tool Overlay */
+.measure-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.measure-rect {
+  stroke: none;
+}
+
+.measure-cross {
+  stroke-width: 1;
+}
+
+.measure-guide {
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.measure-axis-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.measure-axis-label {
+  position: absolute;
+  padding: 0 6px;
+  border-radius: 2px;
+  color: #ffffff;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 20px;
+  height: 20px;
+  white-space: nowrap;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.measure-axis-label--price {
+  right: 0;
+  transform: translateY(-50%);
+}
+
+.measure-axis-label--time {
+  transform: translateX(-50%);
+  padding: 0 8px;
+}
+
+.measure-tooltip {
+  position: absolute;
+  z-index: 12;
+  padding: 8px 12px;
+  border-radius: 6px;
+  color: #ffffff;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(6px);
+  line-height: 1.5;
+}
+
+.measure-tooltip-row {
+  text-align: center;
+}
+
+.measure-tooltip-main {
+  font-weight: 700;
+  font-size: 13px;
+  color: #ffffff;
+}
+
+.measure-tooltip-sub {
+  font-weight: 400;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.85);
+}
