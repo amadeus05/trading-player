@@ -3,6 +3,7 @@ import {
   App as AntApp,
   Button,
   Card,
+  Checkbox,
   DatePicker,
   Divider,
   Dropdown,
@@ -12,6 +13,7 @@ import {
   Modal,
   Popconfirm,
   Select,
+  Slider,
   Space,
   Statistic,
   Table,
@@ -32,6 +34,7 @@ import {
   CalendarDays,
   ChevronRight,
   Clock3,
+  CircleHelp,
   Crosshair,
   Dices,
   Download,
@@ -78,6 +81,7 @@ const inferPricePrecision = (candles: Candle[]) => {
 };
 const formatPrice = (value: number, precision: number) =>
   value.toLocaleString("en-US", { minimumFractionDigits: precision, maximumFractionDigits: precision });
+const PAPER_BALANCE_USDT = 1000;
 const initial: Persisted = {
   datasets: [],
   trades: [],
@@ -110,6 +114,8 @@ function Chart({
   focusRevision,
   onInteractionChange,
   pricePrecision,
+  entryMarker,
+  onEntryMarkerChange,
 }: {
   candles: Candle[];
   index: number;
@@ -121,6 +127,8 @@ function Chart({
   focusRevision: number;
   onInteractionChange: (active: boolean) => void;
   pricePrecision: number;
+  entryMarker?: { id: string; price: number };
+  onEntryMarkerChange: (id: string, price: number) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const savedLogicalRange = useRef<any>(null);
@@ -174,6 +182,7 @@ function Chart({
       })),
     );
     const handles: HTMLButtonElement[] = [];
+    const removablePriceLines: any[] = [];
     const handlePositions: Array<{ handle: HTMLButtonElement; price: () => number }> = [];
     barriers.forEach((b) => {
       const trade = trades.find((t) => t.id === b.id);
@@ -245,6 +254,36 @@ function Chart({
       });
       */
     });
+    if (entryMarker) {
+      let displayedPrice = entryMarker.price;
+      const line = cs.createPriceLine({ price: displayedPrice, color: "#9b8cff", lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: "" });
+      removablePriceLines.push(line);
+      const handle = document.createElement("button");
+      handle.className = "barrier-handle entry";
+      handle.textContent = `LIMIT ${displayedPrice.toFixed(pricePrecision)}`;
+      ref.current!.appendChild(handle);
+      handles.push(handle);
+      handlePositions.push({ handle, price: () => displayedPrice });
+      handle.onpointerdown = (event) => {
+        event.preventDefault();
+        handle.setPointerCapture(event.pointerId);
+        const move = (e: PointerEvent) => {
+          const bounds = ref.current!.getBoundingClientRect();
+          const price = cs.coordinateToPrice(e.clientY - bounds.top);
+          if (price === null || price <= 0) return;
+          displayedPrice = price;
+          line.applyOptions({ price });
+          handle.textContent = `LIMIT ${price.toFixed(pricePrecision)}`;
+        };
+        const up = () => {
+          window.removeEventListener("pointermove", move);
+          window.removeEventListener("pointerup", up);
+          onEntryMarkerChange(entryMarker.id, displayedPrice);
+        };
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up, { once: true });
+      };
+    }
     let handleAnimationFrame = 0;
     const syncHandlePositions = () => {
       handlePositions.forEach(({ handle, price }) => {
@@ -315,11 +354,12 @@ function Chart({
       ref.current?.removeEventListener("dblclick",resetManualScale);
       ref.current?.removeEventListener("wheel",zoomPriceScale,{capture:true});
       handles.forEach((handle) => handle.remove());
+      removablePriceLines.forEach((line) => { try { cs.removePriceLine(line); } catch {} });
       cancelAnimationFrame(handleAnimationFrame);
       if (selectingStart) chart.unsubscribeClick(selectStart);
       chart.remove();
     };
-  }, [candles, index, barriers, trades, onBarrierChange, selectingStart, onStartSelected, focusRevision, pricePrecision]);
+  }, [candles, index, barriers, trades, onBarrierChange, selectingStart, onStartSelected, focusRevision, pricePrecision, entryMarker, onEntryMarkerChange]);
   return <div
     className={`chart ${selectingStart ? "selecting-replay-start" : ""}`}
     ref={ref}
@@ -340,19 +380,20 @@ export default function App() {
     [idx, setIdx] = useState(120),
     [playing, setPlaying] = useState(false),
     [speed, setSpeed] = useState(1),
-    [tradeOpen, setTradeOpen] = useState(false),
     [journal, setJournal] = useState(false),
     [selectingStart, setSelectingStart] = useState(false),
     [datePickerOpen, setDatePickerOpen] = useState(false),
     [focusRevision,setFocusRevision]=useState(0),
     [loadedMarket,setLoadedMarket]=useState<{id:string;name:string;candles:Candle[]}|null>(null),
-    [form, setForm] = useState({
-      side: "LONG" as "LONG" | "SHORT",
-      size: 1,
-      sl: 0,
-      tp: 0,
-      comment: "",
-    });
+    [orderType,setOrderType]=useState<"MARKET"|"LIMIT">("MARKET"),
+    [leverage,setLeverage]=useState(10),
+    [amountUnit,setAmountUnit]=useState<"USDT"|"COIN">("USDT"),
+    [orderValue,setOrderValue]=useState(100),
+    [allocationPercent,setAllocationPercent]=useState(1),
+    [limitPrice,setLimitPrice]=useState(0),
+    [protectionEnabled,setProtectionEnabled]=useState(false),
+    [limitTakeProfit,setLimitTakeProfit]=useState(0),
+    [limitStopLoss,setLimitStopLoss]=useState(0);
   useEffect(() => {
     const release = () => { chartInteractionActive.current = false; };
     window.addEventListener("pointerup", release);
@@ -394,6 +435,9 @@ export default function App() {
   }, [state]);
   const availableDatasets=loadedMarket?[loadedMarket,...state.datasets.filter(d=>d.id!==loadedMarket.id)]:state.datasets;
   const activeDataset=availableDatasets.find((d)=>d.id===dataset);
+  const marketSymbol=(activeDataset?.name.split(/[·\s]/)[0]??"").toUpperCase();
+  const quoteAsset=["USDT","USDC","BUSD","USD","BTC","ETH"].find((value)=>marketSymbol.endsWith(value)&&marketSymbol.length>value.length)??"USDT";
+  const baseAsset=marketSymbol.slice(0,-quoteAsset.length)||"COIN";
   const raw = availableDatasets.find((d) => d.id === dataset)?.candles || [];
   const pricePrecision = useMemo(() => inferPricePrecision(raw), [raw]);
   const candles = useMemo(() => aggregate(raw, tf), [raw, tf]);
@@ -456,6 +500,22 @@ export default function App() {
   }
   useEffect(() => {
     if (!cur) return;
+    const filled = state.trades.filter((trade) =>
+      trade.status === "PENDING" &&
+      (trade.createdTime ?? trade.entryTime) < cur.time &&
+      cur.low <= trade.entry && cur.high >= trade.entry,
+    );
+    if (!filled.length) return;
+    const ids = new Set(filled.map((trade) => trade.id));
+    setState((current) => ({
+      ...current,
+      trades: current.trades.map((trade) => ids.has(trade.id) ? { ...trade, status: "OPEN", entryTime: cur.time } : trade),
+      annotations: current.annotations.map((barrier) => ids.has(barrier.id) ? { ...barrier, entryTime: cur.time } : barrier),
+    }));
+    filled.forEach((trade) => message.success(`${trade.side} limit исполнен по ${formatPrice(trade.entry, pricePrecision)}`));
+  }, [cur?.time]);
+  useEffect(() => {
+    if (!cur) return;
     const closures = state.trades.flatMap((trade) => {
       if (trade.status !== "OPEN" || trade.entryTime >= cur.time) return [];
       const slHit = trade.side === "LONG" ? cur.low <= trade.sl : cur.high >= trade.sl;
@@ -479,11 +539,12 @@ export default function App() {
       notifyTradeClosed(trade, outcome, exit, result),
     );
   }, [cur?.time]);
-  const openTrades = state.trades.filter((t) => t.status === "OPEN");
-  const activeTrade = openTrades.at(-1);
-  const activeBarriers = activeTrade
+  const workingTrades = state.trades.filter((t) => t.status === "OPEN" || t.status === "PENDING");
+  const blockingTrade = workingTrades.at(-1);
+  const chartTrade = workingTrades.at(-1);
+  const activeBarriers = chartTrade
     ? state.annotations.filter(
-        (b) => b.id === activeTrade.id && b.entryTime <= (cur?.time || 0),
+        (b) => b.id === chartTrade.id && b.entryTime <= (cur?.time || 0),
       )
     : [];
   function step() {
@@ -493,44 +554,50 @@ export default function App() {
     setPlaying(false);
     setIdx(Math.min(120, lastIndex));
   }
-  function showTrade(side: "LONG" | "SHORT") {
+  function placeOrder(side: "LONG" | "SHORT") {
     if (!cur) return;
-    if (activeTrade) {
-      message.warning("Сначала закройте текущую позицию");
+    if (blockingTrade) {
+      message.warning("Сначала закройте позицию или отмените лимитную заявку");
       return;
     }
-    setForm({
-      side,
-      size: 1,
-      sl: +(cur.close * (side === "LONG" ? 0.99 : 1.01)).toFixed(pricePrecision),
-      tp: +(cur.close * (side === "LONG" ? 1.02 : 0.98)).toFixed(pricePrecision),
-      comment: "",
-    });
-    setTradeOpen(true);
-  }
-  function createTrade() {
-    if (!cur) return;
-    if (state.trades.some((t) => t.status === "OPEN")) {
-      setTradeOpen(false);
-      message.warning("Уже есть открытая позиция");
+    const entry = orderType === "MARKET" ? cur.close : (limitPrice || cur.close);
+    if (!Number.isFinite(entry) || entry <= 0 || orderValue <= 0) {
+      message.warning("Проверьте цену и размер заявки");
+      return;
+    }
+    const size = amountUnit === "USDT" ? orderValue / entry : orderValue;
+    if (!protectionEnabled || limitStopLoss <= 0 || limitTakeProfit <= 0) {
+      message.warning("Включите TP/SL и укажите обе цены");
+      return;
+    }
+    const sl = limitStopLoss;
+    const tp = limitTakeProfit;
+    const invalidBarriers = side === "LONG" ? sl >= entry || tp <= entry : sl <= entry || tp >= entry;
+    if (invalidBarriers) {
+      message.warning(side === "LONG" ? "Для LONG: SL ниже цены, TP выше цены" : "Для SHORT: SL выше цены, TP ниже цены");
       return;
     }
     const t: Trade = {
       id: crypto.randomUUID(),
-      side: form.side,
+      side,
       entryTime: cur.time,
-      entry: cur.close,
-      size: form.size,
-      sl: form.sl,
-      tp: form.tp,
-      status: "OPEN",
-      comment: form.comment,
+      createdTime: cur.time,
+      entry,
+      size,
+      sl,
+      tp,
+      status: orderType === "MARKET" ? "OPEN" : "PENDING",
+      orderType,
+      leverage,
+      inputUnit: amountUnit,
+      inputValue: orderValue,
+      comment: "",
     };
     const b: Barrier = {
       id: t.id,
       entryTime: cur.time,
-      upper: form.side === "LONG" ? form.tp : form.sl,
-      lower: form.side === "LONG" ? form.sl : form.tp,
+      upper: side === "LONG" ? tp : sl,
+      lower: side === "LONG" ? sl : tp,
       timeLimit: cur.time + tf * 60 * 24,
     };
     setState((s) => ({
@@ -538,10 +605,21 @@ export default function App() {
       trades: [...s.trades, t],
       annotations: [...s.annotations, b],
     }));
-    setTradeOpen(false);
-    message.success(`${form.side} открыт`);
+    setLimitTakeProfit(0);
+    setLimitStopLoss(0);
+    setProtectionEnabled(false);
+    message.success(orderType === "MARKET" ? `${side} открыт` : `${side} limit размещён`);
+  }
+  function cancelOrder(id: string) {
+    setState((current) => ({
+      ...current,
+      trades: current.trades.filter((trade) => trade.id !== id),
+      annotations: current.annotations.filter((barrier) => barrier.id !== id),
+    }));
+    message.info("Лимитная заявка отменена");
   }
   function closeTrade(t: Trade) {
+    if (t.status === "PENDING") return cancelOrder(t.id);
     if (!cur) return;
     const result =
       (t.side === "LONG" ? cur.close - t.entry : t.entry - cur.close) * t.size;
@@ -597,6 +675,11 @@ export default function App() {
   }
   function moveBarrier(id: string, kind: "tp" | "sl", price: number) {
     const rounded = Number(price.toFixed(pricePrecision));
+    if (id === "__draft_protection__") {
+      if (kind === "tp") setLimitTakeProfit(rounded);
+      else setLimitStopLoss(rounded);
+      return;
+    }
     setState((s) => {
       const trades = s.trades.map((t) =>
         t.id === id ? { ...t, [kind]: rounded } : t,
@@ -614,6 +697,19 @@ export default function App() {
       );
       return { ...s, trades, annotations };
     });
+  }
+  function moveEntryMarker(id: string, price: number) {
+    const rounded = Number(price.toFixed(pricePrecision));
+    if (id === "__draft_limit_entry__") {
+      setLimitPrice(rounded);
+      return;
+    }
+    setState((current) => ({
+      ...current,
+      trades: current.trades.map((trade) =>
+        trade.id === id && trade.status === "PENDING" ? { ...trade, entry: rounded } : trade,
+      ),
+    }));
   }
   function importCsv(file: File) {
     Papa.parse(file, {
@@ -649,6 +745,27 @@ export default function App() {
     });
     return false;
   }
+  const ticketPrice = orderType === "MARKET" ? (cur?.close ?? 0) : (limitPrice || cur?.close || 0);
+  const ticketQuantity = ticketPrice > 0 ? (amountUnit === "USDT" ? orderValue / ticketPrice : orderValue) : 0;
+  const ticketNotional = ticketQuantity * ticketPrice;
+  const ticketMargin = ticketNotional / leverage;
+  const longLiquidation = ticketPrice * Math.max(0, 1 - 1 / leverage);
+  const shortLiquidation = ticketPrice * (1 + 1 / leverage);
+  const draftProtectionTrade: Trade | undefined = protectionEnabled && ticketPrice > 0 && limitTakeProfit > 0 && limitStopLoss > 0 ? {
+    id: "__draft_protection__", side: "LONG", entryTime: cur?.time ?? 0, entry: ticketPrice,
+    size: 0, sl: limitStopLoss, tp: limitTakeProfit, status: "OPEN", comment: "",
+  } : undefined;
+  const displayedChartTrade = chartTrade ?? draftProtectionTrade;
+  const displayedBarriers: Barrier[] = chartTrade ? activeBarriers : draftProtectionTrade ? [{
+    id: draftProtectionTrade.id, entryTime: cur?.time ?? 0,
+    upper: draftProtectionTrade.tp, lower: draftProtectionTrade.sl,
+    timeLimit: Number.MAX_SAFE_INTEGER,
+  }] : [];
+  const displayedEntryMarker = chartTrade?.status === "PENDING"
+    ? { id: chartTrade.id, price: chartTrade.entry }
+    : !chartTrade && protectionEnabled && orderType === "LIMIT" && ticketPrice > 0
+      ? { id: "__draft_limit_entry__", price: ticketPrice }
+      : undefined;
   const cols = [
     { title: "Вход", dataIndex: "entryTime", render: dt },
     {
@@ -673,9 +790,9 @@ export default function App() {
       title: "Действия",
       render: (_: any, t: Trade) => (
         <Space size={6}>
-          {t.status === "OPEN" && (
-            <Button size="small" onClick={() => closeTrade(t)}>
-              Закрыть
+          {(t.status === "OPEN" || t.status === "PENDING") && (
+            <Button size="small" onClick={() => t.status === "PENDING" ? cancelOrder(t.id) : closeTrade(t)}>
+              {t.status === "PENDING" ? "Отменить" : "Закрыть"}
             </Button>
           )}
           <Popconfirm
@@ -760,13 +877,15 @@ export default function App() {
               <Chart
                 candles={candles}
                 index={selectingStart ? lastIndex : replayIndex}
-                barriers={activeBarriers}
-                trades={activeTrade ? [activeTrade] : []}
+                barriers={displayedBarriers}
+                trades={displayedChartTrade ? [displayedChartTrade] : []}
                 onBarrierChange={moveBarrier}
                 selectingStart={selectingStart}
                 onStartSelected={selectReplayTime}
                 focusRevision={focusRevision}
                 pricePrecision={pricePrecision}
+                entryMarker={displayedEntryMarker}
+                onEntryMarkerChange={moveEntryMarker}
                 onInteractionChange={(active) => { chartInteractionActive.current = active; }}
               />
             ) : (
@@ -826,66 +945,65 @@ export default function App() {
           </div>
         </section>
         <aside>
-          <div className="sideTitle">ТЕКУЩАЯ СВЕЧА</div>
-          <Card className="price">
-            <span>{cur ? formatMarketPair(activeDataset?.name) : "Нет данных"}</span>
-            <strong>{cur ? formatPrice(cur.close, pricePrecision) : "—"}</strong>
-            <small className={cur && cur.close >= cur.open ? "pos" : "neg"}>
-              {cur
-                ? `${cur.close >= cur.open ? "+" : ""}${((cur.close / cur.open - 1) * 100).toFixed(2)}%`
-                : "—"}
-            </small>
-            <Divider />
-            <div className="ohlc">
-              {["O", "H", "L", "V"].map((x, i) => (
-                <div key={x}>
-                  <span>{x}</span>
-                  <b>
-                    {cur
-                      ? i === 3
-                        ? fmt(cur.volume)
-                        : formatPrice([cur.open, cur.high, cur.low][i], pricePrecision)
-                      : "—"}
-                  </b>
-                </div>
-              ))}
-            </div>
-          </Card>
-          <div className="sideTitle">УЧЕБНАЯ СДЕЛКА</div>
-          <div className="tradeBtns">
-            <Button
-              className="long"
-              disabled={Boolean(activeTrade)}
-              onClick={() => showTrade("LONG")}
-            >
-              LONG
-            </Button>
-            <Button
-              className="short"
-              disabled={Boolean(activeTrade)}
-              onClick={() => showTrade("SHORT")}
-            >
-              SHORT
-            </Button>
+          <div className="orderHeader"><b>Trade</b></div>
+          <div className="ticketTopRow">
+            <Select value="isolated" options={[{value:"isolated",label:"Isolated"}]}/>
+            <Select className="leverageSelect" value={leverage} onChange={setLeverage} options={[1,2,3,5,10,20,50,100].map((value)=>({value,label:`${value.toFixed(2)}x`}))}/>
           </div>
-          <div className="sideTitle">ОТКРЫТЫЕ ПОЗИЦИИ</div>
-          {state.trades.filter((t) => t.status === "OPEN").length ? (
-            state.trades
-              .filter((t) => t.status === "OPEN")
-              .map((t) => (
-                <Card size="small" key={t.id} className="position">
-                  <Tag color={t.side === "LONG" ? "green" : "red"}>
-                    {t.side}
-                  </Tag>
-                  <b>{fmt(t.entry)}</b>
-                  <Button size="small" onClick={() => closeTrade(t)}>
-                    Закрыть
-                  </Button>
-                </Card>
-              ))
-          ) : (
-            <div className="muted">Открытых позиций нет</div>
-          )}
+          <div className="orderTabs">
+            <button className={orderType === "LIMIT" ? "active" : ""} onClick={() => { setOrderType("LIMIT"); if (cur) setLimitPrice(cur.close); }}>Limit</button>
+            <button className={orderType === "MARKET" ? "active" : ""} onClick={() => setOrderType("MARKET")}>Market</button>
+            <CircleHelp size={16}/>
+          </div>
+          {orderType === "LIMIT" && <div className="ticketField">
+            <span>Цена</span>
+            <div className="priceInput"><InputNumber controls={false} value={limitPrice || cur?.close} precision={pricePrecision} step={10 ** -pricePrecision} onChange={(value)=>setLimitPrice(value||0)}/><button onClick={()=>cur&&setLimitPrice(cur.close)}>Last</button></div>
+          </div>}
+          <div className="protectionToggle">
+            <Checkbox checked={protectionEnabled} onChange={(event)=>{
+              const enabled=event.target.checked;
+              setProtectionEnabled(enabled);
+              if(enabled&&cur?.close){
+                const currentPrice=cur.close;
+                if(orderType==="LIMIT")setLimitPrice(+currentPrice.toFixed(pricePrecision));
+                setLimitTakeProfit(+(currentPrice*1.01).toFixed(pricePrecision));
+                setLimitStopLoss(+(currentPrice*0.99).toFixed(pricePrecision));
+              }
+            }}>TP / SL</Checkbox>
+            <span>обязательно</span>
+          </div>
+          {protectionEnabled && <div className="limitProtection">
+            <div className="ticketField"><span>Take Profit</span><InputNumber controls={false} placeholder="Не задан" value={limitTakeProfit || undefined} precision={pricePrecision} step={10 ** -pricePrecision} onChange={(value)=>setLimitTakeProfit(value||0)}/></div>
+            <div className="ticketField"><span>Stop Loss</span><InputNumber controls={false} placeholder="Не задан" value={limitStopLoss || undefined} precision={pricePrecision} step={10 ** -pricePrecision} onChange={(value)=>setLimitStopLoss(value||0)}/></div>
+          </div>}
+          <div className="ticketField">
+            <span>Value</span>
+            <div className="amountInput">
+              <InputNumber controls={false} min={0} value={orderValue} onChange={(value)=>{const next=value||0;setOrderValue(next);const notional=amountUnit==="USDT"?next:next*ticketPrice;setAllocationPercent(Math.min(100,notional/leverage/PAPER_BALANCE_USDT*100))}}/>
+              <Select variant="borderless" value={amountUnit} onChange={(next)=>{setOrderValue(next==="USDT"?ticketNotional:ticketQuantity);setAmountUnit(next)}} options={[{value:"USDT",label:"USDT"},{value:"COIN",label:baseAsset}]}/>
+            </div>
+          </div>
+          <div className="allocationSlider">
+            <Slider min={0} max={100} step={1} value={allocationPercent} onChange={(percent)=>{setAllocationPercent(percent);const notional=PAPER_BALANCE_USDT*(percent/100)*leverage;setOrderValue(amountUnit==="USDT"?notional:(ticketPrice?notional/ticketPrice:0))}} tooltip={{formatter:(value)=>`${value}%`}}/>
+            <div><span>0</span><span>100%</span></div>
+          </div>
+          <div className="orderSummary">
+            <div><span>Quantity</span><b>{ticketQuantity ? formatPrice(ticketQuantity, Math.min(8,pricePrecision+2)) : "—"} {baseAsset}</b></div>
+            <div><span>Cost</span><b>{ticketMargin ? `${fmt(ticketMargin)} ${quoteAsset}` : "—"}</b></div>
+            <div><span>Liq. Price</span><b><em>{ticketPrice?formatPrice(longLiquidation,pricePrecision):"—"}</em> / <strong>{ticketPrice?formatPrice(shortLiquidation,pricePrecision):"—"}</strong></b></div>
+          </div>
+          <div className="tradeBtns">
+            <Button className="long" disabled={Boolean(blockingTrade)||!cur||!protectionEnabled||limitTakeProfit<=0||limitStopLoss<=0} onClick={() => placeOrder("LONG")}>Long</Button>
+            <Button className="short" disabled={Boolean(blockingTrade)||!cur||!protectionEnabled||limitTakeProfit<=0||limitStopLoss<=0} onClick={() => placeOrder("SHORT")}>Short</Button>
+          </div>
+          <div className="sideTitle">ПОЗИЦИИ И ЗАЯВКИ</div>
+          {workingTrades.length ? workingTrades.map((t) => (
+            <Card size="small" key={t.id} className="position">
+              <Tag color={t.status === "PENDING" ? "orange" : t.side === "LONG" ? "green" : "red"}>{t.status === "PENDING" ? "LIMIT" : t.side}</Tag>
+              <div className="positionPrice"><b>{formatPrice(t.entry,pricePrecision)}</b><small>{t.leverage??1}x · {formatPrice(t.size,Math.min(8,pricePrecision+2))} {baseAsset}</small></div>
+              <Button size="small" onClick={() => t.status === "PENDING" ? cancelOrder(t.id) : closeTrade(t)}>{t.status === "PENDING" ? "Отменить" : "Закрыть"}</Button>
+            </Card>
+          )) : <div className="muted">Нет активных позиций и заявок</div>}
           <div className="tip">
             Будущие свечи скрыты
             <br />
@@ -904,52 +1022,6 @@ export default function App() {
             setDatePickerOpen(false);
           }}
         />
-      </Modal>
-      <Modal
-        title={`Открыть ${form.side}`}
-        open={tradeOpen}
-        onOk={createTrade}
-        okText="Открыть сделку"
-        onCancel={() => setTradeOpen(false)}
-      >
-        <div className="form">
-          <label>
-            Размер позиции
-            <InputNumber
-              value={form.size}
-              min={0.01}
-              onChange={(v) => setForm({ ...form, size: v || 1 })}
-            />
-          </label>
-          <label>
-            Stop loss
-            <InputNumber
-              value={form.sl}
-              precision={pricePrecision}
-              step={10 ** -pricePrecision}
-              onChange={(v) => setForm({ ...form, sl: v || 0 })}
-            />
-          </label>
-          <label>
-            Take profit
-            <InputNumber
-              value={form.tp}
-              precision={pricePrecision}
-              step={10 ** -pricePrecision}
-              onChange={(v) => setForm({ ...form, tp: v || 0 })}
-            />
-          </label>
-          <label>
-            Комментарий
-            <Input.TextArea
-              value={form.comment}
-              onChange={(e) => setForm({ ...form, comment: e.target.value })}
-            />
-          </label>
-          <div className="barrierNote">
-            Позиция закрывается только по TP, SL или вручную. Линии можно перемещать на графике.
-          </div>
-        </div>
       </Modal>
       <Modal
         title="Журнал сделок"
