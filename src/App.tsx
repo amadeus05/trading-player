@@ -130,6 +130,7 @@ function Chart({
   entryMarker,
   onEntryMarkerChange,
   showClosedTradeOverlays,
+  markersEditable,
 }: {
   candles: Candle[];
   index: number;
@@ -144,6 +145,7 @@ function Chart({
   entryMarker?: { id: string; price: number };
   onEntryMarkerChange: (id: string, price: number) => void;
   showClosedTradeOverlays: boolean;
+  markersEditable: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const savedLogicalRange = useRef<any>(null);
@@ -275,7 +277,7 @@ function Chart({
           title: "",
         });
         const handle = document.createElement("button");
-        handle.className = `barrier-handle ${kind}`;
+        handle.className = `barrier-handle ${kind}${markersEditable ? "" : " read-only"}`;
         handle.textContent = `${kind.toUpperCase()} ${initialPrice.toFixed(pricePrecision)}`;
         ref.current!.appendChild(handle);
         handles.push(handle);
@@ -285,7 +287,7 @@ function Chart({
           if (y !== null) handle.style.top = `${y}px`;
         };
         requestAnimationFrame(() => place(initialPrice));
-        handle.onpointerdown = (event) => {
+        if (markersEditable) handle.onpointerdown = (event) => {
           event.preventDefault();
           handle.setPointerCapture(event.pointerId);
           let currentPrice = displayedPrice;
@@ -334,12 +336,12 @@ function Chart({
       const line = cs.createPriceLine({ price: displayedPrice, color: "#9b8cff", lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: "" });
       removablePriceLines.push(line);
       const handle = document.createElement("button");
-      handle.className = "barrier-handle entry";
+      handle.className = `barrier-handle entry${markersEditable ? "" : " read-only"}`;
       handle.textContent = `LIMIT ${displayedPrice.toFixed(pricePrecision)}`;
       ref.current!.appendChild(handle);
       handles.push(handle);
       handlePositions.push({ handle, price: () => displayedPrice });
-      handle.onpointerdown = (event) => {
+      if (markersEditable) handle.onpointerdown = (event) => {
         event.preventDefault();
         handle.setPointerCapture(event.pointerId);
         const move = (e: PointerEvent) => {
@@ -436,7 +438,7 @@ function Chart({
       if (selectingStart) chart.unsubscribeClick(selectStart);
       chart.remove();
     };
-  }, [candles, index, barriers, trades, onBarrierChange, selectingStart, onStartSelected, focusRevision, pricePrecision, entryMarker, onEntryMarkerChange, showClosedTradeOverlays]);
+  }, [candles, index, barriers, trades, onBarrierChange, selectingStart, onStartSelected, focusRevision, pricePrecision, entryMarker, onEntryMarkerChange, showClosedTradeOverlays, markersEditable]);
   return <div
     className={`chart ${selectingStart ? "selecting-replay-start" : ""}`}
     ref={ref}
@@ -471,7 +473,8 @@ export default function App() {
     [limitPrice,setLimitPrice]=useState(0),
     [protectionEnabled,setProtectionEnabled]=useState(false),
     [limitTakeProfit,setLimitTakeProfit]=useState(0),
-    [limitStopLoss,setLimitStopLoss]=useState(0);
+    [limitStopLoss,setLimitStopLoss]=useState(0),
+    [focusedTradeId,setFocusedTradeId]=useState<string|null>(null);
   useEffect(() => {
     const release = () => { chartInteractionActive.current = false; };
     window.addEventListener("pointerup", release);
@@ -480,6 +483,15 @@ export default function App() {
       window.removeEventListener("pointerup", release);
       window.removeEventListener("pointercancel", release);
     };
+  }, []);
+  useEffect(() => {
+    const clearTradeFocus = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && (target.closest("[data-trade-focus-id]") || target.closest(".barrier-handle"))) return;
+      setFocusedTradeId(null);
+    };
+    document.addEventListener("pointerdown", clearTradeFocus, true);
+    return () => document.removeEventListener("pointerdown", clearTradeFocus, true);
   }, []);
   useEffect(() => {
     fetch("/api/state")
@@ -638,7 +650,7 @@ export default function App() {
   }, [cur?.time]);
   const workingTrades = state.trades.filter((t) => t.status === "OPEN" || t.status === "PENDING");
   const blockingTrade = workingTrades.at(-1);
-  const chartTrade = workingTrades.at(-1);
+  const chartTrade = workingTrades.find((trade) => trade.id === focusedTradeId);
   const activeBarriers = chartTrade
     ? state.annotations.filter(
         (b) => b.id === chartTrade.id && b.entryTime <= (cur?.time || 0),
@@ -711,6 +723,8 @@ export default function App() {
       trades: [...s.trades, t],
       annotations: [...s.annotations, b],
     }));
+    setProtectionEnabled(false);
+    setFocusedTradeId(t.id);
     setLimitTakeProfit(0);
     setLimitStopLoss(0);
     setProtectionEnabled(false);
@@ -868,6 +882,7 @@ export default function App() {
     size: 0, sl: limitStopLoss, tp: limitTakeProfit, status: "OPEN", comment: "",
   } : undefined;
   const displayedChartTrade = chartTrade ?? draftProtectionTrade;
+  const markersEditable = displayedChartTrade?.id === "__draft_protection__";
   const chartTrades = displayedChartTrade?.id === "__draft_protection__"
     ? [...state.trades, displayedChartTrade]
     : state.trades;
@@ -878,7 +893,7 @@ export default function App() {
   }] : [];
   const displayedEntryMarker = chartTrade?.status === "PENDING"
     ? { id: chartTrade.id, price: chartTrade.entry }
-    : !chartTrade && protectionEnabled && orderType === "LIMIT" && ticketPrice > 0
+    : protectionEnabled && orderType === "LIMIT" && ticketPrice > 0
       ? { id: "__draft_limit_entry__", price: ticketPrice }
       : undefined;
   function updateSimulationSetting(key: Exclude<keyof SimulationSettings, "showClosedTradeOverlays">, value: number | null) {
@@ -1011,6 +1026,7 @@ export default function App() {
                 entryMarker={displayedEntryMarker}
                 onEntryMarkerChange={moveEntryMarker}
                 showClosedTradeOverlays={simulationSettings.showClosedTradeOverlays}
+                markersEditable={markersEditable}
                 onInteractionChange={(active) => { chartInteractionActive.current = active; }}
               />
             ) : (
@@ -1087,6 +1103,7 @@ export default function App() {
           <div className="protectionToggle">
             <Checkbox checked={protectionEnabled} onChange={(event)=>{
               const enabled=event.target.checked;
+              setFocusedTradeId(null);
               setProtectionEnabled(enabled);
               if(enabled&&cur?.close){
                 const currentPrice=cur.close;
@@ -1129,7 +1146,13 @@ export default function App() {
             const margin = t.entry * t.size / (t.leverage ?? 1);
             const unrealizedRoi = unrealizedPnl != null && margin > 0 ? unrealizedPnl / margin * 100 : null;
             return (
-              <Card size="small" key={t.id} className="position">
+              <Card
+                size="small"
+                key={t.id}
+                data-trade-focus-id={t.id}
+                className={`position ${focusedTradeId === t.id ? "focused" : ""}`}
+                onClick={() => setFocusedTradeId(t.id)}
+              >
                 <div className="positionMain">
                   <Tag color={t.status === "PENDING" ? "orange" : t.side === "LONG" ? "green" : "red"}>{t.status === "PENDING" ? "LIMIT" : t.side}</Tag>
                   <div className="positionPrice"><b>{formatPrice(t.entry,pricePrecision)}</b><small>{t.leverage??1}x · {formatPrice(t.size,Math.min(8,pricePrecision+2))} {baseAsset}</small></div>
@@ -1142,7 +1165,11 @@ export default function App() {
                     className={`positionAction ${t.status === "PENDING" ? "cancel" : "close"}`}
                     aria-label={t.status === "PENDING" ? "Отменить заявку" : "Закрыть позицию"}
                     icon={<X size={14} />}
-                    onClick={() => t.status === "PENDING" ? cancelOrder(t.id) : closeTrade(t)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      t.status === "PENDING" ? cancelOrder(t.id) : closeTrade(t);
+                      setFocusedTradeId(null);
+                    }}
                   />
                   </Tooltip>
                 </div>

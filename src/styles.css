@@ -227,6 +227,15 @@ main {
   filter: brightness(1.12);
   outline: 2px solid #ffffff66;
 }
+.barrier-handle.read-only {
+  cursor: default;
+  opacity: .88;
+}
+.barrier-handle.read-only:hover,
+.barrier-handle.read-only:active {
+  filter: none;
+  outline: none;
+}
 .close-notification {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -638,7 +647,11 @@ aside {
 }
 .position {
   margin-bottom: 8px;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
 }
+.position:hover { border-color: #343947; }
+.position.focused { border-color: #6559c8; background: #11111b; }
 .position .ant-card-body {
   display: block;
   padding: 10px 11px;
