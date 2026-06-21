@@ -171,7 +171,7 @@ function Chart({
   const savedLogicalRange = useRef<any>(null);
   const renderedIndex = useRef<number | null>(null);
   const followRealtime = useRef(true);
-  const savedPriceRange = useRef<{from:number;to:number}|null>(null);
+  const savedPriceRange = useRef<{ from: number; to: number } | null>(null);
   const manualPriceScale = useRef(false);
   const appliedFocusRevision = useRef(focusRevision);
   const callbacksRef = useRef({ onBarrierChange, onStartSelected, onEntryMarkerChange, onTrendLineCreate, onTrendLineUpdate, onTrendLineDelete, onDrawingComplete });
@@ -412,15 +412,15 @@ function Chart({
     renderedIndex.current = index;
     const priceScaleWidth = Math.max(70, chart.priceScale("right").width());
     let chartAlive = true;
-    const markManualScale=(event:PointerEvent)=>{
-      const element=ref.current;if(!element)return;
-      const bounds=element.getBoundingClientRect();
-      if(event.clientX-bounds.left>=bounds.width-priceScaleWidth-4)manualPriceScale.current=true;
+    const markManualScale = (event: PointerEvent) => {
+      const element = ref.current; if (!element) return;
+      const bounds = element.getBoundingClientRect();
+      if (event.clientX - bounds.left >= bounds.width - priceScaleWidth - 4) manualPriceScale.current = true;
     };
-    const resetManualScale=(event:MouseEvent)=>{
-      const element=ref.current;if(!element)return;
-      const bounds=element.getBoundingClientRect();
-      if(event.clientX-bounds.left>=bounds.width-priceScaleWidth-4){manualPriceScale.current=false;savedPriceRange.current=null}
+    const resetManualScale = (event: MouseEvent) => {
+      const element = ref.current; if (!element) return;
+      const bounds = element.getBoundingClientRect();
+      if (event.clientX - bounds.left >= bounds.width - priceScaleWidth - 4) { manualPriceScale.current = false; savedPriceRange.current = null }
     };
     const zoomPriceScale = (event: WheelEvent) => {
       if (!chartAlive) return;
@@ -441,9 +441,9 @@ function Chart({
       savedPriceRange.current = nextRange;
       cs.priceScale().setVisibleRange(nextRange);
     };
-    ref.current.addEventListener("pointerdown",markManualScale);
-    ref.current.addEventListener("dblclick",resetManualScale);
-    ref.current.addEventListener("wheel",zoomPriceScale,{capture:true,passive:false});
+    ref.current.addEventListener("pointerdown", markManualScale);
+    ref.current.addEventListener("dblclick", resetManualScale);
+    ref.current.addEventListener("wheel", zoomPriceScale, { capture: true, passive: false });
     const cleanupTrendLines = attachTrendLineTool({
       container: ref.current!,
       chart,
@@ -466,13 +466,13 @@ function Chart({
       const range = chart.timeScale().getVisibleLogicalRange();
       savedLogicalRange.current = range;
       if (range) followRealtime.current = Math.abs(range.to - (visible.length - 1)) < 0.75;
-      if(manualPriceScale.current)savedPriceRange.current=cs.priceScale().getVisibleRange();
-      ref.current?.removeEventListener("pointerdown",markManualScale);
-      ref.current?.removeEventListener("dblclick",resetManualScale);
-      ref.current?.removeEventListener("wheel",zoomPriceScale,{capture:true});
+      if (manualPriceScale.current) savedPriceRange.current = cs.priceScale().getVisibleRange();
+      ref.current?.removeEventListener("pointerdown", markManualScale);
+      ref.current?.removeEventListener("dblclick", resetManualScale);
+      ref.current?.removeEventListener("wheel", zoomPriceScale, { capture: true });
       handles.forEach((handle) => handle.remove());
       overlay.remove();
-      removablePriceLines.forEach((line) => { try { cs.removePriceLine(line); } catch {} });
+      removablePriceLines.forEach((line) => { try { cs.removePriceLine(line); } catch { } });
       cancelAnimationFrame(handleAnimationFrame);
       if (selectingStart) chart.unsubscribeClick(selectStart);
       cleanupTrendLines();
@@ -500,23 +500,23 @@ export default function App() {
     [playing, setPlaying] = useState(false),
     [speed, setSpeed] = useState(1),
     [journal, setJournal] = useState(false),
-    [settingsOpen,setSettingsOpen]=useState(false),
+    [settingsOpen, setSettingsOpen] = useState(false),
     [selectingStart, setSelectingStart] = useState(false),
     [datePickerOpen, setDatePickerOpen] = useState(false),
-    [focusRevision,setFocusRevision]=useState(0),
-    [loadedMarket,setLoadedMarket]=useState<{id:string;name:string;candles:Candle[]}|null>(null),
-    [orderType,setOrderType]=useState<"MARKET"|"LIMIT">("MARKET"),
-    [leverage,setLeverage]=useState(10),
-    [amountUnit,setAmountUnit]=useState<"USDT"|"COIN">("USDT"),
-    [orderValue,setOrderValue]=useState(100),
-    [allocationPercent,setAllocationPercent]=useState(1),
-    [limitPrice,setLimitPrice]=useState(0),
-    [protectionEnabled,setProtectionEnabled]=useState(false),
-    [limitTakeProfit,setLimitTakeProfit]=useState(0),
-    [limitStopLoss,setLimitStopLoss]=useState(0),
-    [focusedTradeId,setFocusedTradeId]=useState<string|null>(null),
-    [tradeEditDraft,setTradeEditDraft]=useState<{id:string;entry:number;tp:number;sl:number}|null>(null),
-    [drawingMode,setDrawingMode]=useState<DrawingMode>("none");
+    [focusRevision, setFocusRevision] = useState(0),
+    [loadedMarket, setLoadedMarket] = useState<{ id: string; name: string; candles: Candle[] } | null>(null),
+    [orderType, setOrderType] = useState<"MARKET" | "LIMIT">("MARKET"),
+    [leverage, setLeverage] = useState(10),
+    [amountUnit, setAmountUnit] = useState<"USDT" | "COIN">("USDT"),
+    [orderValue, setOrderValue] = useState(100),
+    [allocationPercent, setAllocationPercent] = useState(1),
+    [limitPrice, setLimitPrice] = useState(0),
+    [protectionEnabled, setProtectionEnabled] = useState(false),
+    [limitTakeProfit, setLimitTakeProfit] = useState(0),
+    [limitStopLoss, setLimitStopLoss] = useState(0),
+    [focusedTradeId, setFocusedTradeId] = useState<string | null>(null),
+    [tradeEditDraft, setTradeEditDraft] = useState<{ id: string; entry: number; tp: number; sl: number } | null>(null),
+    [drawingMode, setDrawingMode] = useState<DrawingMode>("none");
   useEffect(() => {
     const release = () => { chartInteractionActive.current = false; };
     window.addEventListener("pointerup", release);
@@ -540,15 +540,15 @@ export default function App() {
     fetch("/api/state")
       .then((r) => r.json())
       .then((s: Persisted) => {
-        const datasets=(s.datasets??[]).filter((item)=>item.id!=="demo");
+        const datasets = (s.datasets ?? []).filter((item) => item.id !== "demo");
         if (datasets.length) {
-          setState({...s,datasets,settings:{...DEFAULT_SIMULATION_SETTINGS,...s.settings}});
+          setState({ ...s, datasets, settings: { ...DEFAULT_SIMULATION_SETTINGS, ...s.settings } });
           setDataset(datasets[0].id);
         } else {
-          setState({...s,datasets:[],settings:{...DEFAULT_SIMULATION_SETTINGS,...s.settings}});
+          setState({ ...s, datasets: [], settings: { ...DEFAULT_SIMULATION_SETTINGS, ...s.settings } });
         }
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => {
         hydrated.current = true;
       });
@@ -561,17 +561,17 @@ export default function App() {
           method: "PUT",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(state),
-        }).catch(() => {}),
+        }).catch(() => { }),
       300,
     );
     return () => clearTimeout(h);
   }, [state]);
-  const availableDatasets=loadedMarket?[loadedMarket,...state.datasets.filter(d=>d.id!==loadedMarket.id)]:state.datasets;
-  const simulationSettings={...DEFAULT_SIMULATION_SETTINGS,...state.settings};
-  const activeDataset=availableDatasets.find((d)=>d.id===dataset);
-  const marketSymbol=(activeDataset?.name.split(/[·\s]/)[0]??"").toUpperCase();
-  const quoteAsset=["USDT","USDC","BUSD","USD","BTC","ETH"].find((value)=>marketSymbol.endsWith(value)&&marketSymbol.length>value.length)??"USDT";
-  const baseAsset=marketSymbol.slice(0,-quoteAsset.length)||"COIN";
+  const availableDatasets = loadedMarket ? [loadedMarket, ...state.datasets.filter(d => d.id !== loadedMarket.id)] : state.datasets;
+  const simulationSettings = { ...DEFAULT_SIMULATION_SETTINGS, ...state.settings };
+  const activeDataset = availableDatasets.find((d) => d.id === dataset);
+  const marketSymbol = (activeDataset?.name.split(/[·\s]/)[0] ?? "").toUpperCase();
+  const quoteAsset = ["USDT", "USDC", "BUSD", "USD", "BTC", "ETH"].find((value) => marketSymbol.endsWith(value) && marketSymbol.length > value.length) ?? "USDT";
+  const baseAsset = marketSymbol.slice(0, -quoteAsset.length) || "COIN";
   const raw = availableDatasets.find((d) => d.id === dataset)?.candles || [];
   const pricePrecision = useMemo(() => inferPricePrecision(raw), [raw]);
   const candles = useMemo(() => aggregate(raw, tf), [raw, tf]);
@@ -699,8 +699,8 @@ export default function App() {
     : focusedTrade;
   const activeBarriers = useMemo(() => chartTrade
     ? state.annotations.filter(
-        (b) => b.id === chartTrade.id && b.entryTime <= (cur?.time || 0),
-      )
+      (b) => b.id === chartTrade.id && b.entryTime <= (cur?.time || 0),
+    )
     : NO_BARRIERS, [chartTrade?.id, state.annotations, cur?.time]);
   function step() {
     setIdx((i) => Math.min(i + 1, lastIndex));
@@ -798,15 +798,15 @@ export default function App() {
       trades: s.trades.map((x) =>
         x.id === t.id
           ? {
-              ...x,
-              status: "CLOSED",
-              exitTime: cur.time,
-              exit,
-              grossResult,
-              fees,
-              result,
-              outcome: "MANUAL",
-            }
+            ...x,
+            status: "CLOSED",
+            exitTime: cur.time,
+            exit,
+            grossResult,
+            fees,
+            result,
+            outcome: "MANUAL",
+          }
           : x,
       ),
     }));
@@ -880,10 +880,10 @@ export default function App() {
       const annotations = s.annotations.map((b) =>
         b.id === id
           ? {
-              ...b,
-              upper: trade.side === "LONG" ? trade.tp : trade.sl,
-              lower: trade.side === "LONG" ? trade.sl : trade.tp,
-            }
+            ...b,
+            upper: trade.side === "LONG" ? trade.tp : trade.sl,
+            lower: trade.side === "LONG" ? trade.sl : trade.tp,
+          }
           : b,
       );
       return { ...s, trades, annotations };
@@ -1070,11 +1070,11 @@ export default function App() {
           </div>
         </div>
         <div className="headerRight">
-          <HistoryManager onOpen={(market)=>{setLoadedMarket(market);setDataset(market.id);setIdx(Math.min(120,market.candles.length-1))}}/>
+          <HistoryManager onOpen={(market) => { setLoadedMarket(market); setDataset(market.id); setIdx(Math.min(120, market.candles.length - 1)) }} />
           <span className="live">
             <i /> LOCAL
           </span>
-          <Button icon={<Settings size={16}/>} onClick={()=>setSettingsOpen(true)}>Настройки</Button>
+          <Button icon={<Settings size={16} />} onClick={() => setSettingsOpen(true)}>Настройки</Button>
           <Button
             icon={<BookOpen size={16} />}
             onClick={() => setJournal(true)}
@@ -1214,56 +1214,56 @@ export default function App() {
         <aside>
           <div className="orderHeader"><b>Trade</b></div>
           <div className="ticketTopRow">
-            <Select value="isolated" options={[{value:"isolated",label:"Isolated"}]}/>
-            <Select className="leverageSelect" value={leverage} onChange={setLeverage} options={[1,2,3,5,10,20,50,100].map((value)=>({value,label:`${value.toFixed(2)}x`}))}/>
+            <Select value="isolated" options={[{ value: "isolated", label: "Isolated" }]} />
+            <Select className="leverageSelect" value={leverage} onChange={setLeverage} options={[1, 2, 3, 5, 10, 20, 50, 100].map((value) => ({ value, label: `${value.toFixed(2)}x` }))} />
           </div>
           <div className="orderTabs">
             <button className={orderType === "LIMIT" ? "active" : ""} onClick={() => { setOrderType("LIMIT"); if (cur) setLimitPrice(cur.close); }}>Limit</button>
             <button className={orderType === "MARKET" ? "active" : ""} onClick={() => setOrderType("MARKET")}>Market</button>
-            <CircleHelp size={16}/>
+            <CircleHelp size={16} />
           </div>
           {orderType === "LIMIT" && <div className="ticketField">
             <span>Цена</span>
-            <div className="priceInput"><InputNumber controls={false} value={limitPrice || cur?.close} precision={pricePrecision} step={10 ** -pricePrecision} onChange={(value)=>setLimitPrice(value||0)}/><button onClick={()=>cur&&setLimitPrice(cur.close)}>Last</button></div>
+            <div className="priceInput"><InputNumber controls={false} value={limitPrice || cur?.close} precision={pricePrecision} step={10 ** -pricePrecision} onChange={(value) => setLimitPrice(value || 0)} /><button onClick={() => cur && setLimitPrice(cur.close)}>Last</button></div>
           </div>}
           <div className="protectionToggle">
-            <Checkbox disabled={Boolean(tradeEditDraft)} checked={protectionEnabled} onChange={(event)=>{
-              const enabled=event.target.checked;
+            <Checkbox disabled={Boolean(tradeEditDraft)} checked={protectionEnabled} onChange={(event) => {
+              const enabled = event.target.checked;
               setFocusedTradeId(null);
               setTradeEditDraft(null);
               setProtectionEnabled(enabled);
-              if(enabled&&cur?.close){
-                const currentPrice=cur.close;
-                if(orderType==="LIMIT")setLimitPrice(+currentPrice.toFixed(pricePrecision));
-                setLimitTakeProfit(+(currentPrice*1.01).toFixed(pricePrecision));
-                setLimitStopLoss(+(currentPrice*0.99).toFixed(pricePrecision));
+              if (enabled && cur?.close) {
+                const currentPrice = cur.close;
+                if (orderType === "LIMIT") setLimitPrice(+currentPrice.toFixed(pricePrecision));
+                setLimitTakeProfit(+(currentPrice * 1.01).toFixed(pricePrecision));
+                setLimitStopLoss(+(currentPrice * 0.99).toFixed(pricePrecision));
               }
             }}>TP / SL</Checkbox>
             <span>обязательно</span>
           </div>
           {protectionEnabled && <div className="limitProtection">
-            <div className="ticketField"><span>Take Profit</span><InputNumber controls={false} placeholder="Не задан" value={limitTakeProfit || undefined} precision={pricePrecision} step={10 ** -pricePrecision} onChange={(value)=>setLimitTakeProfit(value||0)}/></div>
-            <div className="ticketField"><span>Stop Loss</span><InputNumber controls={false} placeholder="Не задан" value={limitStopLoss || undefined} precision={pricePrecision} step={10 ** -pricePrecision} onChange={(value)=>setLimitStopLoss(value||0)}/></div>
+            <div className="ticketField"><span>Take Profit</span><InputNumber controls={false} placeholder="Не задан" value={limitTakeProfit || undefined} precision={pricePrecision} step={10 ** -pricePrecision} onChange={(value) => setLimitTakeProfit(value || 0)} /></div>
+            <div className="ticketField"><span>Stop Loss</span><InputNumber controls={false} placeholder="Не задан" value={limitStopLoss || undefined} precision={pricePrecision} step={10 ** -pricePrecision} onChange={(value) => setLimitStopLoss(value || 0)} /></div>
           </div>}
           <div className="ticketField">
             <span>Value</span>
             <div className="amountInput">
-              <InputNumber controls={false} min={0} value={orderValue} onChange={(value)=>{const next=value||0;setOrderValue(next);const notional=amountUnit==="USDT"?next:next*ticketPrice;setAllocationPercent(Math.min(100,notional/leverage/PAPER_BALANCE_USDT*100))}}/>
-              <Select variant="borderless" value={amountUnit} onChange={(next)=>{setOrderValue(next==="USDT"?ticketNotional:ticketQuantity);setAmountUnit(next)}} options={[{value:"USDT",label:"USDT"},{value:"COIN",label:baseAsset}]}/>
+              <InputNumber controls={false} min={0} value={orderValue} onChange={(value) => { const next = value || 0; setOrderValue(next); const notional = amountUnit === "USDT" ? next : next * ticketPrice; setAllocationPercent(Math.min(100, notional / leverage / PAPER_BALANCE_USDT * 100)) }} />
+              <Select variant="borderless" value={amountUnit} onChange={(next) => { setOrderValue(next === "USDT" ? ticketNotional : ticketQuantity); setAmountUnit(next) }} options={[{ value: "USDT", label: "USDT" }, { value: "COIN", label: baseAsset }]} />
             </div>
           </div>
           <div className="allocationSlider">
-            <Slider min={0} max={100} step={1} value={allocationPercent} onChange={(percent)=>{setAllocationPercent(percent);const notional=PAPER_BALANCE_USDT*(percent/100)*leverage;setOrderValue(amountUnit==="USDT"?notional:(ticketPrice?notional/ticketPrice:0))}} tooltip={{formatter:(value)=>`${value}%`}}/>
+            <Slider min={0} max={100} step={1} value={allocationPercent} onChange={(percent) => { setAllocationPercent(percent); const notional = PAPER_BALANCE_USDT * (percent / 100) * leverage; setOrderValue(amountUnit === "USDT" ? notional : (ticketPrice ? notional / ticketPrice : 0)) }} tooltip={{ formatter: (value) => `${value}%` }} />
             <div><span>0</span><span>100%</span></div>
           </div>
           <div className="orderSummary">
-            <div><span>Quantity</span><b>{ticketQuantity ? formatPrice(ticketQuantity, Math.min(8,pricePrecision+2)) : "—"} {baseAsset}</b></div>
+            <div><span>Quantity</span><b>{ticketQuantity ? formatPrice(ticketQuantity, Math.min(8, pricePrecision + 2)) : "—"} {baseAsset}</b></div>
             <div><span>Cost</span><b>{ticketMargin ? `${fmt(ticketMargin)} ${quoteAsset}` : "—"}</b></div>
-            <div><span>Liq. Price</span><b><em>{longLiquidation != null ? formatPrice(longLiquidation,pricePrecision) : "—"}</em> / <strong>{shortLiquidation != null ? formatPrice(shortLiquidation,pricePrecision) : "—"}</strong></b></div>
+            <div><span>Liq. Price</span><b><em>{longLiquidation != null ? formatPrice(longLiquidation, pricePrecision) : "—"}</em> / <strong>{shortLiquidation != null ? formatPrice(shortLiquidation, pricePrecision) : "—"}</strong></b></div>
           </div>
           <div className="tradeBtns">
-            <Button className="long" disabled={Boolean(blockingTrade)||!cur||!protectionEnabled||limitTakeProfit<=0||limitStopLoss<=0} onClick={() => placeOrder("LONG")}>Long</Button>
-            <Button className="short" disabled={Boolean(blockingTrade)||!cur||!protectionEnabled||limitTakeProfit<=0||limitStopLoss<=0} onClick={() => placeOrder("SHORT")}>Short</Button>
+            <Button className="long" disabled={Boolean(blockingTrade) || !cur || !protectionEnabled || limitTakeProfit <= 0 || limitStopLoss <= 0} onClick={() => placeOrder("LONG")}>Long</Button>
+            <Button className="short" disabled={Boolean(blockingTrade) || !cur || !protectionEnabled || limitTakeProfit <= 0 || limitStopLoss <= 0} onClick={() => placeOrder("SHORT")}>Short</Button>
           </div>
           <div className="sideTitle">ПОЗИЦИИ И ЗАЯВКИ</div>
           {workingTrades.length ? workingTrades.map((t) => {
@@ -1282,17 +1282,17 @@ export default function App() {
               >
                 <div className="positionMain">
                   <Tag color={t.status === "PENDING" ? "orange" : t.side === "LONG" ? "green" : "red"}>{t.status === "PENDING" ? "LIMIT" : t.side}</Tag>
-                  <div className="positionPrice"><b>{formatPrice(t.entry,pricePrecision)}</b><small>{t.leverage??1}x · {formatPrice(t.size,Math.min(8,pricePrecision+2))} {baseAsset}</small></div>
+                  <div className="positionPrice"><b>{formatPrice(t.entry, pricePrecision)}</b><small>{t.leverage ?? 1}x · {formatPrice(t.size, Math.min(8, pricePrecision + 2))} {baseAsset}</small></div>
                   {unrealizedPnl != null && <div className={`positionPnl ${unrealizedPnl >= 0 ? "positive" : "negative"}`}>
                     <b>{unrealizedPnl >= 0 ? "+" : ""}{fmt(unrealizedPnl)} {quoteAsset}</b>
                     <em>{unrealizedRoi != null && unrealizedRoi >= 0 ? "+" : ""}{unrealizedRoi?.toFixed(2)}%</em>
                   </div>}
                   <div className="positionActions">
                     {tradeEditDraft?.id === t.id ? <>
-                      <Tooltip title="Сохранить изменения"><Button className="positionAction save" aria-label="Сохранить изменения" icon={<Check size={14}/>} onClick={(event)=>{event.stopPropagation();saveTradeEditing()}}/></Tooltip>
-                      <Tooltip title="Отменить изменения"><Button className="positionAction" aria-label="Отменить изменения" icon={<X size={14}/>} onClick={(event)=>{event.stopPropagation();cancelTradeEditing()}}/></Tooltip>
+                      <Tooltip title="Сохранить изменения"><Button className="positionAction save" aria-label="Сохранить изменения" icon={<Check size={14} />} onClick={(event) => { event.stopPropagation(); saveTradeEditing() }} /></Tooltip>
+                      <Tooltip title="Отменить изменения"><Button className="positionAction" aria-label="Отменить изменения" icon={<X size={14} />} onClick={(event) => { event.stopPropagation(); cancelTradeEditing() }} /></Tooltip>
                     </> : <>
-                      <Tooltip title="Редактировать"><Button className="positionAction edit" aria-label="Редактировать" icon={<Pencil size={13}/>} onClick={(event)=>{event.stopPropagation();startTradeEditing(t)}}/></Tooltip>
+                      <Tooltip title="Редактировать"><Button className="positionAction edit" aria-label="Редактировать" icon={<Pencil size={13} />} onClick={(event) => { event.stopPropagation(); startTradeEditing(t) }} /></Tooltip>
                       <Tooltip title={t.status === "PENDING" ? "Отменить заявку" : "Закрыть позицию"}>
                         <Button
                           className={`positionAction ${t.status === "PENDING" ? "cancel" : "close"}`}
@@ -1319,13 +1319,13 @@ export default function App() {
           </div>
         </aside>
       </main>
-      <Modal title="Настройки симуляции" open={settingsOpen} onCancel={()=>setSettingsOpen(false)} footer={<><Button onClick={()=>setState((current)=>({...current,settings:DEFAULT_SIMULATION_SETTINGS}))}>По умолчанию</Button><Button type="primary" onClick={()=>setSettingsOpen(false)}>Готово</Button></>}>
+      <Modal title="Настройки симуляции" open={settingsOpen} onCancel={() => setSettingsOpen(false)} footer={<><Button onClick={() => setState((current) => ({ ...current, settings: DEFAULT_SIMULATION_SETTINGS }))}>По умолчанию</Button><Button type="primary" onClick={() => setSettingsOpen(false)}>Готово</Button></>}>
         <div className="settingsGrid">
-          <label><span>Maker fee</span><InputNumber value={simulationSettings.makerFeePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value)=>updateSimulationSetting("makerFeePct",value)}/><small>Limit-вход и Take Profit</small></label>
-          <label><span>Taker fee</span><InputNumber value={simulationSettings.takerFeePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value)=>updateSimulationSetting("takerFeePct",value)}/><small>Market, Stop Loss и ручное закрытие</small></label>
-          <label><span>Market slippage</span><InputNumber value={simulationSettings.slippagePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value)=>updateSimulationSetting("slippagePct",value)}/><small>Вход и ручное закрытие по рынку</small></label>
-          <label><span>Stop slippage</span><InputNumber value={simulationSettings.stopSlippagePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value)=>updateSimulationSetting("stopSlippagePct",value)}/><small>Ухудшение цены исполнения Stop Loss</small></label>
-          <label className="settingsToggle"><span>Разметка закрытых сделок</span><Switch checked={simulationSettings.showClosedTradeOverlays} onChange={(checked)=>setState((current)=>({...current,settings:{...DEFAULT_SIMULATION_SETTINGS,...current.settings,showClosedTradeOverlays:checked}}))}/><small>Зоны TP/SL и линия фактического выхода на графике</small></label>
+          <label><span>Maker fee</span><InputNumber value={simulationSettings.makerFeePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value) => updateSimulationSetting("makerFeePct", value)} /><small>Limit-вход и Take Profit</small></label>
+          <label><span>Taker fee</span><InputNumber value={simulationSettings.takerFeePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value) => updateSimulationSetting("takerFeePct", value)} /><small>Market, Stop Loss и ручное закрытие</small></label>
+          <label><span>Market slippage</span><InputNumber value={simulationSettings.slippagePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value) => updateSimulationSetting("slippagePct", value)} /><small>Вход и ручное закрытие по рынку</small></label>
+          <label><span>Stop slippage</span><InputNumber value={simulationSettings.stopSlippagePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value) => updateSimulationSetting("stopSlippagePct", value)} /><small>Ухудшение цены исполнения Stop Loss</small></label>
+          <label className="settingsToggle"><span>Разметка закрытых сделок</span><Switch checked={simulationSettings.showClosedTradeOverlays} onChange={(checked) => setState((current) => ({ ...current, settings: { ...DEFAULT_SIMULATION_SETTINGS, ...current.settings, showClosedTradeOverlays: checked } }))} /><small>Зоны TP/SL и линия фактического выхода на графике</small></label>
         </div>
       </Modal>
       <Modal title="Выберите дату начала replay" open={datePickerOpen} footer={null} onCancel={() => setDatePickerOpen(false)} width={360}>

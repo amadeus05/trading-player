@@ -75,7 +75,7 @@ function pxToTime(chart: any, x: number, candles: { time: number }[]): number | 
   const logical = chart.timeScale().coordinateToLogical(x);
   if (logical == null) return null;
   if (!candles.length) return null;
-  
+
   if (logical < 0) {
     const tf = candles.length > 1 ? candles[1].time - candles[0].time : 60;
     return candles[0].time + logical * tf;
@@ -84,7 +84,7 @@ function pxToTime(chart: any, x: number, candles: { time: number }[]): number | 
     const tf = candles.length > 1 ? candles[candles.length - 1].time - candles[candles.length - 2].time : 60;
     return candles[candles.length - 1].time + (logical - (candles.length - 1)) * tf;
   }
-  
+
   const idx = Math.floor(logical as number);
   const frac = (logical as number) - idx;
   const tf = candles[idx + 1].time - candles[idx].time;
@@ -227,12 +227,12 @@ export function attachTrendLineTool(opts: {
       const bounds = div.getBoundingClientRect(), host = container.getBoundingClientRect();
       textEditor.style.left = `${bounds.left - host.left}px`;
       textEditor.style.top = `${bounds.bottom - host.top + 6}px`;
-      const preview = () => { const line=trendLines.find((item)=>item.id===tl.id);if(!line)return;line.label=input.value;line.showLabel=Boolean(input.value.trim());syncOne(line); };
-      const commit = () => { const line=trendLines.find((item)=>item.id===tl.id);if(line)callbacks.onUpdate(line); };
+      const preview = () => { const line = trendLines.find((item) => item.id === tl.id); if (!line) return; line.label = input.value; line.showLabel = Boolean(input.value.trim()); syncOne(line); };
+      const commit = () => { const line = trendLines.find((item) => item.id === tl.id); if (line) callbacks.onUpdate(line); };
       input.addEventListener("input", preview);
       input.addEventListener("change", commit);
-      input.addEventListener("keydown", (key) => { if(key.key==="Enter"){commit();textEditor?.remove();textEditor=null} if(key.key==="Escape"){textEditor?.remove();textEditor=null} });
-      textEditor.querySelector("button")!.addEventListener("click",()=>{input.value="";preview();commit();textEditor?.remove();textEditor=null});
+      input.addEventListener("keydown", (key) => { if (key.key === "Enter") { commit(); textEditor?.remove(); textEditor = null } if (key.key === "Escape") { textEditor?.remove(); textEditor = null } });
+      textEditor.querySelector("button")!.addEventListener("click", () => { input.value = ""; preview(); commit(); textEditor?.remove(); textEditor = null });
       textEditor.addEventListener("pointerdown", (pointer) => pointer.stopPropagation());
       input.focus(); input.select();
     });
@@ -536,12 +536,12 @@ export function attachTrendLineTool(opts: {
       els.extLine.setAttribute("x2", String(ep2.x)); els.extLine.setAttribute("y2", String(ep2.y));
     }
     if (tl.showLabel && tl.label) {
-      const mx=(p1.x+p2.x)/2,my=(p1.y+p2.y)/2;
-      let angle=Math.atan2(p2.y-p1.y,p2.x-p1.x)*180/Math.PI;
-      if(angle>90||angle< -90)angle+=180;
+      const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+      let angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180 / Math.PI;
+      if (angle > 90 || angle < -90) angle += 180;
       els.labelText.setAttribute("x", String(mx));
-      els.labelText.setAttribute("y", String(my-8));
-      els.labelText.setAttribute("transform",`rotate(${angle} ${mx} ${my})`);
+      els.labelText.setAttribute("y", String(my - 8));
+      els.labelText.setAttribute("transform", `rotate(${angle} ${mx} ${my})`);
     }
   }
 
@@ -556,7 +556,7 @@ export function attachTrendLineTool(opts: {
     const originalP2 = toPixel(tl.point2);
     if (!originalP1 || !originalP2) return;
     let moved = false;
-    
+
     // Attempt pointer capture
     const target = startEvent.target as Element;
     if (target.setPointerCapture) target.setPointerCapture(startEvent.pointerId);
@@ -613,7 +613,7 @@ export function attachTrendLineTool(opts: {
     if (!p1Px || !p2Px) return;
 
     let moved = false;
-    
+
     // Attempt pointer capture
     const target = startEvent.target as Element;
     if (target.setPointerCapture) target.setPointerCapture(startEvent.pointerId);
@@ -779,7 +779,7 @@ export function attachTrendLineTool(opts: {
   return () => {
     cancelAnimationFrame(rafId);
     cancelAnimationFrame(dragRaf);
-    try { chart.unsubscribeClick(handleDrawClick); } catch {}
+    try { chart.unsubscribeClick(handleDrawClick); } catch { }
     container.removeEventListener("mousemove", handleMouseMove);
     container.removeEventListener("pointerdown", handleBackgroundClick);
     document.removeEventListener("keydown", handleKeyDown);
