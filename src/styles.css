@@ -161,6 +161,35 @@ main {
   position: absolute;
   inset: 0;
 }
+.closed-trades-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+.closed-trades-overlay .trade-zone.target {
+  fill: #20b996;
+  fill-opacity: .22;
+  stroke: #2bd9a8;
+  stroke-opacity: .3;
+  stroke-width: 1;
+}
+.closed-trades-overlay .trade-zone.risk {
+  fill: #d94b61;
+  fill-opacity: .2;
+  stroke: #ff5c73;
+  stroke-opacity: .3;
+  stroke-width: 1;
+}
+.closed-trades-overlay .trade-exit-path {
+  stroke: #b2b8c5;
+  stroke-width: 1;
+  stroke-dasharray: 5 5;
+  stroke-opacity: .65;
+}
 .barrier-handle {
   position: absolute;
   right: 0;
@@ -291,6 +320,8 @@ main {
 .settingsGrid label > span { color: #d8dbe5; font-size: 12px; font-weight: 600; }
 .settingsGrid .ant-input-number { width: 100%; }
 .settingsGrid small { color: #687083; font-size: 10px; line-height: 1.35; }
+.settingsGrid .settingsToggle { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr auto; align-items: center; padding-top: 4px; }
+.settingsGrid .settingsToggle small { grid-column: 1 / -1; }
 .symbol {
   position: absolute;
   top: 20px;

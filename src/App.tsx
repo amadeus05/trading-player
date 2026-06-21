@@ -16,6 +16,7 @@ import {
   Slider,
   Space,
   Statistic,
+  Switch,
   Table,
   Tag,
   Tooltip,
@@ -90,6 +91,7 @@ const DEFAULT_SIMULATION_SETTINGS: SimulationSettings = {
   takerFeePct: 0.055,
   slippagePct: 0.02,
   stopSlippagePct: 0.05,
+  showClosedTradeOverlays: true,
 };
 const initial: Persisted = {
   datasets: [],
@@ -127,6 +129,7 @@ function Chart({
   pricePrecision,
   entryMarker,
   onEntryMarkerChange,
+  showClosedTradeOverlays,
 }: {
   candles: Candle[];
   index: number;
@@ -140,6 +143,7 @@ function Chart({
   pricePrecision: number;
   entryMarker?: { id: string; price: number };
   onEntryMarkerChange: (id: string, price: number) => void;
+  showClosedTradeOverlays: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const savedLogicalRange = useRef<any>(null);
@@ -192,6 +196,66 @@ function Chart({
         color: c.close >= c.open ? "#2bd9a855" : "#ff5c7355",
       })),
     );
+    const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    overlay.classList.add("closed-trades-overlay");
+    ref.current.appendChild(overlay);
+    const closedTradeShapes = (showClosedTradeOverlays ? trades : [])
+      .filter((trade) => trade.status === "CLOSED" && trade.exitTime != null && trade.exit != null)
+      .map((trade) => {
+        const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        const target = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        const risk = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        const exitPath = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        target.setAttribute("class", "trade-zone target");
+        risk.setAttribute("class", "trade-zone risk");
+        exitPath.setAttribute("class", "trade-exit-path");
+        group.append(target, risk, exitPath);
+        overlay.appendChild(group);
+        return { trade, group, target, risk, exitPath };
+      });
+    const candleIndexAt = (time: number) => {
+      let low = 0, high = visible.length - 1, found = -1;
+      while (low <= high) {
+        const middle = (low + high) >> 1;
+        if (visible[middle].time <= time) { found = middle; low = middle + 1; }
+        else high = middle - 1;
+      }
+      return found;
+    };
+    const setRect = (rect: SVGRectElement, x1: number, x2: number, y1: number, y2: number) => {
+      rect.setAttribute("x", String(Math.min(x1, x2)));
+      rect.setAttribute("y", String(Math.min(y1, y2)));
+      rect.setAttribute("width", String(Math.max(6, Math.abs(x2 - x1))));
+      rect.setAttribute("height", String(Math.max(1, Math.abs(y2 - y1))));
+    };
+    const syncClosedTradeOverlays = () => {
+      closedTradeShapes.forEach(({ trade, group, target, risk, exitPath }) => {
+        if (trade.entryTime < visible[0].time || trade.exitTime! > visible.at(-1)!.time) {
+          group.setAttribute("visibility", "hidden");
+          return;
+        }
+        const entryIndex = candleIndexAt(trade.entryTime);
+        const exitIndex = candleIndexAt(trade.exitTime!);
+        const x1 = entryIndex >= 0 ? chart.timeScale().logicalToCoordinate(entryIndex as any) : null;
+        const x2raw = exitIndex >= 0 ? chart.timeScale().logicalToCoordinate(exitIndex as any) : null;
+        const entryY = cs.priceToCoordinate(trade.entry);
+        const tpY = cs.priceToCoordinate(trade.tp);
+        const slY = cs.priceToCoordinate(trade.sl);
+        const exitY = cs.priceToCoordinate(trade.exit!);
+        if ([x1, x2raw, entryY, tpY, slY, exitY].some((value) => value == null)) {
+          group.setAttribute("visibility", "hidden");
+          return;
+        }
+        group.setAttribute("visibility", "visible");
+        const x2 = Math.max(x1! + 6, x2raw!);
+        setRect(target, x1!, x2, entryY!, tpY!);
+        setRect(risk, x1!, x2, entryY!, slY!);
+        exitPath.setAttribute("x1", String(x1));
+        exitPath.setAttribute("y1", String(entryY));
+        exitPath.setAttribute("x2", String(x2raw));
+        exitPath.setAttribute("y2", String(exitY));
+      });
+    };
     const handles: HTMLButtonElement[] = [];
     const removablePriceLines: any[] = [];
     const handlePositions: Array<{ handle: HTMLButtonElement; price: () => number }> = [];
@@ -297,6 +361,7 @@ function Chart({
     }
     let handleAnimationFrame = 0;
     const syncHandlePositions = () => {
+      syncClosedTradeOverlays();
       handlePositions.forEach(({ handle, price }) => {
         const y = cs.priceToCoordinate(price());
         if (y !== null) handle.style.top = `${y}px`;
@@ -365,12 +430,13 @@ function Chart({
       ref.current?.removeEventListener("dblclick",resetManualScale);
       ref.current?.removeEventListener("wheel",zoomPriceScale,{capture:true});
       handles.forEach((handle) => handle.remove());
+      overlay.remove();
       removablePriceLines.forEach((line) => { try { cs.removePriceLine(line); } catch {} });
       cancelAnimationFrame(handleAnimationFrame);
       if (selectingStart) chart.unsubscribeClick(selectStart);
       chart.remove();
     };
-  }, [candles, index, barriers, trades, onBarrierChange, selectingStart, onStartSelected, focusRevision, pricePrecision, entryMarker, onEntryMarkerChange]);
+  }, [candles, index, barriers, trades, onBarrierChange, selectingStart, onStartSelected, focusRevision, pricePrecision, entryMarker, onEntryMarkerChange, showClosedTradeOverlays]);
   return <div
     className={`chart ${selectingStart ? "selecting-replay-start" : ""}`}
     ref={ref}
@@ -421,10 +487,10 @@ export default function App() {
       .then((s: Persisted) => {
         const datasets=(s.datasets??[]).filter((item)=>item.id!=="demo");
         if (datasets.length) {
-          setState({...s,datasets,settings:s.settings??DEFAULT_SIMULATION_SETTINGS});
+          setState({...s,datasets,settings:{...DEFAULT_SIMULATION_SETTINGS,...s.settings}});
           setDataset(datasets[0].id);
         } else {
-          setState({...s,datasets:[],settings:s.settings??DEFAULT_SIMULATION_SETTINGS});
+          setState({...s,datasets:[],settings:{...DEFAULT_SIMULATION_SETTINGS,...s.settings}});
         }
       })
       .catch(() => {})
@@ -446,7 +512,7 @@ export default function App() {
     return () => clearTimeout(h);
   }, [state]);
   const availableDatasets=loadedMarket?[loadedMarket,...state.datasets.filter(d=>d.id!==loadedMarket.id)]:state.datasets;
-  const simulationSettings=state.settings??DEFAULT_SIMULATION_SETTINGS;
+  const simulationSettings={...DEFAULT_SIMULATION_SETTINGS,...state.settings};
   const activeDataset=availableDatasets.find((d)=>d.id===dataset);
   const marketSymbol=(activeDataset?.name.split(/[·\s]/)[0]??"").toUpperCase();
   const quoteAsset=["USDT","USDC","BUSD","USD","BTC","ETH"].find((value)=>marketSymbol.endsWith(value)&&marketSymbol.length>value.length)??"USDT";
@@ -802,6 +868,9 @@ export default function App() {
     size: 0, sl: limitStopLoss, tp: limitTakeProfit, status: "OPEN", comment: "",
   } : undefined;
   const displayedChartTrade = chartTrade ?? draftProtectionTrade;
+  const chartTrades = displayedChartTrade?.id === "__draft_protection__"
+    ? [...state.trades, displayedChartTrade]
+    : state.trades;
   const displayedBarriers: Barrier[] = chartTrade ? activeBarriers : draftProtectionTrade ? [{
     id: draftProtectionTrade.id, entryTime: cur?.time ?? 0,
     upper: draftProtectionTrade.tp, lower: draftProtectionTrade.sl,
@@ -812,7 +881,7 @@ export default function App() {
     : !chartTrade && protectionEnabled && orderType === "LIMIT" && ticketPrice > 0
       ? { id: "__draft_limit_entry__", price: ticketPrice }
       : undefined;
-  function updateSimulationSetting(key: keyof SimulationSettings, value: number | null) {
+  function updateSimulationSetting(key: Exclude<keyof SimulationSettings, "showClosedTradeOverlays">, value: number | null) {
     setState((current) => ({
       ...current,
       settings: { ...(current.settings ?? DEFAULT_SIMULATION_SETTINGS), [key]: Math.max(0, value ?? 0) },
@@ -933,7 +1002,7 @@ export default function App() {
                 candles={candles}
                 index={selectingStart ? lastIndex : replayIndex}
                 barriers={displayedBarriers}
-                trades={displayedChartTrade ? [displayedChartTrade] : []}
+                trades={chartTrades}
                 onBarrierChange={moveBarrier}
                 selectingStart={selectingStart}
                 onStartSelected={selectReplayTime}
@@ -941,6 +1010,7 @@ export default function App() {
                 pricePrecision={pricePrecision}
                 entryMarker={displayedEntryMarker}
                 onEntryMarkerChange={moveEntryMarker}
+                showClosedTradeOverlays={simulationSettings.showClosedTradeOverlays}
                 onInteractionChange={(active) => { chartInteractionActive.current = active; }}
               />
             ) : (
@@ -1092,6 +1162,7 @@ export default function App() {
           <label><span>Taker fee</span><InputNumber value={simulationSettings.takerFeePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value)=>updateSimulationSetting("takerFeePct",value)}/><small>Market, Stop Loss и ручное закрытие</small></label>
           <label><span>Market slippage</span><InputNumber value={simulationSettings.slippagePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value)=>updateSimulationSetting("slippagePct",value)}/><small>Вход и ручное закрытие по рынку</small></label>
           <label><span>Stop slippage</span><InputNumber value={simulationSettings.stopSlippagePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value)=>updateSimulationSetting("stopSlippagePct",value)}/><small>Ухудшение цены исполнения Stop Loss</small></label>
+          <label className="settingsToggle"><span>Разметка закрытых сделок</span><Switch checked={simulationSettings.showClosedTradeOverlays} onChange={(checked)=>setState((current)=>({...current,settings:{...DEFAULT_SIMULATION_SETTINGS,...current.settings,showClosedTradeOverlays:checked}}))}/><small>Зоны TP/SL и линия фактического выхода на графике</small></label>
         </div>
       </Modal>
       <Modal title="Выберите дату начала replay" open={datePickerOpen} footer={null} onCancel={() => setDatePickerOpen(false)} width={360}>
