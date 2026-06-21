@@ -895,7 +895,8 @@ export default function App() {
               {[5, 15, 30, 60, 180, 240, 1440].map((v) => (
                 <Button
                   key={v}
-                  type={tf === v ? "primary" : "text"}
+                  type="text"
+                  className={tf === v ? "is-active" : undefined}
                   onClick={() => changeTimeframe(v)}
                 >
                   {formatTimeframe(v)}
