@@ -20,6 +20,22 @@ export type IntrabarResolution =
  * Candle times and timeframe values are expressed in seconds.
  */
 export class IntrabarExitResolver {
+  private readonly normalizedSources = new WeakMap<readonly Candle[], { ordered: Candle[]; interval: number | null }>();
+
+  private normalize(source: readonly Candle[]) {
+    const cached = this.normalizedSources.get(source);
+    if (cached) return cached;
+    const ordered = [...source].sort((a, b) => a.time - b.time);
+    let interval: number | null = null;
+    for (let i = 1; i < ordered.length; i += 1) {
+      const delta = ordered[i].time - ordered[i - 1].time;
+      if (delta > 0 && (interval == null || delta < interval)) interval = delta;
+    }
+    const normalized = { ordered, interval };
+    this.normalizedSources.set(source, normalized);
+    return normalized;
+  }
+
   resolve(
     source: readonly Candle[],
     parentOpenTime: number,
@@ -27,15 +43,8 @@ export class IntrabarExitResolver {
     barrier: ExitBarrier,
   ): IntrabarResolution {
     if (source.length < 2) return { kind: "fallback", reason: "insufficient-data" };
-
-    const ordered = [...source].sort((a, b) => a.time - b.time);
-    const lowerTimeframe = ordered[1].time - ordered[0].time;
-    if (lowerTimeframe <= 0) return { kind: "fallback", reason: "irregular-data" };
-    for (let i = 2; i < ordered.length; i += 1) {
-      if (ordered[i].time - ordered[i - 1].time !== lowerTimeframe) {
-        return { kind: "fallback", reason: "irregular-data" };
-      }
-    }
+    const { ordered, interval: lowerTimeframe } = this.normalize(source);
+    if (lowerTimeframe == null) return { kind: "fallback", reason: "irregular-data" };
     if (lowerTimeframe >= parentTimeframeSeconds || parentTimeframeSeconds % lowerTimeframe !== 0) {
       return { kind: "fallback", reason: "incompatible-timeframe" };
     }

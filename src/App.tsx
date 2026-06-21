@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import type { Barrier, Candle, Persisted, SimulationSettings, Trade } from "./types";
 import { HistoryManager } from "./HistoryManager";
+import { IntrabarExitResolver } from "./simulation/IntrabarExitResolver";
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 const dt = (t: number) =>
@@ -95,6 +96,7 @@ const initial: Persisted = {
   annotations: [],
   settings: DEFAULT_SIMULATION_SETTINGS,
 };
+const intrabarExitResolver = new IntrabarExitResolver();
 function aggregate(xs: Candle[], min: number) {
   const s = min * 60,
     m = new Map<number, Candle>();
@@ -528,10 +530,22 @@ export default function App() {
     if (!cur) return;
     const closures = state.trades.flatMap((trade) => {
       if (trade.status !== "OPEN" || trade.entryTime >= cur.time) return [];
-      const slHit = trade.side === "LONG" ? cur.low <= trade.sl : cur.high >= trade.sl;
-      const tpHit = trade.side === "LONG" ? cur.high >= trade.tp : cur.low <= trade.tp;
-      if (!slHit && !tpHit) return [];
-      const outcome: NonNullable<Trade["outcome"]> = slHit ? "SL" : "TP";
+      const intrabar = intrabarExitResolver.resolve(raw, cur.time, tf * 60, trade);
+      let outcome: "TP" | "SL";
+      let exitTime: number;
+      if (intrabar.kind === "resolved") {
+        outcome = intrabar.outcome;
+        exitTime = intrabar.candleTime;
+      } else if (intrabar.kind === "not-hit") {
+        return [];
+      } else {
+        const slHit = trade.side === "LONG" ? cur.low <= trade.sl : cur.high >= trade.sl;
+        const tpHit = trade.side === "LONG" ? cur.high >= trade.tp : cur.low <= trade.tp;
+        if (!slHit && !tpHit) return [];
+        outcome = slHit ? "SL" : "TP";
+        exitTime = cur.time;
+      }
+      const slHit = outcome === "SL";
       const rawExit = slHit ? trade.sl : trade.tp;
       const stopSlip = (trade.stopSlippagePct ?? simulationSettings.stopSlippagePct) / 100;
       const exit = slHit ? rawExit * (trade.side === "LONG" ? 1 - stopSlip : 1 + stopSlip) : rawExit;
@@ -540,7 +554,7 @@ export default function App() {
       const exitFee = exit * trade.size * exitFeePct / 100;
       const fees = (trade.entryFee ?? 0) + exitFee;
       const result = grossResult - fees;
-      return [{ trade, outcome, exit, grossResult, fees, result }];
+      return [{ trade, outcome, exitTime, exit, grossResult, fees, result }];
     });
     if (!closures.length) return;
     const byId = new Map(closures.map((item) => [item.trade.id, item]));
@@ -548,7 +562,7 @@ export default function App() {
       ...current,
       trades: current.trades.map((trade) => {
         const closed = byId.get(trade.id);
-        return closed ? { ...trade, status: "CLOSED", exitTime: cur.time, exit: closed.exit, grossResult: closed.grossResult, fees: closed.fees, result: closed.result, outcome: closed.outcome } : trade;
+        return closed ? { ...trade, status: "CLOSED", exitTime: closed.exitTime, exit: closed.exit, grossResult: closed.grossResult, fees: closed.fees, result: closed.result, outcome: closed.outcome } : trade;
       }),
     }));
     closures.forEach(({ trade, outcome, exit, result }) =>

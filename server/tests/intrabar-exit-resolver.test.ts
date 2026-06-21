@@ -39,8 +39,18 @@ test("falls back when the selected timeframe cannot be divided by the lower time
 
 test("falls back when a lower candle is missing", () => {
   assert.deepEqual(resolver.resolve([candle(0), candle(10), candle(15)], START, 15 * M, long), {
-    kind: "fallback", reason: "irregular-data",
+    kind: "fallback", reason: "incomplete-window",
   });
+});
+
+test("a gap elsewhere does not disable a complete parent window", () => {
+  const result = resolver.resolve(
+    [candle(-15), candle(0), candle(5, 106), candle(10, 101, 94)],
+    START,
+    15 * M,
+    long,
+  );
+  assert.deepEqual(result, { kind: "resolved", outcome: "TP", candleTime: START + 5 * M });
 });
 
 test("falls back when the requested parent window is incomplete", () => {
