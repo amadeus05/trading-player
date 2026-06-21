@@ -795,8 +795,8 @@ export default function App() {
   const ticketQuantity = ticketPrice > 0 ? (amountUnit === "USDT" ? orderValue / ticketPrice : orderValue) : 0;
   const ticketNotional = ticketQuantity * ticketPrice;
   const ticketMargin = ticketNotional / leverage;
-  const longLiquidation = ticketPrice * Math.max(0, 1 - 1 / leverage);
-  const shortLiquidation = ticketPrice * (1 + 1 / leverage);
+  const longLiquidation = ticketPrice > 0 && leverage > 1 ? ticketPrice * (1 - 1 / leverage) : null;
+  const shortLiquidation = ticketPrice > 0 && leverage > 1 ? ticketPrice * (1 + 1 / leverage) : null;
   const draftProtectionTrade: Trade | undefined = protectionEnabled && ticketPrice > 0 && limitTakeProfit > 0 && limitStopLoss > 0 ? {
     id: "__draft_protection__", side: "LONG", entryTime: cur?.time ?? 0, entry: ticketPrice,
     size: 0, sl: limitStopLoss, tp: limitTakeProfit, status: "OPEN", comment: "",
@@ -1045,7 +1045,7 @@ export default function App() {
           <div className="orderSummary">
             <div><span>Quantity</span><b>{ticketQuantity ? formatPrice(ticketQuantity, Math.min(8,pricePrecision+2)) : "—"} {baseAsset}</b></div>
             <div><span>Cost</span><b>{ticketMargin ? `${fmt(ticketMargin)} ${quoteAsset}` : "—"}</b></div>
-            <div><span>Liq. Price</span><b><em>{ticketPrice?formatPrice(longLiquidation,pricePrecision):"—"}</em> / <strong>{ticketPrice?formatPrice(shortLiquidation,pricePrecision):"—"}</strong></b></div>
+            <div><span>Liq. Price</span><b><em>{longLiquidation != null ? formatPrice(longLiquidation,pricePrecision) : "—"}</em> / <strong>{shortLiquidation != null ? formatPrice(shortLiquidation,pricePrecision) : "—"}</strong></b></div>
           </div>
           <div className="tradeBtns">
             <Button className="long" disabled={Boolean(blockingTrade)||!cur||!protectionEnabled||limitTakeProfit<=0||limitStopLoss<=0} onClick={() => placeOrder("LONG")}>Long</Button>
