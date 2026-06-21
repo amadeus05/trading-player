@@ -213,15 +213,58 @@ main {
 .history-form {
   display: flex;
   flex-wrap: nowrap;
+  align-items: center;
   gap: 8px;
+  width: 100%;
   margin-bottom: 18px;
-  padding: 14px;
-  border: 1px solid #282d38;
-  border-radius: 8px;
-  background: #0d0f15;
 }
-.history-form .ant-form-item {
-  margin: 0;
+.history-form-download {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.history-form .ant-select,
+.history-form .ant-input,
+.history-form .ant-picker,
+.history-form .ant-btn {
+  height: 32px;
+}
+.history-form .ant-picker-range {
+  padding-block: 4px;
+}
+.history-form .ant-select-selector {
+  height: 32px !important;
+  align-items: center;
+}
+.history-form .ant-input,
+.history-form .ant-input:hover,
+.history-form .ant-input:focus,
+.history-form .ant-input-affix-wrapper-focused {
+  background: #11131a;
+}
+.history-form .ant-btn {
+  display: inline-flex;
+  align-items: center;
+  padding-inline: 15px;
+}
+.history-catalog-table .history-open-btn {
+  height: 32px;
+  padding-inline: 14px;
+  border: 1px solid #48415f;
+  border-radius: 8px;
+  background: #17152a;
+  color: #c4bcff;
+  font-weight: 600;
+  font-size: 13px;
+  box-shadow: none;
+}
+.history-catalog-table .history-open-btn:hover,
+.history-catalog-table .history-open-btn:focus {
+  border-color: #7c6cf2 !important;
+  background: #25213f !important;
+  color: #ece8ff !important;
+}
+.history-catalog-table .history-open-btn .ant-btn-icon {
+  display: inline-flex;
 }
 .download-progress {
   margin-bottom: 18px;
