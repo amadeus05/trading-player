@@ -45,6 +45,7 @@ import {
   Settings,
   Trash2,
   Upload as UploadIcon,
+  X,
 } from "lucide-react";
 import type { Barrier, Candle, Persisted, SimulationSettings, Trade } from "./types";
 import { HistoryManager } from "./HistoryManager";
@@ -1051,13 +1052,33 @@ export default function App() {
             <Button className="short" disabled={Boolean(blockingTrade)||!cur||!protectionEnabled||limitTakeProfit<=0||limitStopLoss<=0} onClick={() => placeOrder("SHORT")}>Short</Button>
           </div>
           <div className="sideTitle">ПОЗИЦИИ И ЗАЯВКИ</div>
-          {workingTrades.length ? workingTrades.map((t) => (
-            <Card size="small" key={t.id} className="position">
-              <Tag color={t.status === "PENDING" ? "orange" : t.side === "LONG" ? "green" : "red"}>{t.status === "PENDING" ? "LIMIT" : t.side}</Tag>
-              <div className="positionPrice"><b>{formatPrice(t.entry,pricePrecision)}</b><small>{t.leverage??1}x · {formatPrice(t.size,Math.min(8,pricePrecision+2))} {baseAsset}</small></div>
-              <Button size="small" onClick={() => t.status === "PENDING" ? cancelOrder(t.id) : closeTrade(t)}>{t.status === "PENDING" ? "Отменить" : "Закрыть"}</Button>
-            </Card>
-          )) : <div className="muted">Нет активных позиций и заявок</div>}
+          {workingTrades.length ? workingTrades.map((t) => {
+            const unrealizedPnl = cur && t.status === "OPEN"
+              ? (t.side === "LONG" ? cur.close - t.entry : t.entry - cur.close) * t.size
+              : null;
+            const margin = t.entry * t.size / (t.leverage ?? 1);
+            const unrealizedRoi = unrealizedPnl != null && margin > 0 ? unrealizedPnl / margin * 100 : null;
+            return (
+              <Card size="small" key={t.id} className="position">
+                <div className="positionMain">
+                  <Tag color={t.status === "PENDING" ? "orange" : t.side === "LONG" ? "green" : "red"}>{t.status === "PENDING" ? "LIMIT" : t.side}</Tag>
+                  <div className="positionPrice"><b>{formatPrice(t.entry,pricePrecision)}</b><small>{t.leverage??1}x · {formatPrice(t.size,Math.min(8,pricePrecision+2))} {baseAsset}</small></div>
+                  {unrealizedPnl != null && <div className={`positionPnl ${unrealizedPnl >= 0 ? "positive" : "negative"}`}>
+                    <b>{unrealizedPnl >= 0 ? "+" : ""}{fmt(unrealizedPnl)} {quoteAsset}</b>
+                    <em>{unrealizedRoi != null && unrealizedRoi >= 0 ? "+" : ""}{unrealizedRoi?.toFixed(2)}%</em>
+                  </div>}
+                  <Tooltip title={t.status === "PENDING" ? "Отменить заявку" : "Закрыть позицию"}>
+                  <Button
+                    className={`positionAction ${t.status === "PENDING" ? "cancel" : "close"}`}
+                    aria-label={t.status === "PENDING" ? "Отменить заявку" : "Закрыть позицию"}
+                    icon={<X size={14} />}
+                    onClick={() => t.status === "PENDING" ? cancelOrder(t.id) : closeTrade(t)}
+                  />
+                  </Tooltip>
+                </div>
+              </Card>
+            );
+          }) : <div className="muted">Нет активных позиций и заявок</div>}
           <div className="tip">
             Будущие свечи скрыты
             <br />

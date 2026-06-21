@@ -511,9 +511,25 @@ aside {
 .allocationSlider .ant-slider-track { background: #7c6cf2; }
 .allocationSlider .ant-slider-dot { border-color: #555c6b; background: #151820; }
 .allocationSlider > div { display: flex; justify-content: space-between; color: #a8afbf; font-size: 11px; }
+.positionMain { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 9px; align-items: center; }
+.positionMain .ant-tag { margin: 0; }
 .positionPrice { display: flex; min-width: 0; flex-direction: column; }
-.positionPrice b { color: #e8eaf0; font-size: 12px; }
-.positionPrice small { color: #687083; font-size: 9px; }
+.positionPrice b { color: #e8eaf0; font-size: 12px; font-variant-numeric: tabular-nums; }
+.positionPrice small,
+.positionPnl small { color: #687083; font-size: 9px; }
+.positionPnl {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.positionPnl b { font-size: 10px; font-weight: 650; }
+.positionPnl em { margin-top: 1px; font-size: 9px; font-style: normal; }
+.positionPnl.positive b,
+.positionPnl.positive em { color: #2bd9a8; }
+.positionPnl.negative b,
+.positionPnl.negative em { color: #ff687d; }
 .sideTitle {
   font-size: 10px;
   color: #5e6472;
@@ -593,9 +609,34 @@ aside {
   margin-bottom: 8px;
 }
 .position .ant-card-body {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: block;
+  padding: 10px 11px;
+}
+.positionAction.ant-btn {
+  flex: 0 0 auto;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #666d7c;
+  box-shadow: none;
+}
+.positionAction.close.ant-btn {
+  background: transparent;
+  color: #78646a;
+}
+.positionAction.cancel.ant-btn {
+  background: transparent;
+  color: #a69d89;
+}
+.positionAction.ant-btn:hover,
+.positionAction.ant-btn:focus-visible {
+  border-color: #74404b !important;
+  background: #21151a !important;
+  color: #e87889 !important;
 }
 .tip {
   margin-top: 28px;
