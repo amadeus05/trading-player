@@ -54,10 +54,10 @@ import {
   Upload as UploadIcon,
   X,
 } from "lucide-react";
-import type { Barrier, Candle, FibonacciRetracement, Persisted, Rectangle, SimulationSettings, Trade, TrendLine } from "./types";
+import type { Barrier, Candle, FibonacciRetracement, ParallelChannel, Persisted, Rectangle, SimulationSettings, Trade, TrendLine } from "./types";
 import { HistoryManager } from "./HistoryManager";
 import { IntrabarExitResolver } from "./simulation/IntrabarExitResolver";
-import { attachFibonacciTool, attachMeasureTool, attachRectangleTool, attachTrendLineTool, DrawingManager, type DrawingMode, type FibonacciCallbacks, type RectangleCallbacks } from "./drawing";
+import { attachFibonacciTool, attachMeasureTool, attachParallelChannelTool, attachRectangleTool, attachTrendLineTool, DrawingManager, type DrawingMode, type FibonacciCallbacks, type ParallelChannelCallbacks, type RectangleCallbacks } from "./drawing";
 import { logicalToTime } from "./drawing/shared/coordinates";
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -158,6 +158,10 @@ function Chart({
   onFibonacciCreate,
   onFibonacciUpdate,
   onFibonacciDelete,
+  parallelChannels,
+  onParallelChannelCreate,
+  onParallelChannelUpdate,
+  onParallelChannelDelete,
   onDrawingComplete,
 }: {
   candles: Candle[];
@@ -188,6 +192,10 @@ function Chart({
   onFibonacciCreate: FibonacciCallbacks["onCreate"];
   onFibonacciUpdate: FibonacciCallbacks["onUpdate"];
   onFibonacciDelete: FibonacciCallbacks["onDelete"];
+  parallelChannels: ParallelChannel[];
+  onParallelChannelCreate: ParallelChannelCallbacks["onCreate"];
+  onParallelChannelUpdate: ParallelChannelCallbacks["onUpdate"];
+  onParallelChannelDelete: ParallelChannelCallbacks["onDelete"];
   onDrawingComplete: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -200,8 +208,8 @@ function Chart({
   const savedPriceRange = useRef<{ from: number; to: number } | null>(null);
   const manualPriceScale = useRef(false);
   const appliedFocusRevision = useRef(focusRevision);
-  const callbacksRef = useRef({ onBarrierChange, onStartSelected, onEntryMarkerChange, onTrendLineCreate, onTrendLineUpdate, onTrendLineDelete, onRectangleCreate, onRectangleUpdate, onRectangleDelete, onFibonacciCreate, onFibonacciUpdate, onFibonacciDelete, onDrawingComplete });
-  callbacksRef.current = { onBarrierChange, onStartSelected, onEntryMarkerChange, onTrendLineCreate, onTrendLineUpdate, onTrendLineDelete, onRectangleCreate, onRectangleUpdate, onRectangleDelete, onFibonacciCreate, onFibonacciUpdate, onFibonacciDelete, onDrawingComplete };
+  const callbacksRef = useRef({ onBarrierChange, onStartSelected, onEntryMarkerChange, onTrendLineCreate, onTrendLineUpdate, onTrendLineDelete, onRectangleCreate, onRectangleUpdate, onRectangleDelete, onFibonacciCreate, onFibonacciUpdate, onFibonacciDelete, onParallelChannelCreate, onParallelChannelUpdate, onParallelChannelDelete, onDrawingComplete });
+  callbacksRef.current = { onBarrierChange, onStartSelected, onEntryMarkerChange, onTrendLineCreate, onTrendLineUpdate, onTrendLineDelete, onRectangleCreate, onRectangleUpdate, onRectangleDelete, onFibonacciCreate, onFibonacciUpdate, onFibonacciDelete, onParallelChannelCreate, onParallelChannelUpdate, onParallelChannelDelete, onDrawingComplete };
   useEffect(() => {
     if (!ref.current || !candles.length) return;
     const safeIndex = Math.max(0, Math.min(index, candles.length - 1));
@@ -556,6 +564,22 @@ function Chart({
         onDrawingComplete: () => callbacksRef.current.onDrawingComplete(),
       },
     });
+    const cleanupParallelChannels = attachParallelChannelTool({
+      manager: drawingManager,
+      container: ref.current!,
+      chart,
+      series: cs,
+      candles: visible,
+      parallelChannels: parallelChannels.filter((c) => c.datasetId === datasetId),
+      drawingMode,
+      datasetId,
+      callbacks: {
+        onCreate: (channel) => callbacksRef.current.onParallelChannelCreate(channel),
+        onUpdate: (channel) => callbacksRef.current.onParallelChannelUpdate(channel),
+        onDelete: (id) => callbacksRef.current.onParallelChannelDelete(id),
+        onDrawingComplete: () => callbacksRef.current.onDrawingComplete(),
+      },
+    });
     return () => {
       chartAlive = false;
       const range = chart.timeScale().getVisibleLogicalRange();
@@ -581,6 +605,7 @@ function Chart({
       cleanupMeasure();
       cleanupRectangles();
       cleanupFibonacci();
+      cleanupParallelChannels();
       drawingManager.destroy();
       chart.remove();
     };
@@ -996,6 +1021,21 @@ export default function App() {
       fibonacciRetracements: (s.fibonacciRetracements ?? []).filter((f) => f.id !== id),
     }));
   }
+  function handleParallelChannelCreate(channel: ParallelChannel) {
+    setState((s) => ({ ...s, parallelChannels: [...(s.parallelChannels ?? []), channel] }));
+  }
+  function handleParallelChannelUpdate(channel: ParallelChannel) {
+    setState((s) => ({
+      ...s,
+      parallelChannels: (s.parallelChannels ?? []).map((c) => (c.id === channel.id ? channel : c)),
+    }));
+  }
+  function handleParallelChannelDelete(id: string) {
+    setState((s) => ({
+      ...s,
+      parallelChannels: (s.parallelChannels ?? []).filter((c) => c.id !== id),
+    }));
+  }
   function moveBarrier(id: string, kind: "tp" | "sl", price: number) {
     const rounded = Number(price.toFixed(pricePrecision));
     if (id === "__draft_protection__") {
@@ -1286,6 +1326,17 @@ export default function App() {
                   <line x1="1" y1="1" x2="14" y2="14" stroke="currentColor" strokeWidth="1.2" strokeDasharray="2 2"/>
                 </svg>
               </Button>
+              <Button
+                type="text"
+                className={`drawing-tool-btn ${drawingMode === "parallelchannel" ? "is-active" : ""}`}
+                onClick={() => setDrawingMode(m => m === "parallelchannel" ? "none" : "parallelchannel")}
+                title="Параллельный канал"
+              >
+                <svg width="15" height="15" viewBox="0 0 28 28" fill="currentColor" aria-hidden="true">
+                  <path d="M8.354 18.354l10-10-.707-.707-10 10zM12.354 25.354l5-5-.707-.707-5 5z"/>
+                  <path d="M20.354 17.354l5-5-.707-.707-5 5z"/>
+                </svg>
+              </Button>
             </div>
             <div className="spacer" />
             <Upload
@@ -1326,6 +1377,10 @@ export default function App() {
                 onFibonacciCreate={handleFibonacciCreate}
                 onFibonacciUpdate={handleFibonacciUpdate}
                 onFibonacciDelete={handleFibonacciDelete}
+                parallelChannels={state.parallelChannels ?? []}
+                onParallelChannelCreate={handleParallelChannelCreate}
+                onParallelChannelUpdate={handleParallelChannelUpdate}
+                onParallelChannelDelete={handleParallelChannelDelete}
                 onDrawingComplete={() => setDrawingMode("none")}
                 onInteractionChange={(active) => { chartInteractionActive.current = active; }}
               />

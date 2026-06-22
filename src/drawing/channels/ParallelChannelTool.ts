@@ -1,0 +1,1084 @@
+/**
+ * ParallelChannelTool – параллельный канал как в TradingView:
+ * клик 1 → клик 2 (базовая линия) → отвод мыши + клик 3 (ширина).
+ */
+
+import type { ParallelChannel } from "../../types";
+import { pointToPixel, xToTime } from "../shared/coordinates";
+import { mountFloatingPanel } from "../shared/floatingPanel";
+import { openColorPalette } from "../shared/colorPalette";
+import { createDrawingOverlay } from "../shared/overlay";
+import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions } from "../shared/types";
+import { createDrawingToolbar, drawingStyleIcon } from "../shared/DrawingToolbar";
+import { mountAnchoredPopup } from "../shared/popup";
+
+export type ParallelChannelCallbacks = DrawingCrudCallbacks<ParallelChannel>;
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+interface PixelPoint {
+  x: number;
+  y: number;
+}
+
+interface ChannelGeometry {
+  edge1: { p1: PixelPoint; p2: PixelPoint };
+  edge2: { p1: PixelPoint; p2: PixelPoint };
+  mid: { p1: PixelPoint; p2: PixelPoint };
+  offset: number;
+}
+
+function strokeDashForStyle(style: ParallelChannel["lineStyle"]): string {
+  if (style === "dashed") return "8 4";
+  if (style === "dotted") return "2 4";
+  return "";
+}
+
+function pxToPrice(series: any, y: number): number | null {
+  return series.coordinateToPrice(y);
+}
+
+function hexToRgba(hex: string, opacity: number): string {
+  if (opacity === 0) return "transparent";
+  let h = hex.replace("#", "");
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return hex;
+  return `rgba(${r}, ${g}, ${b}, ${opacity / 100})`;
+}
+
+function unitNormal(p1: PixelPoint, p2: PixelPoint): { nx: number; ny: number } | null {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const len = Math.hypot(dx, dy);
+  if (len === 0) return null;
+  return { nx: -dy / len, ny: dx / len };
+}
+
+function signedPerpDistance(p1: PixelPoint, p2: PixelPoint, pt: PixelPoint): number {
+  const n = unitNormal(p1, p2);
+  if (!n) return 0;
+  return (pt.x - p1.x) * n.nx + (pt.y - p1.y) * n.ny;
+}
+
+function offsetPoint(p: PixelPoint, nx: number, ny: number, dist: number): PixelPoint {
+  return { x: p.x + nx * dist, y: p.y + ny * dist };
+}
+
+function channelGeometry(p1: PixelPoint, p2: PixelPoint, widthPt: PixelPoint): ChannelGeometry | null {
+  const offset = signedPerpDistance(p1, p2, widthPt);
+  const n = unitNormal(p1, p2);
+  if (!n) return null;
+  const { nx, ny } = n;
+  return {
+    offset,
+    edge1: { p1, p2 },
+    edge2: {
+      p1: offsetPoint(p1, nx, ny, offset),
+      p2: offsetPoint(p2, nx, ny, offset),
+    },
+    mid: {
+      p1: offsetPoint(p1, nx, ny, offset / 2),
+      p2: offsetPoint(p2, nx, ny, offset / 2),
+    },
+  };
+}
+
+function extendedSegment(
+  p1: PixelPoint,
+  p2: PixelPoint,
+  extendLeft: boolean,
+  extendRight: boolean,
+  plotW: number,
+  plotH: number,
+): { ep1: PixelPoint; ep2: PixelPoint } {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  let ep1 = { ...p1 };
+  let ep2 = { ...p2 };
+
+  if ((extendLeft || extendRight) && (dx !== 0 || dy !== 0)) {
+    const tVals: number[] = [];
+    if (dx !== 0) {
+      tVals.push(-p1.x / dx);
+      tVals.push((plotW - p1.x) / dx);
+    }
+    if (dy !== 0) {
+      tVals.push(-p1.y / dy);
+      tVals.push((plotH - p1.y) / dy);
+    }
+    if (extendLeft) {
+      const negT = tVals.filter((t) => t < 0);
+      if (negT.length) {
+        const t = Math.max(...negT);
+        ep1 = { x: p1.x + t * dx, y: p1.y + t * dy };
+      }
+    }
+    if (extendRight) {
+      const posT = tVals.filter((t) => t > 1);
+      if (posT.length) {
+        const t = Math.min(...posT);
+        ep2 = { x: p1.x + t * dx, y: p1.y + t * dy };
+      }
+    }
+  }
+  return { ep1, ep2 };
+}
+
+function applyLineStroke(
+  line: SVGLineElement,
+  color: string,
+  width: number,
+  style: ParallelChannel["lineStyle"],
+) {
+  line.setAttribute("stroke", color);
+  line.style.stroke = color;
+  line.style.strokeWidth = String(width);
+  line.style.strokeDasharray = strokeDashForStyle(style);
+}
+
+function applyMidLineStroke(line: SVGLineElement, color: string, width: number) {
+  line.setAttribute("stroke", color);
+  line.style.stroke = color;
+  line.style.strokeWidth = String(width);
+  line.style.strokeLinecap = "butt";
+  line.style.strokeDasharray = "6 4";
+}
+
+function setLineEndpoints(line: SVGLineElement, a: PixelPoint, b: PixelPoint) {
+  line.setAttribute("x1", String(a.x));
+  line.setAttribute("y1", String(a.y));
+  line.setAttribute("x2", String(b.x));
+  line.setAttribute("y2", String(b.y));
+}
+
+function polygonPoints(...pts: PixelPoint[]): string {
+  return pts.map((p) => `${p.x},${p.y}`).join(" ");
+}
+
+function pointOnParallel(p1: PixelPoint, p2: PixelPoint, offset: number, t: number): PixelPoint | null {
+  const n = unitNormal(p1, p2);
+  if (!n) return null;
+  const base = {
+    x: p1.x + t * (p2.x - p1.x),
+    y: p1.y + t * (p2.y - p1.y),
+  };
+  return offsetPoint(base, n.nx, n.ny, offset);
+}
+
+function midpoint(a: PixelPoint, b: PixelPoint): PixelPoint {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+type WidthDragRail = "edge1" | "edge2";
+
+function widthDragGeometry(
+  p1: PixelPoint,
+  p2: PixelPoint,
+  startOffset: number,
+  startCursor: PixelPoint,
+  cursor: PixelPoint,
+  rail: WidthDragRail,
+): { p1: PixelPoint; p2: PixelPoint; offset: number } | null {
+  const n = unitNormal(p1, p2);
+  if (!n) return null;
+  const deltaPerp = signedPerpDistance(p1, p2, cursor) - signedPerpDistance(p1, p2, startCursor);
+  if (rail === "edge2") {
+    return { p1, p2, offset: startOffset + deltaPerp };
+  }
+  return {
+    p1: offsetPoint(p1, n.nx, n.ny, deltaPerp),
+    p2: offsetPoint(p2, n.nx, n.ny, deltaPerp),
+    offset: startOffset - deltaPerp,
+  };
+}
+
+export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
+  container: HTMLDivElement;
+  chart: any;
+  series: any;
+  candles: { time: number }[];
+  parallelChannels: ParallelChannel[];
+  drawingMode: DrawingMode;
+  datasetId: string;
+  callbacks: ParallelChannelCallbacks;
+}): () => void {
+  const { container, chart, series, candles, drawingMode, datasetId, callbacks, manager } = opts;
+  let parallelChannels = [...opts.parallelChannels];
+
+  const overlay = createDrawingOverlay(container, chart, "parallel-channel-overlay");
+  const { svg } = overlay;
+
+  let selectedId: string | null = null;
+  let drawPoint1: { time: number; price: number } | null = null;
+  let drawPoint2: { time: number; price: number } | null = null;
+  let dragActive = false;
+  let dragRaf = 0;
+
+  let ghostBaseLine: SVGLineElement | null = null;
+  let ghostFill: SVGPolygonElement | null = null;
+  let ghostEdge2: SVGLineElement | null = null;
+  let ghostMid: SVGLineElement | null = null;
+
+  interface ChannelEls {
+    group: SVGGElement;
+    fill: SVGPolygonElement;
+    edge1: SVGLineElement;
+    edge2: SVGLineElement;
+    midLine: SVGLineElement;
+    hitArea: SVGPolygonElement;
+    handle1: SVGCircleElement;
+    handle2: SVGCircleElement;
+    handleEdge2Start: SVGCircleElement;
+    handleEdge2End: SVGCircleElement;
+    handleMid1: SVGRectElement;
+    handleMid2: SVGRectElement;
+  }
+  const elMap = new Map<string, ChannelEls>();
+
+  let toolbar: HTMLDivElement | null = null;
+  let cleanupToolbarDrag: (() => void) | null = null;
+  let cleanupPalette: (() => void) | null = null;
+
+  function getPlotSize() {
+    const rect = container.getBoundingClientRect();
+    return { w: rect.width, h: rect.height };
+  }
+
+  function toPixel(pt: { time: number; price: number }): PixelPoint | null {
+    return pointToPixel(chart, series, pt, candles);
+  }
+
+  function pixelToDataPoint(px: PixelPoint): { time: number; price: number } | null {
+    const time = xToTime(chart, px.x, candles);
+    const price = pxToPrice(series, px.y);
+    if (time == null || price == null || price <= 0) return null;
+    return { time, price };
+  }
+
+  /** Точка на параллельной границе — только перпендикулярное смещение от базовой линии. */
+  function widthPointFromPixels(p1: PixelPoint, p2: PixelPoint, cursor: PixelPoint): { time: number; price: number } | null {
+    const offset = signedPerpDistance(p1, p2, cursor);
+    const onEdge = pointOnParallel(p1, p2, offset, 1);
+    if (!onEdge) return null;
+    return pixelToDataPoint(onEdge);
+  }
+
+  function removeToolbar() {
+    cleanupPalette?.();
+    cleanupPalette = null;
+    cleanupToolbarDrag?.();
+    cleanupToolbarDrag = null;
+    toolbar?.remove();
+    toolbar = null;
+  }
+
+  function cancelDrawingPreview() {
+    drawPoint1 = null;
+    drawPoint2 = null;
+    removeGhost();
+  }
+
+  function isChannelHandleTarget(target: EventTarget | null): boolean {
+    return target instanceof Element
+      && Boolean(target.closest(".pc-mid-handle, .pc-hit-area, .parallel-channel-overlay .rect-handle-el"));
+  }
+
+  function removeGhost() {
+    ghostBaseLine?.remove();
+    ghostFill?.remove();
+    ghostEdge2?.remove();
+    ghostMid?.remove();
+    ghostBaseLine = null;
+    ghostFill = null;
+    ghostEdge2 = null;
+    ghostMid = null;
+  }
+
+  function ensureWidthGhost() {
+    if (ghostFill) return;
+    ghostFill = document.createElementNS(SVG_NS, "polygon");
+    ghostFill.setAttribute("class", "pc-ghost-fill");
+    ghostEdge2 = document.createElementNS(SVG_NS, "line");
+    ghostEdge2.setAttribute("class", "pc-ghost-line");
+    ghostMid = document.createElementNS(SVG_NS, "line");
+    ghostMid.setAttribute("class", "pc-ghost-mid");
+    svg.append(ghostFill, ghostEdge2, ghostMid);
+  }
+
+  function renderGhostWidth(p1: PixelPoint, p2: PixelPoint, cursor: PixelPoint) {
+    ensureWidthGhost();
+    const geom = channelGeometry(p1, p2, cursor);
+    if (!geom || !ghostFill || !ghostEdge2 || !ghostMid || !ghostBaseLine) return;
+    setLineEndpoints(ghostBaseLine, p1, p2);
+    setLineEndpoints(ghostEdge2, geom.edge2.p1, geom.edge2.p2);
+    setLineEndpoints(ghostMid, geom.mid.p1, geom.mid.p2);
+    ghostFill.setAttribute(
+      "points",
+      polygonPoints(p1, p2, geom.edge2.p2, geom.edge2.p1),
+    );
+  }
+
+  function updateLine(channel: ParallelChannel, patch: Partial<ParallelChannel>) {
+    const idx = parallelChannels.findIndex((item) => item.id === channel.id);
+    if (idx < 0) return;
+    parallelChannels[idx] = { ...parallelChannels[idx], ...patch };
+    callbacks.onUpdate(parallelChannels[idx]);
+    syncAll();
+  }
+
+  function deleteChannel(id: string) {
+    parallelChannels = parallelChannels.filter((item) => item.id !== id);
+    elMap.get(id)?.group.remove();
+    elMap.delete(id);
+    if (selectedId === id) {
+      selectedId = null;
+      removeToolbar();
+      manager.clearSelection("parallelchannel");
+    }
+    callbacks.onDelete(id);
+  }
+
+  function selectChannel(id: string | null) {
+    if (!id) {
+      if (selectedId !== null) {
+        selectedId = null;
+        removeToolbar();
+        syncAll();
+      }
+      manager.clearSelection("parallelchannel");
+      return;
+    }
+    selectedId = id;
+    const channel = parallelChannels.find((item) => item.id === id);
+    if (channel) createToolbar(channel);
+    manager.activateSelection("parallelchannel", elMap.get(id)?.group ?? null);
+    syncAll();
+  }
+
+  function createToolbar(channel: ParallelChannel) {
+    removeToolbar();
+    const div = createDrawingToolbar({
+      className: "trend-toolbar",
+      lineColor: channel.color,
+      fillColor: channel.fillColor,
+      fillOpacity: channel.fillOpacity,
+      width: channel.width,
+      style: channel.lineStyle,
+      locked: Boolean(channel.locked),
+      showFill: true,
+      showText: false,
+      showLock: true,
+    });
+    container.appendChild(div);
+    toolbar = div;
+
+    const grip = div.querySelector<HTMLElement>(".rect-tb-grip");
+    if (grip) {
+      cleanupToolbarDrag = mountFloatingPanel({
+        container,
+        panel: div,
+        grip,
+        persistenceKey: `parallel-channel:${channel.id}`,
+      });
+    }
+
+    const bindColor = (selector: string, target: "color" | "fillColor") => {
+      div.querySelector<HTMLElement>(selector)?.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (cleanupPalette) {
+          cleanupPalette();
+          cleanupPalette = null;
+          return;
+        }
+        const current = parallelChannels.find((item) => item.id === channel.id);
+        if (!current) return;
+        cleanupPalette = openColorPalette({
+          container,
+          anchor: event.currentTarget as HTMLElement,
+          color: target === "color" ? current.color : current.fillColor,
+          onColor: (color) => {
+            updateLine(current, target === "color" ? { color } : { fillColor: color });
+            div.querySelector<HTMLElement>(
+              target === "color" ? ".rect-tb-border-btn .rect-tb-color-bar" : ".rect-tb-fill-btn .rect-tb-color-bar",
+            )!.style.background = color;
+          },
+          onDismiss: () => { cleanupPalette = null; },
+        });
+      });
+    };
+    bindColor(".rect-tb-border-btn", "color");
+    bindColor(".rect-tb-fill-btn", "fillColor");
+
+    const openCompactMenu = (kind: "width" | "style", anchor: Element) => {
+      cleanupPalette?.();
+      const menu = document.createElement("div");
+      menu.className = "rect-line-menu";
+      const entries = kind === "width"
+        ? [1, 2, 3, 4].map((value) => ({ value: String(value), label: `${value}px`, icon: `<span class="rect-line-sample" style="height:${value}px"></span>` }))
+        : (["solid", "dashed", "dotted"] as const).map((value) => ({ value, label: value, icon: drawingStyleIcon(value) }));
+      entries.forEach((entry) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "rect-line-menu-item";
+        button.innerHTML = `<span class="rect-line-menu-icon">${entry.icon}</span><span>${entry.label}</span>`;
+        button.addEventListener("click", () => {
+          const current = parallelChannels.find((item) => item.id === channel.id);
+          if (!current) return;
+          if (kind === "width") updateLine(current, { width: Number(entry.value) });
+          else updateLine(current, { lineStyle: entry.value as ParallelChannel["lineStyle"] });
+          div.querySelector<HTMLElement>(".rect-tb-width-label")!.textContent = `${current.width}px`;
+          div.querySelector<HTMLElement>(".rect-tb-style-btn")!.innerHTML = drawingStyleIcon(current.lineStyle);
+          cleanupPalette?.();
+          cleanupPalette = null;
+        });
+        menu.appendChild(button);
+      });
+      cleanupPalette = mountAnchoredPopup({
+        container,
+        anchor,
+        popup: menu,
+        width: kind === "width" ? 104 : 168,
+        gap: 2,
+        onDismiss: () => { cleanupPalette = null; },
+      });
+    };
+
+    div.querySelector(".rect-tb-width-btn")!.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openCompactMenu("width", event.currentTarget as Element);
+    });
+    div.querySelector(".rect-tb-style-btn")!.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openCompactMenu("style", event.currentTarget as Element);
+    });
+    div.querySelector(".rect-tb-lock")!.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const current = parallelChannels.find((item) => item.id === channel.id);
+      if (!current) return;
+      updateLine(current, { locked: !current.locked });
+      createToolbar({ ...current, locked: !current.locked });
+    });
+    div.querySelector(".trend-toolbar-delete")!.addEventListener("click", (event) => {
+      event.stopPropagation();
+      deleteChannel(channel.id);
+    });
+    div.addEventListener("pointerdown", (event) => event.stopPropagation());
+  }
+
+  function buildEls(channel: ParallelChannel): ChannelEls {
+    const group = overlay.createClippedGroup();
+    group.dataset.channelId = channel.id;
+
+    const fill = document.createElementNS(SVG_NS, "polygon");
+    fill.setAttribute("class", "pc-fill");
+
+    const edge1 = document.createElementNS(SVG_NS, "line");
+    edge1.setAttribute("class", "pc-edge-line");
+
+    const edge2 = document.createElementNS(SVG_NS, "line");
+    edge2.setAttribute("class", "pc-edge-line");
+
+    const midLine = document.createElementNS(SVG_NS, "line");
+    midLine.setAttribute("class", "pc-mid-line");
+
+    const hitArea = document.createElementNS(SVG_NS, "polygon");
+    hitArea.setAttribute("class", "pc-hit-area");
+
+    const handle1 = document.createElementNS(SVG_NS, "circle");
+    handle1.setAttribute("class", "rect-handle-el");
+    handle1.setAttribute("r", "5");
+    handle1.style.cursor = "grab";
+
+    const handle2 = document.createElementNS(SVG_NS, "circle");
+    handle2.setAttribute("class", "rect-handle-el");
+    handle2.setAttribute("r", "5");
+    handle2.style.cursor = "grab";
+
+    const handleEdge2Start = document.createElementNS(SVG_NS, "circle");
+    handleEdge2Start.setAttribute("class", "rect-handle-el");
+    handleEdge2Start.setAttribute("r", "5");
+    handleEdge2Start.style.cursor = "grab";
+
+    const handleEdge2End = document.createElementNS(SVG_NS, "circle");
+    handleEdge2End.setAttribute("class", "rect-handle-el");
+    handleEdge2End.setAttribute("r", "5");
+    handleEdge2End.style.cursor = "grab";
+
+    const handleMid1 = document.createElementNS(SVG_NS, "rect");
+    handleMid1.setAttribute("class", "pc-mid-handle");
+    handleMid1.setAttribute("width", "8");
+    handleMid1.setAttribute("height", "8");
+    handleMid1.setAttribute("x", "-4");
+    handleMid1.setAttribute("y", "-4");
+    handleMid1.style.cursor = "grab";
+
+    const handleMid2 = document.createElementNS(SVG_NS, "rect");
+    handleMid2.setAttribute("class", "pc-mid-handle");
+    handleMid2.setAttribute("width", "8");
+    handleMid2.setAttribute("height", "8");
+    handleMid2.setAttribute("x", "-4");
+    handleMid2.setAttribute("y", "-4");
+    handleMid2.style.cursor = "grab";
+
+    group.append(fill, edge1, edge2, midLine, hitArea, handle1, handle2, handleEdge2Start, handleEdge2End, handleMid1, handleMid2);
+
+    hitArea.addEventListener("pointerdown", (event) => {
+      if (!manager.canEditExistingDrawings()) return;
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      event.preventDefault();
+      cancelDrawingPreview();
+      selectChannel(channel.id);
+      const current = parallelChannels.find((item) => item.id === channel.id);
+      if (current?.locked) return;
+      startDragBody(channel.id, event);
+    });
+
+    handle1.addEventListener("pointerdown", (event) => {
+      if (!manager.canEditExistingDrawings()) return;
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      event.preventDefault();
+      cancelDrawingPreview();
+      selectChannel(channel.id);
+      const current = parallelChannels.find((item) => item.id === channel.id);
+      if (current?.locked) return;
+      startDragHandle(channel.id, "point1", event);
+    });
+
+    handle2.addEventListener("pointerdown", (event) => {
+      if (!manager.canEditExistingDrawings()) return;
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      event.preventDefault();
+      cancelDrawingPreview();
+      selectChannel(channel.id);
+      const current = parallelChannels.find((item) => item.id === channel.id);
+      if (current?.locked) return;
+      startDragHandle(channel.id, "point2", event);
+    });
+
+    const bindWidthDrag = (rail: WidthDragRail) => (event: PointerEvent) => {
+      if (!manager.canEditExistingDrawings()) return;
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      event.preventDefault();
+      cancelDrawingPreview();
+      selectChannel(channel.id);
+      const current = parallelChannels.find((item) => item.id === channel.id);
+      if (current?.locked) return;
+      startDragWidth(channel.id, event, rail);
+    };
+    handleEdge2Start.addEventListener("pointerdown", bindWidthDrag("edge2"));
+    handleEdge2End.addEventListener("pointerdown", bindWidthDrag("edge2"));
+    handleMid1.addEventListener("pointerdown", bindWidthDrag("edge1"));
+    handleMid2.addEventListener("pointerdown", bindWidthDrag("edge2"));
+
+    return { group, fill, edge1, edge2, midLine, hitArea, handle1, handle2, handleEdge2Start, handleEdge2End, handleMid1, handleMid2 };
+  }
+
+  function setHandlePosition(handle: SVGCircleElement, pt: PixelPoint) {
+    handle.setAttribute("cx", String(pt.x));
+    handle.setAttribute("cy", String(pt.y));
+  }
+
+  function setMidHandlePosition(handle: SVGRectElement, pt: PixelPoint) {
+    handle.setAttribute("transform", `translate(${pt.x}, ${pt.y})`);
+  }
+
+  function renderChannelGeometry(
+    channel: ParallelChannel,
+    els: ChannelEls,
+    p1: PixelPoint,
+    p2: PixelPoint,
+    widthPx: PixelPoint,
+    isSelected: boolean,
+  ) {
+    const geom = channelGeometry(p1, p2, widthPx);
+    if (!geom) {
+      els.group.setAttribute("visibility", "hidden");
+      return;
+    }
+
+    const { w, h } = getPlotSize();
+    const ext1 = extendedSegment(p1, p2, channel.extendLeft, channel.extendRight, w, h);
+    const n = unitNormal(p1, p2);
+    const offset = geom.offset;
+    let fillPts = [p1, p2, geom.edge2.p2, geom.edge2.p1];
+    let line1A = p1;
+    let line1B = p2;
+    let line2A = geom.edge2.p1;
+    let line2B = geom.edge2.p2;
+    let midA = geom.mid.p1;
+    let midB = geom.mid.p2;
+
+    if (n && (channel.extendLeft || channel.extendRight)) {
+      const ext2p1 = offsetPoint(ext1.ep1, n.nx, n.ny, offset);
+      const ext2p2 = offsetPoint(ext1.ep2, n.nx, n.ny, offset);
+      fillPts = [ext1.ep1, ext1.ep2, ext2p2, ext2p1];
+      line1A = ext1.ep1;
+      line1B = ext1.ep2;
+      line2A = ext2p1;
+      line2B = ext2p2;
+      midA = offsetPoint(ext1.ep1, n.nx, n.ny, offset / 2);
+      midB = offsetPoint(ext1.ep2, n.nx, n.ny, offset / 2);
+    }
+
+    els.fill.setAttribute("fill", hexToRgba(channel.fillColor, channel.fillOpacity));
+    els.fill.setAttribute("points", polygonPoints(...fillPts));
+    els.hitArea.setAttribute("points", polygonPoints(...fillPts));
+
+    setLineEndpoints(els.edge1, line1A, line1B);
+    applyLineStroke(els.edge1, channel.color, channel.width, channel.lineStyle);
+
+    setLineEndpoints(els.edge2, line2A, line2B);
+    applyLineStroke(els.edge2, channel.color, channel.width, channel.lineStyle);
+
+    setLineEndpoints(els.midLine, midA, midB);
+    applyMidLineStroke(els.midLine, channel.color, channel.width);
+
+    setHandlePosition(els.handle1, p1);
+    setHandlePosition(els.handle2, p2);
+    setHandlePosition(els.handleEdge2Start, geom.edge2.p1);
+    setHandlePosition(els.handleEdge2End, geom.edge2.p2);
+    setMidHandlePosition(els.handleMid1, midpoint(p1, p2));
+    setMidHandlePosition(els.handleMid2, midpoint(geom.edge2.p1, geom.edge2.p2));
+
+    const showHandles = isSelected && !channel.locked;
+    for (const handle of [els.handle1, els.handle2, els.handleEdge2Start, els.handleEdge2End, els.handleMid1, els.handleMid2]) {
+      handle.style.display = showHandles ? "" : "none";
+    }
+    els.group.classList.toggle("selected", isSelected);
+  }
+
+  function syncOne(channel: ParallelChannel) {
+    let els = elMap.get(channel.id);
+    if (!els) {
+      els = buildEls(channel);
+      elMap.set(channel.id, els);
+    }
+    const p1 = toPixel(channel.point1);
+    const p2 = toPixel(channel.point2);
+    const wp = toPixel(channel.widthPoint);
+    if (!p1 || !p2 || !wp) {
+      els.group.setAttribute("visibility", "hidden");
+      return;
+    }
+    const offset = signedPerpDistance(p1, p2, wp);
+    const widthPx = pointOnParallel(p1, p2, offset, 1) ?? wp;
+    els.group.setAttribute("visibility", "visible");
+    renderChannelGeometry(channel, els, p1, p2, widthPx, selectedId === channel.id);
+  }
+
+  function syncAll() {
+    if (dragActive) return;
+    overlay.sync();
+    parallelChannels.forEach(syncOne);
+  }
+
+  function previewAtPixels(
+    channel: ParallelChannel,
+    p1: PixelPoint,
+    p2: PixelPoint,
+    wp: PixelPoint,
+  ) {
+    const els = elMap.get(channel.id);
+    if (!els) return;
+    renderChannelGeometry(channel, els, p1, p2, wp, selectedId === channel.id);
+  }
+
+  function previewWidthDrag(
+    channel: ParallelChannel,
+    p1: PixelPoint,
+    p2: PixelPoint,
+    startOffset: number,
+    startCursor: PixelPoint,
+    cursor: PixelPoint,
+    rail: WidthDragRail,
+  ) {
+    const next = widthDragGeometry(p1, p2, startOffset, startCursor, cursor, rail);
+    if (!next) return;
+    const wp = pointOnParallel(next.p1, next.p2, next.offset, 1);
+    if (!wp) return;
+    previewAtPixels(channel, next.p1, next.p2, wp);
+  }
+
+  function startDragWidth(id: string, startEvent: PointerEvent, rail: WidthDragRail) {
+    const channel = parallelChannels.find((item) => item.id === id);
+    if (!channel) return;
+    dragActive = true;
+    const rect = container.getBoundingClientRect();
+    const originalP1 = toPixel(channel.point1);
+    const originalP2 = toPixel(channel.point2);
+    const originalWp = toPixel(channel.widthPoint);
+    if (!originalP1 || !originalP2 || !originalWp) {
+      dragActive = false;
+      return;
+    }
+    const startOffset = signedPerpDistance(originalP1, originalP2, originalWp);
+    const startCursor = {
+      x: startEvent.clientX - rect.left,
+      y: startEvent.clientY - rect.top,
+    };
+    let moved = false;
+    const target = startEvent.target as Element;
+    target.setPointerCapture?.(startEvent.pointerId);
+
+    let latestEvent: PointerEvent | null = null;
+    const renderMove = () => {
+      dragRaf = 0;
+      const event = latestEvent;
+      if (!event) return;
+      moved = true;
+      const cursor = {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      };
+      previewWidthDrag(channel, originalP1, originalP2, startOffset, startCursor, cursor, rail);
+    };
+    const onMove = (event: PointerEvent) => {
+      latestEvent = event;
+      if (!dragRaf) dragRaf = requestAnimationFrame(renderMove);
+    };
+    const onUp = (event: PointerEvent) => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      if (dragRaf) {
+        cancelAnimationFrame(dragRaf);
+        dragRaf = 0;
+        renderMove();
+      }
+      dragActive = false;
+      target.releasePointerCapture?.(event.pointerId);
+      const current = parallelChannels.find((item) => item.id === id);
+      if (current && moved && latestEvent) {
+        const cursor = {
+          x: latestEvent.clientX - rect.left,
+          y: latestEvent.clientY - rect.top,
+        };
+        const next = widthDragGeometry(originalP1, originalP2, startOffset, startCursor, cursor, rail);
+        if (!next) return;
+        const wp = pointOnParallel(next.p1, next.p2, next.offset, 1);
+        const p1Data = pixelToDataPoint(next.p1);
+        const p2Data = pixelToDataPoint(next.p2);
+        const wpData = wp ? pixelToDataPoint(wp) : null;
+        if (p1Data && p2Data && wpData) {
+          current.point1 = p1Data;
+          current.point2 = p2Data;
+          current.widthPoint = wpData;
+          callbacks.onUpdate(current);
+        }
+      }
+      syncAll();
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp, { once: true });
+  }
+
+  function startDragHandle(
+    id: string,
+    which: "point1" | "point2",
+    startEvent: PointerEvent,
+  ) {
+    const channel = parallelChannels.find((item) => item.id === id);
+    if (!channel) return;
+    dragActive = true;
+    const rect = container.getBoundingClientRect();
+    const originalP1 = toPixel(channel.point1);
+    const originalP2 = toPixel(channel.point2);
+    const originalWp = toPixel(channel.widthPoint);
+    if (!originalP1 || !originalP2 || !originalWp) {
+      dragActive = false;
+      return;
+    }
+    const offset = signedPerpDistance(originalP1, originalP2, originalWp);
+    let moved = false;
+    const target = startEvent.target as Element;
+    target.setPointerCapture?.(startEvent.pointerId);
+
+    let latestEvent: PointerEvent | null = null;
+    const renderMove = () => {
+      dragRaf = 0;
+      const event = latestEvent;
+      if (!event) return;
+      moved = true;
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const cursor = { x, y };
+      const nextP1 = which === "point1" ? cursor : originalP1;
+      const nextP2 = which === "point2" ? cursor : originalP2;
+      const nextWp = pointOnParallel(nextP1, nextP2, offset, 1) ?? originalWp;
+      previewAtPixels(channel, nextP1, nextP2, nextWp);
+    };
+    const onMove = (event: PointerEvent) => {
+      latestEvent = event;
+      if (!dragRaf) dragRaf = requestAnimationFrame(renderMove);
+    };
+    const onUp = (event: PointerEvent) => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      if (dragRaf) {
+        cancelAnimationFrame(dragRaf);
+        dragRaf = 0;
+        renderMove();
+      }
+      dragActive = false;
+      target.releasePointerCapture?.(event.pointerId);
+      const current = parallelChannels.find((item) => item.id === id);
+      if (current && moved && latestEvent) {
+        const x = latestEvent.clientX - rect.left;
+        const y = latestEvent.clientY - rect.top;
+        const cursor = { x, y };
+        const nextP1 = which === "point1" ? cursor : originalP1;
+        const nextP2 = which === "point2" ? cursor : originalP2;
+        const p1Data = which === "point1" ? pixelToDataPoint(cursor) : current.point1;
+        const p2Data = which === "point2" ? pixelToDataPoint(cursor) : current.point2;
+        const nextWp = pointOnParallel(nextP1, nextP2, offset, 1);
+        const wpData = nextWp ? pixelToDataPoint(nextWp) : null;
+        if (p1Data && p2Data && wpData) {
+          current.point1 = p1Data;
+          current.point2 = p2Data;
+          current.widthPoint = wpData;
+          callbacks.onUpdate(current);
+        }
+      }
+      syncAll();
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp, { once: true });
+  }
+
+  function startDragBody(id: string, startEvent: PointerEvent) {
+    const channel = parallelChannels.find((item) => item.id === id);
+    if (!channel) return;
+    dragActive = true;
+    const rect = container.getBoundingClientRect();
+    const startX = startEvent.clientX - rect.left;
+    const startY = startEvent.clientY - rect.top;
+    const origP1 = { ...channel.point1 };
+    const origP2 = { ...channel.point2 };
+    const p1Px = toPixel(origP1);
+    const p2Px = toPixel(origP2);
+    const wpPx = toPixel(channel.widthPoint);
+    if (!p1Px || !p2Px || !wpPx) {
+      dragActive = false;
+      return;
+    }
+    const offset = signedPerpDistance(p1Px, p2Px, wpPx);
+    let moved = false;
+    const target = startEvent.target as Element;
+    target.setPointerCapture?.(startEvent.pointerId);
+
+    let latestEvent: PointerEvent | null = null;
+    let finalDx = 0;
+    let finalDy = 0;
+    const renderMove = () => {
+      dragRaf = 0;
+      const event = latestEvent;
+      if (!event) return;
+      const dx = (event.clientX - rect.left) - startX;
+      const dy = (event.clientY - rect.top) - startY;
+      if (!moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
+      moved = true;
+      finalDx = dx;
+      finalDy = dy;
+      previewAtPixels(
+        channel,
+        { x: p1Px.x + dx, y: p1Px.y + dy },
+        { x: p2Px.x + dx, y: p2Px.y + dy },
+        pointOnParallel(
+          { x: p1Px.x + dx, y: p1Px.y + dy },
+          { x: p2Px.x + dx, y: p2Px.y + dy },
+          offset,
+          1,
+        ) ?? { x: wpPx.x + dx, y: wpPx.y + dy },
+      );
+    };
+    const onMove = (event: PointerEvent) => {
+      latestEvent = event;
+      if (!dragRaf) dragRaf = requestAnimationFrame(renderMove);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      if (dragRaf) {
+        cancelAnimationFrame(dragRaf);
+        dragRaf = 0;
+        renderMove();
+      }
+      dragActive = false;
+      target.releasePointerCapture?.(startEvent.pointerId);
+      const current = parallelChannels.find((item) => item.id === id);
+      if (current && moved) {
+        const nextP1 = { x: p1Px.x + finalDx, y: p1Px.y + finalDy };
+        const nextP2 = { x: p2Px.x + finalDx, y: p2Px.y + finalDy };
+        const p1Data = pixelToDataPoint(nextP1);
+        const p2Data = pixelToDataPoint(nextP2);
+        const nextWp = pointOnParallel(nextP1, nextP2, offset, 1);
+        const wpData = nextWp ? pixelToDataPoint(nextWp) : null;
+        if (p1Data && p2Data && wpData) {
+          current.point1 = p1Data;
+          current.point2 = p2Data;
+          current.widthPoint = wpData;
+          callbacks.onUpdate(current);
+        }
+      }
+      syncAll();
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp, { once: true });
+  }
+
+  function clickToPoint(event: any): { time: number; price: number } | null {
+    const rect = container.getBoundingClientRect();
+    const sourceEvent = event.sourceEvent as PointerEvent | undefined;
+    const x = sourceEvent ? sourceEvent.clientX - rect.left : null;
+    const y = sourceEvent ? sourceEvent.clientY - rect.top : null;
+    const time = x != null ? xToTime(chart, x, candles) : (event.time as number | undefined);
+    const price = y != null ? pxToPrice(series, y) : (event.seriesData?.get(series)?.close as number | undefined);
+    if (time == null || price == null || price <= 0) return null;
+    return { time, price };
+  }
+
+  function handleDrawClick(event: any) {
+    if (drawingMode !== "parallelchannel") return;
+    if (isChannelHandleTarget(event.sourceEvent?.target ?? null)) return;
+    const point = clickToPoint(event);
+    if (!point) return;
+
+    if (!drawPoint1) {
+      drawPoint1 = point;
+      ghostBaseLine = document.createElementNS(SVG_NS, "line");
+      ghostBaseLine.setAttribute("class", "pc-ghost-line");
+      svg.appendChild(ghostBaseLine);
+      const px = toPixel(drawPoint1);
+      if (px) {
+        setLineEndpoints(ghostBaseLine, px, px);
+      }
+      return;
+    }
+
+    if (!drawPoint2) {
+      drawPoint2 = point;
+      return;
+    }
+
+    const p1px = toPixel(drawPoint1);
+    const p2px = toPixel(drawPoint2);
+    const rect = container.getBoundingClientRect();
+    const sourceEvent = event.sourceEvent as PointerEvent | undefined;
+    const cursor = sourceEvent
+      ? { x: sourceEvent.clientX - rect.left, y: sourceEvent.clientY - rect.top }
+      : null;
+    const widthPoint = p1px && p2px && cursor
+      ? widthPointFromPixels(p1px, p2px, cursor)
+      : point;
+
+    const newChannel: ParallelChannel = {
+      id: crypto.randomUUID(),
+      datasetId,
+      point1: drawPoint1,
+      point2: drawPoint2,
+      widthPoint: widthPoint ?? point,
+      color: "#d1d4dc",
+      fillColor: "#787b86",
+      fillOpacity: 20,
+      width: 1,
+      lineStyle: "solid",
+      extendLeft: false,
+      extendRight: false,
+      locked: false,
+    };
+    parallelChannels.push(newChannel);
+    callbacks.onCreate(newChannel);
+    drawPoint1 = null;
+    drawPoint2 = null;
+    removeGhost();
+    selectChannel(newChannel.id);
+    syncAll();
+    callbacks.onDrawingComplete();
+  }
+
+  function handleMouseMove(event: MouseEvent) {
+    if (dragActive) return;
+    const rect = container.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const cursor = { x, y };
+
+    if (drawPoint1 && !drawPoint2 && ghostBaseLine) {
+      const p1 = toPixel(drawPoint1);
+      if (p1) setLineEndpoints(ghostBaseLine, p1, cursor);
+      return;
+    }
+
+    if (drawPoint1 && drawPoint2) {
+      const p1 = toPixel(drawPoint1);
+      const p2 = toPixel(drawPoint2);
+      if (p1 && p2) renderGhostWidth(p1, p2, cursor);
+    }
+  }
+
+  function handleBackgroundClick(event: PointerEvent) {
+    if (drawingMode !== "none") return;
+    const target = event.target as Element;
+    if (target.closest(".trend-toolbar") || target.closest(".pc-hit-area") || target.closest(".rect-handle-el") || target.closest(".pc-mid-handle")) return;
+    if (selectedId) selectChannel(null);
+  }
+
+  function handleKeyDown(event: KeyboardEvent) {
+    if ((event.target as Element)?.tagName === "INPUT" || (event.target as Element)?.tagName === "TEXTAREA") return;
+    if (event.key === "Delete" || event.key === "Backspace") {
+      if (selectedId) {
+        event.preventDefault();
+        deleteChannel(selectedId);
+      }
+    }
+    if (event.key === "Escape") {
+      if (drawPoint1) {
+        drawPoint1 = null;
+        drawPoint2 = null;
+        removeGhost();
+        callbacks.onDrawingComplete();
+      }
+      if (selectedId) selectChannel(null);
+    }
+  }
+
+  let rafId = 0;
+  function loop() {
+    if (!dragActive) syncAll();
+    rafId = requestAnimationFrame(loop);
+  }
+  rafId = requestAnimationFrame(loop);
+
+  const unregisterDeselect = manager.registerDeselect("parallelchannel", () => {
+    if (selectedId === null) return;
+    selectedId = null;
+    removeToolbar();
+    syncAll();
+  });
+
+  if (drawingMode === "parallelchannel") {
+    chart.subscribeClick(handleDrawClick);
+  }
+  container.addEventListener("mousemove", handleMouseMove);
+  container.addEventListener("pointerdown", handleBackgroundClick);
+  document.addEventListener("keydown", handleKeyDown);
+
+  return () => {
+    cancelAnimationFrame(rafId);
+    cancelAnimationFrame(dragRaf);
+    unregisterDeselect();
+    try { chart.unsubscribeClick(handleDrawClick); } catch { /* noop */ }
+    container.removeEventListener("mousemove", handleMouseMove);
+    container.removeEventListener("pointerdown", handleBackgroundClick);
+    document.removeEventListener("keydown", handleKeyDown);
+    overlay.remove();
+    removeToolbar();
+    removeGhost();
+  };
+}

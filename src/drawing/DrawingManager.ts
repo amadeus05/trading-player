@@ -1,6 +1,6 @@
 import type { DrawingMode } from "./shared/types";
 
-export type DrawingSelectionKind = "trendline" | "rectangle" | "fibonacci";
+export type DrawingSelectionKind = "trendline" | "rectangle" | "fibonacci" | "parallelchannel";
 
 /**
  * Owns interaction priority for every drawing tool attached to one chart.
