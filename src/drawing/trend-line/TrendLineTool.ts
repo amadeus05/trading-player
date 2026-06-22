@@ -4,20 +4,21 @@
  * component's useEffect so it can access chart / series APIs directly.
  */
 
-import type { TrendLine } from "./types";
+import type { TrendLine } from "../../types";
+import { pointToPixel, xToTime } from "../shared/coordinates";
+import { mountFloatingPanel } from "../shared/floatingPanel";
+import { openColorPalette } from "../shared/colorPalette";
+import { createDrawingOverlay } from "../shared/overlay";
+import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions } from "../shared/types";
+import { createDrawingToolbar, drawingStyleIcon } from "../shared/DrawingToolbar";
+import { mountAnchoredPopup } from "../shared/popup";
+export type { DrawingMode } from "../shared/types";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
-export type DrawingMode = "none" | "trendline" | "measure" | "rectangle";
-
-export interface TrendLineCallbacks {
-  onCreate: (line: TrendLine) => void;
-  onUpdate: (line: TrendLine) => void;
-  onDelete: (id: string) => void;
-  onDrawingComplete: () => void;
-}
+export type TrendLineCallbacks = DrawingCrudCallbacks<TrendLine>;
 
 interface PixelPoint {
   x: number;
@@ -49,48 +50,6 @@ function strokeDashForStyle(style: TrendLine["lineStyle"]): string {
 /*  Coordinate conversions                                             */
 /* ------------------------------------------------------------------ */
 
-function timeToLogical(time: number, candles: { time: number }[]): number | null {
-  if (!candles.length) return null;
-  let low = 0, high = candles.length - 1;
-  while (low <= high) {
-    const mid = (low + high) >> 1;
-    if (candles[mid].time === time) return mid;
-    if (candles[mid].time < time) low = mid + 1;
-    else high = mid - 1;
-  }
-  if (high < 0) {
-    const tf = candles.length > 1 ? candles[1].time - candles[0].time : 60;
-    return (time - candles[0].time) / tf;
-  }
-  if (low >= candles.length) {
-    const tf = candles.length > 1 ? candles[candles.length - 1].time - candles[candles.length - 2].time : 60;
-    return candles.length - 1 + (time - candles[candles.length - 1].time) / tf;
-  }
-  const tf = candles[low].time - candles[high].time;
-  const fraction = (time - candles[high].time) / tf;
-  return high + fraction;
-}
-
-function pxToTime(chart: any, x: number, candles: { time: number }[]): number | null {
-  const logical = chart.timeScale().coordinateToLogical(x);
-  if (logical == null) return null;
-  if (!candles.length) return null;
-
-  if (logical < 0) {
-    const tf = candles.length > 1 ? candles[1].time - candles[0].time : 60;
-    return candles[0].time + logical * tf;
-  }
-  if (logical >= candles.length - 1) {
-    const tf = candles.length > 1 ? candles[candles.length - 1].time - candles[candles.length - 2].time : 60;
-    return candles[candles.length - 1].time + (logical - (candles.length - 1)) * tf;
-  }
-
-  const idx = Math.floor(logical as number);
-  const frac = (logical as number) - idx;
-  const tf = candles[idx + 1].time - candles[idx].time;
-  return candles[idx].time + frac * tf;
-}
-
 function pxToPrice(series: any, y: number): number | null {
   return series.coordinateToPrice(y);
 }
@@ -102,7 +61,7 @@ function pxToPrice(series: any, y: number): number | null {
 /**
  * Call once inside the Chart useEffect.  Returns a cleanup function.
  */
-export function attachTrendLineTool(opts: {
+export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
   container: HTMLDivElement;
   chart: any;
   series: any;
@@ -114,13 +73,12 @@ export function attachTrendLineTool(opts: {
   onSelect?: (id: string | null) => void;
   callbacks: TrendLineCallbacks;
 }): () => void {
-  const { container, chart, series, candles, drawingMode, datasetId, callbacks, onSelect } = opts;
+  const { container, chart, series, candles, drawingMode, datasetId, callbacks, onSelect, manager } = opts;
   let trendLines = [...opts.trendLines];
 
   /* ---- SVG overlay ---- */
-  const svg = document.createElementNS(SVG_NS, "svg");
-  svg.classList.add("trend-line-overlay");
-  container.appendChild(svg);
+  const overlay = createDrawingOverlay(container, chart, "trend-line-overlay");
+  const { svg } = overlay;
 
   /* ---- Selection state ---- */
   let selectedId: string | null = opts.selectedId ?? null;
@@ -145,22 +103,37 @@ export function attachTrendLineTool(opts: {
   let toolbar: HTMLDivElement | null = null;
   let toolbarLineId: string | null = null;
   let textEditor: HTMLDivElement | null = null;
+  let cleanupToolbarDrag: (() => void) | null = null;
+  let cleanupPalette: (() => void) | null = null;
 
   function removeToolbar() {
     textEditor?.remove(); textEditor = null;
+    cleanupPalette?.(); cleanupPalette = null;
+    cleanupToolbarDrag?.(); cleanupToolbarDrag = null;
     if (toolbar) { toolbar.remove(); toolbar = null; toolbarLineId = null; }
   }
 
   function createToolbar(tl: TrendLine) {
     removeToolbar();
     toolbarLineId = tl.id;
-    const div = document.createElement("div");
+    let div = document.createElement("div");
     div.className = "trend-toolbar";
     div.innerHTML = `
       <div class="trend-toolbar-row">
-        <label class="trend-toolbar-color" title="Цвет">
-          <input type="color" value="${tl.color}" />
-        </label>
+        <div class="rect-tb-grip" title="Переместить панель">
+          <svg width="8" height="14" viewBox="0 0 8 14" fill="currentColor" aria-hidden="true">
+            <circle cx="2" cy="2" r="1.5"/><circle cx="6" cy="2" r="1.5"/>
+            <circle cx="2" cy="7" r="1.5"/><circle cx="6" cy="7" r="1.5"/>
+            <circle cx="2" cy="12" r="1.5"/><circle cx="6" cy="12" r="1.5"/>
+          </svg>
+        </div>
+        <div class="trend-toolbar-sep"></div>
+        <button type="button" class="rect-tb-color-btn trend-toolbar-color" title="Цвет линии">
+          <span class="rect-tb-color-icon">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M12.1 2.9a1 1 0 0 1 1.4 0l1.5 1.5a1 1 0 0 1 0 1.4l-8.4 8.4H3.5v-2.5l8.4-8.4z" stroke="currentColor" stroke-width="1.35"/><path d="M10.6 4.4l2.5 2.5" stroke="currentColor" stroke-width="1.35"/></svg>
+          </span>
+          <span class="rect-tb-color-bar" style="background:${tl.color}"></span>
+        </button>
         <div class="trend-toolbar-sep"></div>
         <button class="trend-toolbar-width" data-w="1" title="1px"${tl.width === 1 ? ' data-active="1"' : ""}>
           <svg width="20" height="16"><line x1="2" y1="8" x2="18" y2="8" stroke="currentColor" stroke-width="1"/></svg>
@@ -197,24 +170,48 @@ export function attachTrendLineTool(opts: {
         </button>
       </div>
     `;
+    div = createDrawingToolbar({
+      className: "trend-toolbar",
+      lineColor: tl.color,
+      textColor: tl.color,
+      width: tl.width,
+      style: tl.lineStyle,
+      locked: Boolean(tl.locked),
+      showText: true,
+      showLock: true,
+    });
     const extendButtons = [...div.querySelectorAll(".trend-toolbar-extend")];
     extendButtons[0]?.previousElementSibling?.remove();
     extendButtons.forEach((button) => button.remove());
-    div.querySelector(".trend-toolbar-color")!.insertAdjacentHTML("afterend", `<button class="trend-toolbar-text" title="Текст">T</button>`);
     container.appendChild(div);
     toolbar = div;
+    const grip = div.querySelector<HTMLElement>(".rect-tb-grip");
+    if (grip) cleanupToolbarDrag = mountFloatingPanel({
+      container,
+      panel: div,
+      grip,
+      persistenceKey: `trend-line:${tl.id}`,
+    });
 
-    // Color
-    const colorInput = div.querySelector('input[type="color"]') as HTMLInputElement;
-    colorInput.addEventListener("input", () => {
+    // Shared color palette
+    const colorButton = div.querySelector<HTMLElement>(".trend-toolbar-color")!;
+    colorButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (cleanupPalette) { cleanupPalette(); cleanupPalette = null; return; }
       const line = trendLines.find((item) => item.id === tl.id);
       if (!line) return;
-      line.color = colorInput.value;
-      syncOne(line);
-    });
-    colorInput.addEventListener("change", () => {
-      const line = trendLines.find((item) => item.id === tl.id);
-      if (line) callbacks.onUpdate(line);
+      cleanupPalette = openColorPalette({
+        container,
+        anchor: colorButton,
+        color: line.color,
+        onColor: (color) => {
+          line.color = color;
+          colorButton.querySelector<HTMLElement>(".rect-tb-color-bar")!.style.background = color;
+          syncOne(line);
+          callbacks.onUpdate(line);
+        },
+        onDismiss: () => { cleanupPalette = null; },
+      });
     });
     div.querySelector(".trend-toolbar-text")!.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -259,6 +256,51 @@ export function attachTrendLineTool(opts: {
       });
     });
 
+    const openCompactMenu = (kind: "width" | "style", anchor: Element) => {
+      cleanupPalette?.();
+      const menu = document.createElement("div");
+      menu.className = "rect-line-menu";
+      const entries = kind === "width"
+        ? [1, 2, 3, 4].map((value) => ({ value: String(value), label: `${value}px`, icon: `<span class="rect-line-sample" style="height:${value}px"></span>` }))
+        : (["solid", "dashed", "dotted"] as const).map((value) => ({ value, label: value === "solid" ? "Line" : `${value[0].toUpperCase()}${value.slice(1)} line`, icon: drawingStyleIcon(value) }));
+      entries.forEach((entry) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "rect-line-menu-item";
+        button.innerHTML = `<span class="rect-line-menu-icon">${entry.icon}</span><span>${entry.label}</span>`;
+        button.addEventListener("click", () => {
+          const line = trendLines.find((item) => item.id === tl.id);
+          if (!line) return;
+          if (kind === "width") line.width = Number(entry.value);
+          else line.lineStyle = entry.value as TrendLine["lineStyle"];
+          callbacks.onUpdate(line);
+          syncOne(line);
+          div.querySelector<HTMLElement>(".rect-tb-width-label")!.textContent = `${line.width}px`;
+          div.querySelector<HTMLElement>(".rect-tb-style-btn")!.innerHTML = drawingStyleIcon(line.lineStyle);
+          cleanupPalette?.(); cleanupPalette = null;
+        });
+        menu.appendChild(button);
+      });
+      cleanupPalette = mountAnchoredPopup({
+        container, anchor, popup: menu, width: kind === "width" ? 104 : 168, gap: 2,
+        onDismiss: () => { cleanupPalette = null; },
+      });
+    };
+    div.querySelector(".rect-tb-width-btn")!.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openCompactMenu("width", event.currentTarget as Element);
+    });
+    div.querySelector(".rect-tb-style-btn")!.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openCompactMenu("style", event.currentTarget as Element);
+    });
+    div.querySelector(".rect-tb-lock")!.addEventListener("click", (event) => {
+      event.stopPropagation();
+      updateLine(tl.id, { locked: !Boolean(tl.locked) });
+      const line = trendLines.find((item) => item.id === tl.id);
+      if (line) createToolbar(line);
+    });
+
     // Extend buttons
     div.querySelectorAll<HTMLButtonElement>(".trend-toolbar-extend").forEach((btn) => {
       btn.addEventListener("click", (e) => {
@@ -288,28 +330,10 @@ export function attachTrendLineTool(opts: {
     div.addEventListener("pointerdown", (e) => e.stopPropagation());
   }
 
-  function positionToolbar(tl: TrendLine) {
-    if (!toolbar || toolbarLineId !== tl.id) return;
-    const p1 = toPixel(tl.point1);
-    const p2 = toPixel(tl.point2);
-    if (!p1 || !p2) return;
-    const mx = (p1.x + p2.x) / 2;
-    const my = Math.min(p1.y, p2.y) - 44;
-    const rect = container.getBoundingClientRect();
-    const tbW = toolbar.offsetWidth || 380;
-    toolbar.style.left = `${Math.max(4, Math.min(mx - tbW / 2, rect.width - tbW - 4))}px`;
-    toolbar.style.top = `${Math.max(4, my)}px`;
-  }
-
   /* ---- Helpers ---- */
 
   function toPixel(pt: { time: number; price: number }): PixelPoint | null {
-    const logical = timeToLogical(pt.time, candles);
-    if (logical == null) return null;
-    const x = chart.timeScale().logicalToCoordinate(logical);
-    const y = series.priceToCoordinate(pt.price);
-    if (x == null || y == null) return null;
-    return { x, y };
+    return pointToPixel(chart, series, pt, candles);
   }
 
   function extendedPoints(tl: TrendLine, p1: PixelPoint, p2: PixelPoint): { ep1: PixelPoint; ep2: PixelPoint } {
@@ -358,26 +382,37 @@ export function attachTrendLineTool(opts: {
     trendLines = trendLines.filter((l) => l.id !== id);
     const els = lineElements.get(id);
     if (els) { els.group.remove(); lineElements.delete(id); }
-    if (selectedId === id) { selectedId = null; removeToolbar(); }
+    if (selectedId === id) {
+      selectedId = null;
+      removeToolbar();
+      manager.clearSelection("trendline");
+    }
     callbacks.onDelete(id);
   }
 
   function selectLine(id: string | null) {
-    selectedId = id;
-    if (onSelect) onSelect(id);
-    if (id) {
-      const tl = trendLines.find((l) => l.id === id);
-      if (tl) createToolbar(tl);
-    } else {
-      removeToolbar();
+    if (!id) {
+      if (selectedId !== null) {
+        selectedId = null;
+        onSelect?.(null);
+        removeToolbar();
+        syncAll();
+      }
+      manager.clearSelection("trendline");
+      return;
     }
+    selectedId = id;
+    onSelect?.(id);
+    const tl = trendLines.find((l) => l.id === id);
+    if (tl) createToolbar(tl);
+    manager.activateSelection("trendline", lineElements.get(id)?.group ?? null);
     syncAll();
   }
 
   /* ---- Build SVG elements for one line ---- */
 
   function buildLineEls(tl: TrendLine): LineEls {
-    const group = document.createElementNS(SVG_NS, "g");
+    const group = overlay.createClippedGroup();
     group.dataset.trendId = tl.id;
 
     const extLine = document.createElementNS(SVG_NS, "line");
@@ -390,41 +425,48 @@ export function attachTrendLineTool(opts: {
     hitArea.setAttribute("class", "trend-hit-area");
 
     const handle1 = document.createElementNS(SVG_NS, "circle");
-    handle1.setAttribute("class", "trend-handle");
+    handle1.setAttribute("class", "rect-handle-el");
     handle1.setAttribute("r", "5");
+    handle1.style.cursor = "grab";
 
     const handle2 = document.createElementNS(SVG_NS, "circle");
-    handle2.setAttribute("class", "trend-handle");
+    handle2.setAttribute("class", "rect-handle-el");
     handle2.setAttribute("r", "5");
+    handle2.style.cursor = "grab";
 
     const labelText = document.createElementNS(SVG_NS, "text");
     labelText.setAttribute("class", "trend-label");
 
     group.append(extLine, line, hitArea, handle1, handle2, labelText);
-    svg.appendChild(group);
 
     // Interaction: select on click
     hitArea.addEventListener("pointerdown", (e) => {
-      if (drawingMode !== "none") return;
+      if (!manager.canEditExistingDrawings()) return;
       e.stopPropagation();
       e.preventDefault();
       selectLine(tl.id);
+      const current = trendLines.find((item) => item.id === tl.id);
+      if (current?.locked) return;
       startDragBody(tl.id, e);
     });
 
     handle1.addEventListener("pointerdown", (e) => {
-      if (drawingMode !== "none") return;
+      if (!manager.canEditExistingDrawings()) return;
       e.stopPropagation();
       e.preventDefault();
       selectLine(tl.id);
+      const current = trendLines.find((item) => item.id === tl.id);
+      if (current?.locked) return;
       startDragHandle(tl.id, "point1", e);
     });
 
     handle2.addEventListener("pointerdown", (e) => {
-      if (drawingMode !== "none") return;
+      if (!manager.canEditExistingDrawings()) return;
       e.stopPropagation();
       e.preventDefault();
       selectLine(tl.id);
+      const current = trendLines.find((item) => item.id === tl.id);
+      if (current?.locked) return;
       startDragHandle(tl.id, "point2", e);
     });
 
@@ -485,13 +527,11 @@ export function attachTrendLineTool(opts: {
     // Handles
     els.handle1.setAttribute("cx", String(p1.x));
     els.handle1.setAttribute("cy", String(p1.y));
-    els.handle1.setAttribute("fill", tl.color);
-    els.handle1.style.display = isSelected ? "" : "none";
+    els.handle1.style.display = isSelected && !tl.locked ? "" : "none";
 
     els.handle2.setAttribute("cx", String(p2.x));
     els.handle2.setAttribute("cy", String(p2.y));
-    els.handle2.setAttribute("fill", tl.color);
-    els.handle2.style.display = isSelected ? "" : "none";
+    els.handle2.style.display = isSelected && !tl.locked ? "" : "none";
 
     // Label
     if (tl.showLabel && tl.label) {
@@ -515,10 +555,8 @@ export function attachTrendLineTool(opts: {
   }
 
   function syncAll() {
+    overlay.sync();
     trendLines.forEach(syncOne);
-    // Position toolbar if visible
-    const tl = trendLines.find((l) => l.id === toolbarLineId);
-    if (tl) positionToolbar(tl);
   }
 
   function previewAtPixels(tl: TrendLine, p1: PixelPoint, p2: PixelPoint) {
@@ -586,7 +624,7 @@ export function attachTrendLineTool(opts: {
       if (lineObj && moved && latestEvent) {
         const x = latestEvent.clientX - rect.left;
         const y = latestEvent.clientY - rect.top;
-        const time = pxToTime(chart, x, candles);
+        const time = xToTime(chart, x, candles);
         const price = pxToPrice(series, y);
         if (time != null && price != null && price > 0) lineObj[which] = { time, price };
         syncAll();
@@ -645,9 +683,9 @@ export function attachTrendLineTool(opts: {
       if (target.releasePointerCapture) target.releasePointerCapture(e.pointerId);
       const lineObj = trendLines.find((l) => l.id === id);
       if (lineObj && moved) {
-        const newP1Time = pxToTime(chart, p1Px.x + finalDx, candles);
+        const newP1Time = xToTime(chart, p1Px.x + finalDx, candles);
         const newP1Price = pxToPrice(series, p1Px.y + finalDy);
-        const newP2Time = pxToTime(chart, p2Px.x + finalDx, candles);
+        const newP2Time = xToTime(chart, p2Px.x + finalDx, candles);
         const newP2Price = pxToPrice(series, p2Px.y + finalDy);
         if (newP1Time != null && newP1Price != null && newP2Time != null && newP2Price != null && newP1Price > 0 && newP2Price > 0) {
           lineObj.point1 = { time: newP1Time, price: newP1Price };
@@ -671,7 +709,7 @@ export function attachTrendLineTool(opts: {
     const sourceEvent = event.sourceEvent as PointerEvent | undefined;
     const x = sourceEvent ? sourceEvent.clientX - rect.left : null;
     const y = sourceEvent ? sourceEvent.clientY - rect.top : null;
-    const time = x != null ? pxToTime(chart, x, candles) : (event.time as number | undefined);
+    const time = x != null ? xToTime(chart, x, candles) : (event.time as number | undefined);
     const price = y != null ? pxToPrice(series, y) : (event.seriesData?.get(series)?.close as number | undefined);
     if (time == null || price == null || price <= 0) return;
 
@@ -702,6 +740,7 @@ export function attachTrendLineTool(opts: {
         extendRight: false,
         showLabel: false,
         label: "",
+        locked: false,
       };
       trendLines.push(newLine);
       callbacks.onCreate(newLine);
@@ -733,7 +772,7 @@ export function attachTrendLineTool(opts: {
   function handleBackgroundClick(event: PointerEvent) {
     if (drawingMode !== "none") return;
     const target = event.target as Element;
-    if (target.closest(".trend-toolbar") || target.closest(".trend-hit-area") || target.closest(".trend-handle")) return;
+    if (target.closest(".trend-toolbar") || target.closest(".trend-hit-area") || target.closest(".rect-handle-el")) return;
     if (selectedId) {
       selectLine(null);
     }
@@ -767,6 +806,14 @@ export function attachTrendLineTool(opts: {
   }
   rafId = requestAnimationFrame(loop);
 
+  const unregisterDeselect = manager.registerDeselect("trendline", () => {
+    if (selectedId === null) return;
+    selectedId = null;
+    onSelect?.(null);
+    removeToolbar();
+    syncAll();
+  });
+
   /* ---- Attach events ---- */
   if (drawingMode === "trendline") {
     chart.subscribeClick(handleDrawClick);
@@ -779,11 +826,12 @@ export function attachTrendLineTool(opts: {
   return () => {
     cancelAnimationFrame(rafId);
     cancelAnimationFrame(dragRaf);
+    unregisterDeselect();
     try { chart.unsubscribeClick(handleDrawClick); } catch { }
     container.removeEventListener("mousemove", handleMouseMove);
     container.removeEventListener("pointerdown", handleBackgroundClick);
     document.removeEventListener("keydown", handleKeyDown);
-    svg.remove();
+    overlay.remove();
     removeToolbar();
     if (ghostLine) ghostLine.remove();
   };

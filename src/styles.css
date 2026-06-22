@@ -225,17 +225,6 @@ main {
   pointer-events: stroke;
 }
 
-.trend-handle {
-  cursor: grab;
-  pointer-events: fill;
-  stroke: #ffffff33;
-  stroke-width: 2;
-}
-
-.trend-handle:active {
-  cursor: grabbing;
-}
-
 .trend-ghost-line {
   stroke: #ff4976;
   stroke-width: 2;
@@ -1446,6 +1435,21 @@ aside {
   cursor: crosshair;
 }
 
+/* DrawingManager owns interaction priority for every existing drawing. */
+.chart[data-drawing-active="true"] :is(
+  .rect-hit-el,
+  .rect-handle-el,
+  .rect-label-el,
+  .trend-hit-area,
+  .trend-label
+) {
+  pointer-events: none !important;
+}
+
+.chart .drawing-overlay--selected {
+  z-index: 8 !important;
+}
+
 .rect-toolbar {
   position: absolute;
   z-index: 10;
@@ -1669,6 +1673,27 @@ aside {
   color: #2962ff;
 }
 
+/* Shared DrawingToolbar wins over legacy trend-toolbar button sizing. */
+.trend-toolbar.drawing-toolbar .rect-tb-color-btn {
+  width: 30px;
+  height: 32px;
+  padding: 3px 2px;
+  overflow: visible;
+}
+
+.trend-toolbar.drawing-toolbar .rect-tb-width-btn {
+  width: auto;
+  height: 28px;
+  padding: 0 6px;
+}
+
+.trend-toolbar.drawing-toolbar .rect-tb-style-btn,
+.trend-toolbar.drawing-toolbar .rect-tb-icon-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
 .rect-tb-del:hover {
   color: #f23645 !important;
 }
@@ -1720,6 +1745,17 @@ aside {
   align-items: center;
   gap: 6px;
   margin-bottom: 10px;
+}
+
+.rect-palette-custom-color {
+  width: 100%;
+  height: 28px;
+  margin-bottom: 10px;
+  padding: 2px;
+  border: 1px solid #363a45;
+  border-radius: 4px;
+  background: #131722;
+  cursor: pointer;
 }
 
 .rect-palette-add {

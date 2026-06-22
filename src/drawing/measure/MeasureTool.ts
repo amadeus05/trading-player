@@ -2,7 +2,10 @@
  * MeasureTool – TradingView-style ruler overlay.
  */
 
-import type { Candle } from "./types";
+import type { Candle } from "../../types";
+import { timeToLogical, timeToX, xToTime } from "../shared/coordinates";
+import { createDrawingOverlay } from "../shared/overlay";
+import type { ManagedDrawingToolOptions } from "../shared/types";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const TV_BLUE = "#2962FF";
@@ -11,46 +14,6 @@ const TV_RED = "#F23645";
 function clampPrecision(precision: number): number {
   if (!Number.isFinite(precision)) return 2;
   return Math.max(0, Math.min(10, Math.round(precision)));
-}
-
-function timeToLogical(time: number, candles: { time: number }[]): number | null {
-  if (!candles.length) return null;
-  let low = 0, high = candles.length - 1;
-  while (low <= high) {
-    const mid = (low + high) >> 1;
-    if (candles[mid].time === time) return mid;
-    if (candles[mid].time < time) low = mid + 1;
-    else high = mid - 1;
-  }
-  if (high < 0) {
-    const tf = candles.length > 1 ? candles[1].time - candles[0].time : 60;
-    return (time - candles[0].time) / tf;
-  }
-  if (low >= candles.length) {
-    const tf = candles.length > 1 ? candles[candles.length - 1].time - candles[candles.length - 2].time : 60;
-    return candles.length - 1 + (time - candles[candles.length - 1].time) / tf;
-  }
-  const tf = candles[low].time - candles[high].time;
-  const fraction = (time - candles[high].time) / tf;
-  return high + fraction;
-}
-
-function pxToTime(chart: any, x: number, candles: { time: number }[]): number | null {
-  const logical = chart.timeScale().coordinateToLogical(x);
-  if (logical == null) return null;
-  if (!candles.length) return null;
-  if (logical < 0) {
-    const tf = candles.length > 1 ? candles[1].time - candles[0].time : 60;
-    return candles[0].time + logical * tf;
-  }
-  if (logical >= candles.length - 1) {
-    const tf = candles.length > 1 ? candles[candles.length - 1].time - candles[candles.length - 2].time : 60;
-    return candles[candles.length - 1].time + (logical - (candles.length - 1)) * tf;
-  }
-  const idx = Math.floor(logical as number);
-  const frac = (logical as number) - idx;
-  const tf = candles[idx + 1].time - candles[idx].time;
-  return candles[idx].time + frac * tf;
 }
 
 function pxToPrice(series: any, y: number): number | null {
@@ -125,7 +88,7 @@ function makeAxisLabel(className: string): HTMLDivElement {
   return el;
 }
 
-export function attachMeasureTool(opts: {
+export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
   container: HTMLDivElement;
   chart: any;
   series: any;
@@ -152,9 +115,9 @@ export function attachMeasureTool(opts: {
     return low;
   };
 
-  const svg = document.createElementNS(SVG_NS, "svg");
-  svg.classList.add("measure-overlay");
-  container.appendChild(svg);
+  const overlay = createDrawingOverlay(container, chart, "measure-overlay");
+  const { svg } = overlay;
+  const drawingGroup = overlay.createClippedGroup();
 
   const defs = document.createElementNS(SVG_NS, "defs");
   const arrowMarker = document.createElementNS(SVG_NS, "marker");
@@ -196,7 +159,7 @@ export function attachMeasureTool(opts: {
   const rect = document.createElementNS(SVG_NS, "rect");
   rect.setAttribute("class", "measure-rect");
   rect.style.visibility = "hidden";
-  svg.appendChild(rect);
+  drawingGroup.appendChild(rect);
 
   const crossH = makeLine("measure-cross");
   const crossV = makeLine("measure-cross");
@@ -204,18 +167,16 @@ export function attachMeasureTool(opts: {
   crossH.setAttribute("marker-end", "url(#measure-arrow)");
   crossV.setAttribute("marker-start", "url(#measure-arrow)");
   crossV.setAttribute("marker-end", "url(#measure-arrow)");
-  svg.append(crossH, crossV);
+  drawingGroup.append(crossH, crossV);
 
   const guideTop = makeLine("measure-guide");
   const guideBottom = makeLine("measure-guide");
   const guideLeft = makeLine("measure-guide");
   const guideRight = makeLine("measure-guide");
-  svg.append(guideTop, guideBottom, guideLeft, guideRight);
+  drawingGroup.append(guideTop, guideBottom, guideLeft, guideRight);
 
   function toPixel(pt: { time: number; price: number }): { x: number; y: number } | null {
-    const logical = timeToLogical(pt.time, candles);
-    if (logical == null) return null;
-    const x = chart.timeScale().logicalToCoordinate(logical);
+    const x = timeToX(chart, pt.time, candles);
     const y = series.priceToCoordinate(pt.price);
     if (x == null || y == null) return null;
     return { x, y };
@@ -428,7 +389,7 @@ export function attachMeasureTool(opts: {
     const sourceEvent = event.sourceEvent as PointerEvent | undefined;
     const x = sourceEvent ? sourceEvent.clientX - bounds.left : null;
     const y = sourceEvent ? sourceEvent.clientY - bounds.top : null;
-    const time = x != null ? pxToTime(chart, x, candles) : (event.time as number | undefined);
+    const time = x != null ? xToTime(chart, x, candles) : (event.time as number | undefined);
     const price = y != null ? pxToPrice(series, y) : null;
     if (time == null || price == null || price <= 0) return;
 
@@ -449,7 +410,7 @@ export function attachMeasureTool(opts: {
     const x = event.clientX - bounds.left;
     const y = event.clientY - bounds.top;
     const p1px = toPixel(point1) || point1.px;
-    const time2 = pxToTime(chart, x, candles);
+    const time2 = xToTime(chart, x, candles);
     const price2 = pxToPrice(series, y);
     if (time2 == null || price2 == null || price2 <= 0) return;
     drawMeasurement(point1, { time: time2, price: price2 }, p1px, { x, y });
@@ -457,6 +418,7 @@ export function attachMeasureTool(opts: {
 
   let rafId = 0;
   function syncLoop() {
+    overlay.sync();
     if (point1) {
       const p1px = toPixel(point1);
       if (p1px) {
@@ -509,7 +471,7 @@ export function attachMeasureTool(opts: {
     container.removeEventListener("pointerdown", handleDismissClick);
     document.removeEventListener("keydown", handleKeyDown);
     hideAll();
-    svg.remove();
+    overlay.remove();
     tooltip.remove();
     axisLayer.remove();
   }

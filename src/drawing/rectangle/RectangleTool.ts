@@ -2,17 +2,17 @@
  * RectangleTool – рисует, выделяет и редактирует прямоугольники на оверлее графика.
  */
 
-import type { Rectangle } from "./types";
+import type { Rectangle } from "../../types";
+import { timeToX, xToTime } from "../shared/coordinates";
+import { createDrawingOverlay } from "../shared/overlay";
+import { forgetFloatingPanelPosition, mountFloatingPanel } from "../shared/floatingPanel";
+import { mountAnchoredPopup } from "../shared/popup";
+import type { DrawingCrudCallbacks, ManagedDrawingToolOptions } from "../shared/types";
+import { createDrawingToolbar } from "../shared/DrawingToolbar";
 
-export interface RectangleCallbacks {
-  onCreate: (rect: Rectangle) => void;
-  onUpdate: (rect: Rectangle) => void;
-  onDelete: (id: string) => void;
-  onDrawingComplete: () => void;
-}
+export type RectangleCallbacks = DrawingCrudCallbacks<Rectangle>;
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-const RECT_TOOLBAR_POSITIONS = new Map<string, { left: number; top: number }>();
 
 type HandlePos = "tl" | "tc" | "tr" | "ml" | "mr" | "bl" | "bc" | "br";
 const HANDLE_POSITIONS: HandlePos[] = ["tl", "tc", "tr", "ml", "mr", "bl", "bc", "br"];
@@ -101,54 +101,11 @@ function hexToRgba(hex: string, opacity: number): string {
   return `rgba(${r},${g},${b},${opacity / 100})`;
 }
 
-function timeToLogical(time: number, candles: { time: number }[]): number | null {
-  if (!candles.length) return null;
-  let low = 0, high = candles.length - 1;
-  while (low <= high) {
-    const mid = (low + high) >> 1;
-    if (candles[mid].time === time) return mid;
-    if (candles[mid].time < time) low = mid + 1;
-    else high = mid - 1;
-  }
-  if (high < 0) {
-    const tf = candles.length > 1 ? candles[1].time - candles[0].time : 60;
-    return (time - candles[0].time) / tf;
-  }
-  if (low >= candles.length) {
-    const tf = candles.length > 1 ? candles[candles.length - 1].time - candles[candles.length - 2].time : 60;
-    return candles.length - 1 + (time - candles[candles.length - 1].time) / (tf || 60);
-  }
-  const tf = candles[low].time - candles[high].time;
-  return high + (time - candles[high].time) / tf;
-}
-
-function timeToPx(chart: any, time: number, candles: { time: number }[]): number | null {
-  const logical = timeToLogical(time, candles);
-  if (logical == null) return null;
-  return chart.timeScale().logicalToCoordinate(logical);
-}
-
-function pxToTime(chart: any, x: number, candles: { time: number }[]): number | null {
-  const logical = chart.timeScale().coordinateToLogical(x);
-  if (logical == null || !candles.length) return null;
-  if (logical < 0) {
-    const tf = candles.length > 1 ? candles[1].time - candles[0].time : 60;
-    return candles[0].time + logical * tf;
-  }
-  if (logical >= candles.length - 1) {
-    const tf = candles.length > 1 ? candles[candles.length - 1].time - candles[candles.length - 2].time : 60;
-    return candles[candles.length - 1].time + (logical - (candles.length - 1)) * tf;
-  }
-  const idx = Math.floor(logical);
-  const frac = logical - idx;
-  return candles[idx].time + frac * (candles[idx + 1].time - candles[idx].time);
-}
-
 interface PixelBounds { x: number; y: number; w: number; h: number; }
 
 function getBounds(rect: Rectangle, chart: any, series: any, candles: { time: number }[]): PixelBounds | null {
-  const xL = timeToPx(chart, rect.timeLeft, candles);
-  const xR = timeToPx(chart, rect.timeRight, candles);
+  const xL = timeToX(chart, rect.timeLeft, candles);
+  const xR = timeToX(chart, rect.timeRight, candles);
   const yT = series.priceToCoordinate(rect.priceTop);
   const yB = series.priceToCoordinate(rect.priceBottom);
   if (xL == null || xR == null || yT == null || yB == null) return null;
@@ -184,7 +141,7 @@ function calcResizedBounds(orig: PixelBounds, pos: HandlePos, mx: number, my: nu
   }
 }
 
-export function attachRectangleTool(opts: {
+export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
   container: HTMLDivElement;
   chart: any;
   series: any;
@@ -194,7 +151,7 @@ export function attachRectangleTool(opts: {
   datasetId: string;
   callbacks: RectangleCallbacks;
 }): () => void {
-  const { container, chart, series, candles, drawingMode, datasetId, callbacks } = opts;
+  const { container, chart, series, candles, drawingMode, datasetId, callbacks, manager } = opts;
   let rectangles = [...opts.rectangles];
 
   const getPlotWidth = () => Math.max(0, Number(chart.timeScale().width()) || 0);
@@ -204,26 +161,15 @@ export function attachRectangleTool(opts: {
     const right = Math.max(left, Math.min(bounds.x + bounds.w, plotWidth));
     return { ...bounds, x: left, w: right - left };
   };
-  const svg = document.createElementNS(SVG_NS, "svg");
-  svg.classList.add("rect-overlay");
-  const clipId = `rect-plot-clip-${crypto.randomUUID()}`;
-  const defs = document.createElementNS(SVG_NS, "defs");
-  const clipPath = document.createElementNS(SVG_NS, "clipPath");
-  const clipRect = document.createElementNS(SVG_NS, "rect");
-  clipPath.id = clipId;
-  clipRect.setAttribute("x", "0");
-  clipRect.setAttribute("y", "0");
-  clipRect.setAttribute("width", String(getPlotWidth()));
-  clipRect.setAttribute("height", String(container.getBoundingClientRect().height));
-  clipPath.appendChild(clipRect);
-  defs.appendChild(clipPath);
-  svg.appendChild(defs);
-  container.appendChild(svg);
+  const overlay = createDrawingOverlay(container, chart, "rect-overlay");
+  const { svg } = overlay;
 
   let selectedId: string | null = null;
   let toolbar: HTMLDivElement | null = null;
+  let cleanupToolbarDrag: (() => void) | null = null;
   let toolbarRectId: string | null = null;
   let paletteEl: HTMLDivElement | null = null;
+  let cleanupPopup: (() => void) | null = null;
   let paletteTarget: PaletteTarget | null = null;
   let textEditor: HTMLInputElement | null = null;
   let dragActive = false;
@@ -244,6 +190,8 @@ export function attachRectangleTool(opts: {
   const elMap = new Map<string, RectEls>();
 
   function closePalette() {
+    cleanupPopup?.();
+    cleanupPopup = null;
     paletteEl?.remove();
     paletteEl = null;
     paletteTarget = null;
@@ -302,7 +250,7 @@ export function attachRectangleTool(opts: {
         : rectTextColor(rect);
     const currentOpacity = target === "fill" ? rect.fillOpacity : 100;
 
-    const div = document.createElement("div");
+    let div = document.createElement("div");
     div.className = "rect-palette";
 
     const grid = document.createElement("div");
@@ -397,26 +345,11 @@ export function attachRectangleTool(opts: {
       div.appendChild(opRow);
     }
 
-    const ab = anchor.getBoundingClientRect();
-    const cb = container.getBoundingClientRect();
-    let left = ab.left - cb.left;
-    const paletteWidth = 210;
-    if (left + paletteWidth > cb.width - 4) left = cb.width - paletteWidth - 4;
-    if (left < 4) left = 4;
-    div.style.left = `${left}px`;
-    div.style.top = `${ab.bottom - cb.top + 6}px`;
-
-    div.addEventListener("pointerdown", (e) => e.stopPropagation());
-    container.appendChild(div);
     paletteEl = div;
-
-    const outside = (e: PointerEvent) => {
-      if (!div.contains(e.target as Node)) {
-        closePalette();
-        document.removeEventListener("pointerdown", outside);
-      }
-    };
-    setTimeout(() => document.addEventListener("pointerdown", outside), 0);
+    cleanupPopup = mountAnchoredPopup({
+      container, anchor, popup: div, width: 210,
+      onDismiss: () => { cleanupPopup = null; paletteEl = null; paletteTarget = null; },
+    });
   }
 
   function openLineMenu(target: "width" | "style", rect: Rectangle, anchor: Element) {
@@ -451,29 +384,19 @@ export function attachRectangleTool(opts: {
       div.appendChild(button);
     });
 
-    const ab = anchor.getBoundingClientRect();
-    const cb = container.getBoundingClientRect();
     const menuWidth = target === "width" ? 104 : 168;
-    let left = ab.left - cb.left;
-    if (left + menuWidth > cb.width - 4) left = cb.width - menuWidth - 4;
-    div.style.left = `${Math.max(4, left)}px`;
-    div.style.top = `${ab.bottom - cb.top + 2}px`;
-    div.addEventListener("pointerdown", (e) => e.stopPropagation());
-    container.appendChild(div);
     paletteEl = div;
-
-    const outside = (e: PointerEvent) => {
-      if (!div.contains(e.target as Node) && !anchor.contains(e.target as Node)) {
-        closePalette();
-        document.removeEventListener("pointerdown", outside);
-      }
-    };
-    setTimeout(() => document.addEventListener("pointerdown", outside), 0);
+    cleanupPopup = mountAnchoredPopup({
+      container, anchor, popup: div, width: menuWidth, gap: 2,
+      onDismiss: () => { cleanupPopup = null; paletteEl = null; paletteTarget = null; },
+    });
   }
 
   function removeToolbar() {
     closePalette();
     closeTextEditor();
+    cleanupToolbarDrag?.();
+    cleanupToolbarDrag = null;
     toolbar?.remove();
     toolbar = null;
     toolbarRectId = null;
@@ -512,7 +435,7 @@ export function attachRectangleTool(opts: {
     removeToolbar();
     toolbarRectId = rect.id;
 
-    const div = document.createElement("div");
+    let div = document.createElement("div");
     div.className = "rect-toolbar";
     div.innerHTML = `<div class="rect-toolbar-row">
       <div class="rect-tb-grip">
@@ -549,47 +472,27 @@ export function attachRectangleTool(opts: {
       </button>
     </div>`;
 
+    div = createDrawingToolbar({
+      lineColor: rect.borderColor,
+      fillColor: rect.fillColor,
+      fillOpacity: rect.fillOpacity,
+      textColor: rectTextColor(rect),
+      width: rect.borderWidth,
+      style: rect.borderStyle,
+      locked: rect.locked,
+      showFill: true,
+      showText: true,
+      showLock: true,
+    });
     container.appendChild(div);
     toolbar = div;
-    const savedPosition = RECT_TOOLBAR_POSITIONS.get(rect.id);
-    if (savedPosition) {
-      const containerBounds = container.getBoundingClientRect();
-      const maxLeft = Math.max(12, containerBounds.width - div.offsetWidth - 12);
-      const maxTop = Math.max(12, containerBounds.height - div.offsetHeight - 12);
-      div.style.left = `${Math.max(12, Math.min(savedPosition.left, maxLeft))}px`;
-      div.style.top = `${Math.max(12, Math.min(savedPosition.top, maxTop))}px`;
-    } else {
-      positionToolbar(rect);
-    }
-
     const grip = div.querySelector<HTMLElement>(".rect-tb-grip");
-    grip?.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      closePalette();
-      const containerBounds = container.getBoundingClientRect();
-      const toolbarBounds = div.getBoundingClientRect();
-      const startX = e.clientX;
-      const startY = e.clientY;
-      const startLeft = toolbarBounds.left - containerBounds.left;
-      const startTop = toolbarBounds.top - containerBounds.top;
-      try { grip.setPointerCapture(e.pointerId); } catch { }
-      const onMove = (moveEvent: PointerEvent) => {
-        const maxLeft = Math.max(4, containerBounds.width - div.offsetWidth - 4);
-        const maxTop = Math.max(4, containerBounds.height - div.offsetHeight - 4);
-        const left = Math.max(4, Math.min(startLeft + moveEvent.clientX - startX, maxLeft));
-        const top = Math.max(4, Math.min(startTop + moveEvent.clientY - startY, maxTop));
-        div.style.left = `${left}px`;
-        div.style.top = `${top}px`;
-        RECT_TOOLBAR_POSITIONS.set(rect.id, { left, top });
-      };
-      const onUp = (upEvent: PointerEvent) => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        try { grip.releasePointerCapture(upEvent.pointerId); } catch { }
-      };
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
+    if (grip) cleanupToolbarDrag = mountFloatingPanel({
+      container,
+      panel: div,
+      grip,
+      persistenceKey: `rectangle:${rect.id}`,
+      onDragStart: closePalette,
     });
 
     div.querySelector(".rect-tb-border-btn")!.addEventListener("click", (e) => {
@@ -650,19 +553,9 @@ export function attachRectangleTool(opts: {
     div.addEventListener("pointerdown", (e) => e.stopPropagation());
   }
 
-  function positionToolbar(rect: Rectangle) {
-    if (!toolbar || toolbarRectId !== rect.id) return;
-    const inset = 12;
-    const containerWidth = container.getBoundingClientRect().width;
-    const toolbarWidth = toolbar.offsetWidth;
-    toolbar.style.left = `${Math.max(inset, containerWidth - toolbarWidth - inset)}px`;
-    toolbar.style.top = `${inset}px`;
-  }
-
   function buildEls(rect: Rectangle): RectEls {
-    const group = document.createElementNS(SVG_NS, "g");
+    const group = overlay.createClippedGroup();
     group.dataset.rectId = rect.id;
-    group.setAttribute("clip-path", `url(#${clipId})`);
 
     const fill = document.createElementNS(SVG_NS, "rect");
     fill.setAttribute("pointer-events", "none");
@@ -693,10 +586,9 @@ export function attachRectangleTool(opts: {
     });
 
     group.append(fill, border, hit, text, ...handles);
-    svg.appendChild(group);
 
     hit.addEventListener("pointerdown", (e) => {
-      if (drawingMode !== "none") return;
+      if (!manager.canEditExistingDrawings()) return;
       e.stopPropagation(); e.preventDefault();
       const r = rectangles.find((item) => item.id === rect.id);
       if (!r || r.locked) return;
@@ -709,28 +601,22 @@ export function attachRectangleTool(opts: {
       if (current) openTextEditor(current);
     });
     text.addEventListener("pointerdown", (e) => {
-      if (drawingMode !== "none") return;
+      if (!manager.canEditExistingDrawings()) return;
       e.stopPropagation();
     });
     text.addEventListener("pointerup", (e) => {
-      if (drawingMode !== "none") return;
+      if (!manager.canEditExistingDrawings()) return;
       e.stopPropagation();
       e.preventDefault();
       const current = rectangles.find((item) => item.id === rect.id);
       if (!current) return;
-      if (selectedId !== rect.id) {
-        selectedId = rect.id;
-        createToolbar(current);
-        const currentElements = elMap.get(rect.id);
-        const currentBounds = getBounds(current, chart, series, candles);
-        if (currentElements && currentBounds) applyPixelBounds(currentElements, currentBounds, current, true);
-      }
+      if (selectedId !== rect.id) selectRect(rect.id);
       openTextEditor(current);
     });
 
     handles.forEach((h, i) => {
       h.addEventListener("pointerdown", (e) => {
-        if (drawingMode !== "none") return;
+        if (!manager.canEditExistingDrawings()) return;
         e.stopPropagation(); e.preventDefault();
         const r = rectangles.find((item) => item.id === rect.id);
         if (!r || r.locked) return;
@@ -744,21 +630,31 @@ export function attachRectangleTool(opts: {
 
   function deleteRect(id: string) {
     rectangles = rectangles.filter((r) => r.id !== id);
-    RECT_TOOLBAR_POSITIONS.delete(id);
+    forgetFloatingPanelPosition(`rectangle:${id}`);
     const els = elMap.get(id);
     if (els) { els.group.remove(); elMap.delete(id); }
-    if (selectedId === id) { selectedId = null; removeToolbar(); }
+    if (selectedId === id) {
+      selectedId = null;
+      removeToolbar();
+      manager.clearSelection("rectangle");
+    }
     callbacks.onDelete(id);
   }
 
   function selectRect(id: string | null) {
-    selectedId = id;
-    if (id) {
-      const r = rectangles.find((item) => item.id === id);
-      if (r) createToolbar(r);
-    } else {
-      removeToolbar();
+    if (!id) {
+      if (selectedId !== null) {
+        selectedId = null;
+        removeToolbar();
+        syncAll();
+      }
+      manager.clearSelection("rectangle");
+      return;
     }
+    selectedId = id;
+    const r = rectangles.find((item) => item.id === id);
+    if (r) createToolbar(r);
+    manager.activateSelection("rectangle", elMap.get(id)?.group ?? null);
     syncAll();
   }
 
@@ -819,8 +715,7 @@ export function attachRectangleTool(opts: {
   }
 
   function syncAll() {
-    clipRect.setAttribute("width", String(getPlotWidth()));
-    clipRect.setAttribute("height", String(container.getBoundingClientRect().height));
+    overlay.sync();
     rectangles.forEach(syncOne);
   }
 
@@ -858,8 +753,8 @@ export function attachRectangleTool(opts: {
         const dx = (latestEv.clientX - cb.left) - sx;
         const dy = (latestEv.clientY - cb.top) - sy;
         const nb = { x: origB.x + dx, y: origB.y + dy, w: origB.w, h: origB.h };
-        const tL = pxToTime(chart, nb.x, candles);
-        const tR = pxToTime(chart, nb.x + nb.w, candles);
+        const tL = xToTime(chart, nb.x, candles);
+        const tR = xToTime(chart, nb.x + nb.w, candles);
         const pT = series.coordinateToPrice(nb.y);
         const pB = series.coordinateToPrice(nb.y + nb.h);
         const r = rectangles.find((item) => item.id === id);
@@ -906,8 +801,8 @@ export function attachRectangleTool(opts: {
         const nb = calcResizedBounds(origB, pos, mx, my);
         const r = rectangles.find((item) => item.id === id);
         if (r) {
-          const tL = pxToTime(chart, nb.x, candles);
-          const tR = pxToTime(chart, nb.x + nb.w, candles);
+          const tL = xToTime(chart, nb.x, candles);
+          const tR = xToTime(chart, nb.x + nb.w, candles);
           const pT = series.coordinateToPrice(nb.y);
           const pB = series.coordinateToPrice(nb.y + nb.h);
           if (tL != null && tR != null && pT != null && pB != null) {
@@ -963,8 +858,8 @@ export function attachRectangleTool(opts: {
       if (Math.abs(ex - drawStart.x) > 5 && Math.abs(ey - drawStart.y) > 5) {
         const xMin = Math.min(ex, drawStart.x), xMax = Math.max(ex, drawStart.x);
         const yMin = Math.min(ey, drawStart.y), yMax = Math.max(ey, drawStart.y);
-        const tL = pxToTime(chart, xMin, candles);
-        const tR = pxToTime(chart, xMax, candles);
+        const tL = xToTime(chart, xMin, candles);
+        const tR = xToTime(chart, xMax, candles);
         const pT = series.coordinateToPrice(yMin);
         const pB = series.coordinateToPrice(yMax);
 
@@ -1028,6 +923,13 @@ export function attachRectangleTool(opts: {
   };
   document.addEventListener("keydown", onKey);
 
+  const unregisterDeselect = manager.registerDeselect("rectangle", () => {
+    if (selectedId === null) return;
+    selectedId = null;
+    removeToolbar();
+    syncAll();
+  });
+
   let rafId = 0;
   const loop = () => {
     if (!dragActive) syncAll();
@@ -1038,10 +940,11 @@ export function attachRectangleTool(opts: {
   return () => {
     cancelAnimationFrame(rafId);
     cancelAnimationFrame(dragRaf);
+    unregisterDeselect();
     container.removeEventListener("pointerdown", onBgPointerDown);
     document.removeEventListener("keydown", onKey);
     drawOverlay?.remove();
-    svg.remove();
+    overlay.remove();
     removeToolbar();
     ghostRect?.remove();
   };

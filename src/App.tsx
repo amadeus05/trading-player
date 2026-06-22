@@ -57,9 +57,8 @@ import {
 import type { Barrier, Candle, Persisted, Rectangle, SimulationSettings, Trade, TrendLine } from "./types";
 import { HistoryManager } from "./HistoryManager";
 import { IntrabarExitResolver } from "./simulation/IntrabarExitResolver";
-import { attachTrendLineTool, type DrawingMode } from "./TrendLineTool";
-import { attachMeasureTool } from "./MeasureTool";
-import { attachRectangleTool, type RectangleCallbacks } from "./RectangleTool";
+import { attachMeasureTool, attachRectangleTool, attachTrendLineTool, DrawingManager, type DrawingMode, type RectangleCallbacks } from "./drawing";
+import { logicalToTime } from "./drawing/shared/coordinates";
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 const dt = (t: number) =>
@@ -128,7 +127,7 @@ function aggregate(xs: Candle[], min: number) {
       q.volume += c.volume;
     }
   });
-  return [...m.values()];
+  return [...m.values()].sort((a, b) => a.time - b.time);
 }
 function Chart({
   candles,
@@ -187,6 +186,7 @@ function Chart({
   const selectedTrendLineId = useRef<string | null>(null);
   const savedLogicalRange = useRef<any>(null);
   const savedTimeRange = useRef<{ from: number; to: number } | null>(null);
+  const savedCandleInterval = useRef<number | null>(null);
   const renderedIndex = useRef<number | null>(null);
   const followRealtime = useRef(true);
   const savedPriceRange = useRef<{ from: number; to: number } | null>(null);
@@ -198,6 +198,10 @@ function Chart({
     if (!ref.current || !candles.length) return;
     const safeIndex = Math.max(0, Math.min(index, candles.length - 1));
     const visible = candles.slice(0, safeIndex + 1);
+    const candleInterval = candles.length > 1 ? candles[1].time - candles[0].time : null;
+    const timeframeChanged = savedCandleInterval.current != null
+      && candleInterval != null
+      && savedCandleInterval.current !== candleInterval;
     const forceFocus = appliedFocusRevision.current !== focusRevision;
     if (forceFocus) {
       manualPriceScale.current = false;
@@ -217,6 +221,8 @@ function Chart({
       rightPriceScale: { borderColor: "#232632" },
       timeScale: { borderColor: "#232632", timeVisible: true },
     });
+    const drawingManager = new DrawingManager(ref.current);
+    drawingManager.setMode(drawingMode);
     const cs = chart.addSeries(CandlestickSeries, {
       upColor: "#2bd9a8",
       downColor: "#ff5c73",
@@ -419,7 +425,17 @@ function Chart({
     };
     if (selectingStart) chart.subscribeClick(selectStart);
     const replayMoved = renderedIndex.current !== null && renderedIndex.current !== index;
-    if (forceFocus) {
+    let deferredTimeRangeFrame = 0;
+    if (timeframeChanged) {
+      // Keep a stable bar density across timeframes. The replay candle stays
+      // near the right side while sparse higher timeframes receive whitespace
+      // instead of stretching a handful of candles across the whole chart.
+      const nextRange = { from: safeIndex - 80, to: safeIndex + 20 };
+      chart.timeScale().setVisibleLogicalRange(nextRange);
+      deferredTimeRangeFrame = requestAnimationFrame(() => {
+        chart.timeScale().setVisibleLogicalRange(nextRange);
+      });
+    } else if (forceFocus) {
       const timeSpan = savedTimeRange.current
         ? Math.max(60, savedTimeRange.current.to - savedTimeRange.current.from)
         : Math.max(60, visible[Math.max(0, safeIndex - 100)]
@@ -472,6 +488,7 @@ function Chart({
     ref.current.addEventListener("dblclick", resetManualScale);
     ref.current.addEventListener("wheel", zoomPriceScale, { capture: true, passive: false });
     const cleanupTrendLines = attachTrendLineTool({
+      manager: drawingManager,
       container: ref.current!,
       chart,
       series: cs,
@@ -489,6 +506,7 @@ function Chart({
       },
     });
     const cleanupMeasure = attachMeasureTool({
+      manager: drawingManager,
       container: ref.current!,
       chart,
       series: cs,
@@ -498,6 +516,7 @@ function Chart({
       onComplete: () => callbacksRef.current.onDrawingComplete(),
     });
     const cleanupRectangles = attachRectangleTool({
+      manager: drawingManager,
       container: ref.current!,
       chart,
       series: cs,
@@ -516,8 +535,12 @@ function Chart({
       chartAlive = false;
       const range = chart.timeScale().getVisibleLogicalRange();
       savedLogicalRange.current = range;
-      const timeRange = chart.timeScale().getVisibleRange();
-      if (timeRange) savedTimeRange.current = { from: Number(timeRange.from), to: Number(timeRange.to) };
+      if (range) {
+        const from = logicalToTime(range.from, visible);
+        const to = logicalToTime(range.to, visible);
+        if (from != null && to != null) savedTimeRange.current = { from, to };
+      }
+      savedCandleInterval.current = candleInterval;
       if (range) followRealtime.current = Math.abs(range.to - (visible.length - 1)) < 0.75;
       if (manualPriceScale.current) savedPriceRange.current = cs.priceScale().getVisibleRange();
       ref.current?.removeEventListener("pointerdown", markManualScale);
@@ -527,10 +550,12 @@ function Chart({
       overlay.remove();
       removablePriceLines.forEach((line) => { try { cs.removePriceLine(line); } catch { } });
       cancelAnimationFrame(handleAnimationFrame);
+      cancelAnimationFrame(deferredTimeRangeFrame);
       if (selectingStart) chart.unsubscribeClick(selectStart);
       cleanupTrendLines();
       cleanupMeasure();
       cleanupRectangles();
+      drawingManager.destroy();
       chart.remove();
     };
   }, [candles, index, barriers, trades, selectingStart, focusRevision, pricePrecision, entryMarker, showClosedTradeOverlays, markersEditable, drawingMode, datasetId]);
