@@ -25,20 +25,22 @@ export interface DrawingToolbarOptions {
   locked?: boolean;
   showFill?: boolean;
   showText?: boolean;
+  showColor?: boolean;
   showLock?: boolean;
 }
 
 export function createDrawingToolbar(options: DrawingToolbarOptions): HTMLDivElement {
   const div = document.createElement("div");
   div.className = `rect-toolbar drawing-toolbar ${options.className ?? ""}`.trim();
+  const showColor = options.showColor !== false;
+  const color = showColor ? `<button type="button" class="rect-tb-color-btn rect-tb-border-btn trend-toolbar-color" title="Цвет линии"><span class="rect-tb-color-icon">${PENCIL}</span><span class="rect-tb-color-bar" style="background:${options.lineColor}"></span></button>` : "";
   const fill = options.showFill ? `<button type="button" class="rect-tb-color-btn rect-tb-fill-btn" title="Цвет заливки"><span class="rect-tb-color-icon">${BUCKET}</span><span class="rect-tb-color-bar" style="background:${options.fillColor};opacity:${(options.fillOpacity ?? 100) / 100}"></span></button>` : "";
   const text = options.showText ? `<button type="button" class="rect-tb-color-btn rect-tb-text-btn trend-toolbar-text" title="Текст"><span class="rect-tb-color-icon rect-tb-text-letter">T</span><span class="rect-tb-color-bar" style="background:${options.textColor ?? options.lineColor}"></span></button>` : "";
   const lock = options.showLock ? `<div class="rect-toolbar-sep"></div><button type="button" class="rect-tb-lock rect-tb-icon-btn" title="${options.locked ? "Разблокировать" : "Заблокировать"}"${options.locked ? ` data-active="1"` : ""}>${lockIcon(Boolean(options.locked))}</button>` : "";
+  const afterGrip = showColor || options.showFill || options.showText ? `<div class="rect-toolbar-sep"></div>` : "";
   div.innerHTML = `<div class="rect-toolbar-row">
     <div class="rect-tb-grip" title="Переместить панель"><svg width="8" height="14" viewBox="0 0 8 14" fill="currentColor"><circle cx="2" cy="2" r="1.5"/><circle cx="6" cy="2" r="1.5"/><circle cx="2" cy="7" r="1.5"/><circle cx="6" cy="7" r="1.5"/><circle cx="2" cy="12" r="1.5"/><circle cx="6" cy="12" r="1.5"/></svg></div>
-    <div class="rect-toolbar-sep"></div>
-    <button type="button" class="rect-tb-color-btn rect-tb-border-btn trend-toolbar-color" title="Цвет линии"><span class="rect-tb-color-icon">${PENCIL}</span><span class="rect-tb-color-bar" style="background:${options.lineColor}"></span></button>
-    ${fill}${text}
+    ${afterGrip}${color}${fill}${text}
     <div class="rect-toolbar-sep"></div>
     <button type="button" class="rect-tb-width-btn">${LINE}<span class="rect-tb-width-label">${options.width}px</span></button>
     <button type="button" class="rect-tb-style-btn">${drawingStyleIcon(options.style)}</button>

@@ -1,4 +1,4 @@
-export type DrawingMode = "none" | "trendline" | "measure" | "rectangle";
+export type DrawingMode = "none" | "trendline" | "measure" | "rectangle" | "fibonacci";
 
 export interface DrawingCrudCallbacks<T extends { id: string }> {
   onCreate: (drawing: T) => void;

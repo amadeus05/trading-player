@@ -54,10 +54,10 @@ import {
   Upload as UploadIcon,
   X,
 } from "lucide-react";
-import type { Barrier, Candle, Persisted, Rectangle, SimulationSettings, Trade, TrendLine } from "./types";
+import type { Barrier, Candle, FibonacciRetracement, Persisted, Rectangle, SimulationSettings, Trade, TrendLine } from "./types";
 import { HistoryManager } from "./HistoryManager";
 import { IntrabarExitResolver } from "./simulation/IntrabarExitResolver";
-import { attachMeasureTool, attachRectangleTool, attachTrendLineTool, DrawingManager, type DrawingMode, type RectangleCallbacks } from "./drawing";
+import { attachFibonacciTool, attachMeasureTool, attachRectangleTool, attachTrendLineTool, DrawingManager, type DrawingMode, type FibonacciCallbacks, type RectangleCallbacks } from "./drawing";
 import { logicalToTime } from "./drawing/shared/coordinates";
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -154,6 +154,10 @@ function Chart({
   onRectangleCreate,
   onRectangleUpdate,
   onRectangleDelete,
+  fibonacciRetracements,
+  onFibonacciCreate,
+  onFibonacciUpdate,
+  onFibonacciDelete,
   onDrawingComplete,
 }: {
   candles: Candle[];
@@ -180,6 +184,10 @@ function Chart({
   onRectangleCreate: RectangleCallbacks["onCreate"];
   onRectangleUpdate: RectangleCallbacks["onUpdate"];
   onRectangleDelete: RectangleCallbacks["onDelete"];
+  fibonacciRetracements: FibonacciRetracement[];
+  onFibonacciCreate: FibonacciCallbacks["onCreate"];
+  onFibonacciUpdate: FibonacciCallbacks["onUpdate"];
+  onFibonacciDelete: FibonacciCallbacks["onDelete"];
   onDrawingComplete: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -192,8 +200,8 @@ function Chart({
   const savedPriceRange = useRef<{ from: number; to: number } | null>(null);
   const manualPriceScale = useRef(false);
   const appliedFocusRevision = useRef(focusRevision);
-  const callbacksRef = useRef({ onBarrierChange, onStartSelected, onEntryMarkerChange, onTrendLineCreate, onTrendLineUpdate, onTrendLineDelete, onRectangleCreate, onRectangleUpdate, onRectangleDelete, onDrawingComplete });
-  callbacksRef.current = { onBarrierChange, onStartSelected, onEntryMarkerChange, onTrendLineCreate, onTrendLineUpdate, onTrendLineDelete, onRectangleCreate, onRectangleUpdate, onRectangleDelete, onDrawingComplete };
+  const callbacksRef = useRef({ onBarrierChange, onStartSelected, onEntryMarkerChange, onTrendLineCreate, onTrendLineUpdate, onTrendLineDelete, onRectangleCreate, onRectangleUpdate, onRectangleDelete, onFibonacciCreate, onFibonacciUpdate, onFibonacciDelete, onDrawingComplete });
+  callbacksRef.current = { onBarrierChange, onStartSelected, onEntryMarkerChange, onTrendLineCreate, onTrendLineUpdate, onTrendLineDelete, onRectangleCreate, onRectangleUpdate, onRectangleDelete, onFibonacciCreate, onFibonacciUpdate, onFibonacciDelete, onDrawingComplete };
   useEffect(() => {
     if (!ref.current || !candles.length) return;
     const safeIndex = Math.max(0, Math.min(index, candles.length - 1));
@@ -531,6 +539,23 @@ function Chart({
         onDrawingComplete: () => callbacksRef.current.onDrawingComplete(),
       },
     });
+    const cleanupFibonacci = attachFibonacciTool({
+      manager: drawingManager,
+      container: ref.current!,
+      chart,
+      series: cs,
+      candles: visible,
+      fibonacciRetracements: fibonacciRetracements.filter((f) => f.datasetId === datasetId),
+      drawingMode,
+      datasetId,
+      pricePrecision,
+      callbacks: {
+        onCreate: (fib) => callbacksRef.current.onFibonacciCreate(fib),
+        onUpdate: (fib) => callbacksRef.current.onFibonacciUpdate(fib),
+        onDelete: (id) => callbacksRef.current.onFibonacciDelete(id),
+        onDrawingComplete: () => callbacksRef.current.onDrawingComplete(),
+      },
+    });
     return () => {
       chartAlive = false;
       const range = chart.timeScale().getVisibleLogicalRange();
@@ -555,6 +580,7 @@ function Chart({
       cleanupTrendLines();
       cleanupMeasure();
       cleanupRectangles();
+      cleanupFibonacci();
       drawingManager.destroy();
       chart.remove();
     };
@@ -955,6 +981,21 @@ export default function App() {
       rectangles: (s.rectangles ?? []).filter((r) => r.id !== id),
     }));
   }
+  function handleFibonacciCreate(fib: FibonacciRetracement) {
+    setState((s) => ({ ...s, fibonacciRetracements: [...(s.fibonacciRetracements ?? []), fib] }));
+  }
+  function handleFibonacciUpdate(fib: FibonacciRetracement) {
+    setState((s) => ({
+      ...s,
+      fibonacciRetracements: (s.fibonacciRetracements ?? []).map((f) => (f.id === fib.id ? fib : f)),
+    }));
+  }
+  function handleFibonacciDelete(id: string) {
+    setState((s) => ({
+      ...s,
+      fibonacciRetracements: (s.fibonacciRetracements ?? []).filter((f) => f.id !== id),
+    }));
+  }
   function moveBarrier(id: string, kind: "tp" | "sl", price: number) {
     const rounded = Number(price.toFixed(pricePrecision));
     if (id === "__draft_protection__") {
@@ -1231,6 +1272,20 @@ export default function App() {
               >
                 <Ruler size={15} />
               </Button>
+              <Button
+                type="text"
+                className={`drawing-tool-btn ${drawingMode === "fibonacci" ? "is-active" : ""}`}
+                onClick={() => setDrawingMode(m => m === "fibonacci" ? "none" : "fibonacci")}
+                title="Сетка Фибоначчи"
+              >
+                <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+                  <line x1="1" y1="13" x2="14" y2="13" stroke="currentColor" strokeWidth="1.2"/>
+                  <line x1="1" y1="10" x2="14" y2="10" stroke="currentColor" strokeWidth="1.2" strokeOpacity="0.7"/>
+                  <line x1="1" y1="7" x2="14" y2="7" stroke="currentColor" strokeWidth="1.2" strokeOpacity="0.5"/>
+                  <line x1="1" y1="4" x2="14" y2="4" stroke="currentColor" strokeWidth="1.2" strokeOpacity="0.35"/>
+                  <line x1="1" y1="1" x2="14" y2="14" stroke="currentColor" strokeWidth="1.2" strokeDasharray="2 2"/>
+                </svg>
+              </Button>
             </div>
             <div className="spacer" />
             <Upload
@@ -1267,6 +1322,10 @@ export default function App() {
                 onRectangleCreate={handleRectangleCreate}
                 onRectangleUpdate={handleRectangleUpdate}
                 onRectangleDelete={handleRectangleDelete}
+                fibonacciRetracements={state.fibonacciRetracements ?? []}
+                onFibonacciCreate={handleFibonacciCreate}
+                onFibonacciUpdate={handleFibonacciUpdate}
+                onFibonacciDelete={handleFibonacciDelete}
                 onDrawingComplete={() => setDrawingMode("none")}
                 onInteractionChange={(active) => { chartInteractionActive.current = active; }}
               />
