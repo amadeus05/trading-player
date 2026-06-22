@@ -10,7 +10,7 @@ import type { TrendLine } from "./types";
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
-export type DrawingMode = "none" | "trendline" | "measure";
+export type DrawingMode = "none" | "trendline" | "measure" | "rectangle";
 
 export interface TrendLineCallbacks {
   onCreate: (line: TrendLine) => void;

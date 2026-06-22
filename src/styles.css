@@ -1375,3 +1375,436 @@ aside {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.85);
 }
+
+/* Rectangle Tool */
+.rect-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.rect-hit-el {
+  pointer-events: fill;
+  cursor: move;
+}
+
+.rect-handle-el {
+  pointer-events: fill;
+  fill: #1a1f2e;
+  stroke: #5b8af0;
+  stroke-width: 2;
+}
+
+.rect-handle-el:active {
+  fill: #5b8af0;
+}
+
+.rect-label-el {
+  font: 500 14px/1 system-ui, sans-serif;
+  cursor: text;
+  pointer-events: all;
+  user-select: none;
+}
+
+.rect-label-el.is-placeholder {
+  opacity: 0.85;
+}
+
+.rect-inline-text-editor {
+  position: absolute;
+  z-index: 22;
+  width: min(240px, 70%);
+  height: 34px;
+  padding: 4px 8px;
+  transform: translate(-50%, -50%);
+  border: 1px solid #2962ff;
+  border-radius: 4px;
+  outline: none;
+  background: rgba(13, 15, 21, 0.92);
+  font: 500 14px/1 system-ui, sans-serif;
+  text-align: center;
+  pointer-events: all;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.rect-ghost-el {
+  fill: rgba(41, 98, 255, 0.12);
+  stroke: #2962ff;
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+  pointer-events: none;
+}
+
+.rect-draw-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  cursor: crosshair;
+}
+
+.rect-toolbar {
+  position: absolute;
+  z-index: 10;
+  background: #1e222d;
+  border: 1px solid #2a2e39;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+  display: flex;
+  user-select: none;
+  pointer-events: all;
+}
+
+.rect-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.rect-toolbar-sep {
+  width: 1px;
+  height: 16px;
+  background: #363a45;
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.rect-tb-grip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 28px;
+  color: #4c525e;
+  cursor: grab;
+  flex-shrink: 0;
+}
+
+.rect-tb-grip:active {
+  cursor: grabbing;
+}
+
+.rect-tb-color-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 32px;
+  padding: 3px 2px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #d1d4dc;
+  flex-shrink: 0;
+}
+
+.rect-tb-color-btn:hover {
+  background: #2a2e39;
+}
+
+.rect-tb-color-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 16px;
+  line-height: 0;
+  flex-shrink: 0;
+}
+
+.rect-tb-text-letter {
+  font: 600 15px/1 Inter, system-ui, sans-serif;
+  color: #d1d4dc;
+}
+
+.rect-tb-color-bar {
+  display: block;
+  width: 16px;
+  height: 3px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.rect-tb-fill-bar {
+  background-color: var(--fill-color, #2962ff);
+}
+
+.rect-tb-fill-bar.is-checkered {
+  background-image:
+    linear-gradient(var(--fill-color), var(--fill-color)),
+    linear-gradient(45deg, #4c525e 25%, transparent 25%),
+    linear-gradient(-45deg, #4c525e 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #4c525e 75%),
+    linear-gradient(-45deg, transparent 75%, #4c525e 75%);
+  background-size: 100% 100%, 4px 4px, 4px 4px, 4px 4px, 4px 4px;
+  background-position: 0 0, 0 0, 0 2px, 2px -2px, -2px 0px;
+}
+
+.rect-tb-width-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 6px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  color: #d1d4dc;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.rect-tb-width-btn:hover {
+  background: #2a2e39;
+}
+
+.rect-tb-width-label {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #d1d4dc;
+  min-width: 22px;
+  text-align: center;
+}
+
+.rect-line-menu {
+  position: absolute;
+  z-index: 21;
+  min-width: 104px;
+  overflow: hidden;
+  padding: 4px 0;
+  border: 1px solid #2a2e39;
+  border-radius: 0 0 8px 8px;
+  background: #1e222d;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  pointer-events: all;
+}
+
+.rect-line-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 40px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  color: #d1d4dc;
+  font: 600 14px/1 system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.rect-line-menu-item:hover {
+  background: #2a2e39;
+}
+
+.rect-line-menu-item.is-active {
+  background: #f1f1f1;
+  color: #101010;
+}
+
+.rect-line-menu-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  min-width: 24px;
+  height: 16px;
+}
+
+.rect-line-sample {
+  display: block;
+  width: 22px;
+  min-height: 1px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.rect-toolbar .rect-tb-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: #9598a1;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.rect-toolbar .rect-tb-style-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: #9598a1;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.rect-toolbar .rect-tb-icon-btn:hover,
+.rect-toolbar .rect-tb-style-btn:hover {
+  background: #2a2e39;
+  color: #d1d4dc;
+}
+
+.rect-toolbar button[data-active="1"] {
+  background: rgba(41, 98, 255, 0.2);
+  color: #2962ff;
+}
+
+.rect-tb-del:hover {
+  color: #f23645 !important;
+}
+
+.rect-palette {
+  position: absolute;
+  z-index: 20;
+  background: #1e222d;
+  border: 1px solid #2a2e39;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  padding: 10px;
+  width: 210px;
+  pointer-events: all;
+}
+
+.rect-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 3px;
+  margin-bottom: 8px;
+}
+
+.rect-palette-swatch {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s, border-color 0.1s;
+}
+
+.rect-palette-swatch:hover {
+  transform: scale(1.2);
+  border-color: rgba(255, 255, 255, 0.6);
+  z-index: 1;
+  position: relative;
+}
+
+.rect-palette-swatch.is-active {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
+  transform: scale(1.1);
+}
+
+.rect-palette-custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.rect-palette-add {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1.5px dashed #4c525e;
+  background: transparent;
+  color: #787b86;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.rect-palette-add:hover {
+  border-color: #9598a1;
+  color: #d1d4dc;
+}
+
+.rect-palette-hidden-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.rect-palette-opacity-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rect-palette-op-label {
+  font-size: 11px;
+  color: #787b86;
+  flex-shrink: 0;
+  min-width: 42px;
+}
+
+.rect-palette-op-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(
+    to right,
+    var(--grad-start, transparent),
+    var(--grad-end, #2962ff)
+  );
+  border: 1px solid #363a45;
+  cursor: pointer;
+  outline: none;
+}
+
+.rect-palette-op-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #2a2e39;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+
+.rect-palette-op-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #2a2e39;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+
+.rect-palette-op-value {
+  font-size: 11px;
+  color: #d1d4dc;
+  min-width: 32px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

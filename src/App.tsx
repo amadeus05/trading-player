@@ -45,6 +45,7 @@ import {
   Pencil,
   Play,
   Flag,
+  RectangleHorizontal,
   RotateCcw,
   Ruler,
   Settings,
@@ -53,11 +54,12 @@ import {
   Upload as UploadIcon,
   X,
 } from "lucide-react";
-import type { Barrier, Candle, Persisted, SimulationSettings, Trade, TrendLine } from "./types";
+import type { Barrier, Candle, Persisted, Rectangle, SimulationSettings, Trade, TrendLine } from "./types";
 import { HistoryManager } from "./HistoryManager";
 import { IntrabarExitResolver } from "./simulation/IntrabarExitResolver";
 import { attachTrendLineTool, type DrawingMode } from "./TrendLineTool";
 import { attachMeasureTool } from "./MeasureTool";
+import { attachRectangleTool, type RectangleCallbacks } from "./RectangleTool";
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 const dt = (t: number) =>
@@ -149,6 +151,10 @@ function Chart({
   onTrendLineCreate,
   onTrendLineUpdate,
   onTrendLineDelete,
+  rectangles,
+  onRectangleCreate,
+  onRectangleUpdate,
+  onRectangleDelete,
   onDrawingComplete,
 }: {
   candles: Candle[];
@@ -171,18 +177,23 @@ function Chart({
   onTrendLineCreate: (line: TrendLine) => void;
   onTrendLineUpdate: (line: TrendLine) => void;
   onTrendLineDelete: (id: string) => void;
+  rectangles: Rectangle[];
+  onRectangleCreate: RectangleCallbacks["onCreate"];
+  onRectangleUpdate: RectangleCallbacks["onUpdate"];
+  onRectangleDelete: RectangleCallbacks["onDelete"];
   onDrawingComplete: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const selectedTrendLineId = useRef<string | null>(null);
   const savedLogicalRange = useRef<any>(null);
+  const savedTimeRange = useRef<{ from: number; to: number } | null>(null);
   const renderedIndex = useRef<number | null>(null);
   const followRealtime = useRef(true);
   const savedPriceRange = useRef<{ from: number; to: number } | null>(null);
   const manualPriceScale = useRef(false);
   const appliedFocusRevision = useRef(focusRevision);
-  const callbacksRef = useRef({ onBarrierChange, onStartSelected, onEntryMarkerChange, onTrendLineCreate, onTrendLineUpdate, onTrendLineDelete, onDrawingComplete });
-  callbacksRef.current = { onBarrierChange, onStartSelected, onEntryMarkerChange, onTrendLineCreate, onTrendLineUpdate, onTrendLineDelete, onDrawingComplete };
+  const callbacksRef = useRef({ onBarrierChange, onStartSelected, onEntryMarkerChange, onTrendLineCreate, onTrendLineUpdate, onTrendLineDelete, onRectangleCreate, onRectangleUpdate, onRectangleDelete, onDrawingComplete });
+  callbacksRef.current = { onBarrierChange, onStartSelected, onEntryMarkerChange, onTrendLineCreate, onTrendLineUpdate, onTrendLineDelete, onRectangleCreate, onRectangleUpdate, onRectangleDelete, onDrawingComplete };
   useEffect(() => {
     if (!ref.current || !candles.length) return;
     const safeIndex = Math.max(0, Math.min(index, candles.length - 1));
@@ -409,10 +420,16 @@ function Chart({
     if (selectingStart) chart.subscribeClick(selectStart);
     const replayMoved = renderedIndex.current !== null && renderedIndex.current !== index;
     if (forceFocus) {
-      const span = savedLogicalRange.current
-        ? Math.max(20, savedLogicalRange.current.to - savedLogicalRange.current.from)
-        : 100;
-      chart.timeScale().setVisibleLogicalRange({ from: safeIndex - span / 2, to: safeIndex + span / 2 });
+      const timeSpan = savedTimeRange.current
+        ? Math.max(60, savedTimeRange.current.to - savedTimeRange.current.from)
+        : Math.max(60, visible[Math.max(0, safeIndex - 100)]
+          ? visible[safeIndex].time - visible[Math.max(0, safeIndex - 100)].time
+          : 100 * 60);
+      const centerTime = visible[safeIndex].time;
+      chart.timeScale().setVisibleRange({
+        from: (centerTime - timeSpan / 2) as any,
+        to: (centerTime + timeSpan / 2) as any,
+      });
     } else if (savedLogicalRange.current && (!replayMoved || !followRealtime.current)) {
       chart.timeScale().setVisibleLogicalRange(savedLogicalRange.current);
     } else {
@@ -480,10 +497,27 @@ function Chart({
       pricePrecision,
       onComplete: () => callbacksRef.current.onDrawingComplete(),
     });
+    const cleanupRectangles = attachRectangleTool({
+      container: ref.current!,
+      chart,
+      series: cs,
+      candles: visible,
+      rectangles: rectangles.filter((r) => r.datasetId === datasetId),
+      drawingMode,
+      datasetId,
+      callbacks: {
+        onCreate: (rect) => callbacksRef.current.onRectangleCreate(rect),
+        onUpdate: (rect) => callbacksRef.current.onRectangleUpdate(rect),
+        onDelete: (id) => callbacksRef.current.onRectangleDelete(id),
+        onDrawingComplete: () => callbacksRef.current.onDrawingComplete(),
+      },
+    });
     return () => {
       chartAlive = false;
       const range = chart.timeScale().getVisibleLogicalRange();
       savedLogicalRange.current = range;
+      const timeRange = chart.timeScale().getVisibleRange();
+      if (timeRange) savedTimeRange.current = { from: Number(timeRange.from), to: Number(timeRange.to) };
       if (range) followRealtime.current = Math.abs(range.to - (visible.length - 1)) < 0.75;
       if (manualPriceScale.current) savedPriceRange.current = cs.priceScale().getVisibleRange();
       ref.current?.removeEventListener("pointerdown", markManualScale);
@@ -496,6 +530,7 @@ function Chart({
       if (selectingStart) chart.unsubscribeClick(selectStart);
       cleanupTrendLines();
       cleanupMeasure();
+      cleanupRectangles();
       chart.remove();
     };
   }, [candles, index, barriers, trades, selectingStart, focusRevision, pricePrecision, entryMarker, showClosedTradeOverlays, markersEditable, drawingMode, datasetId]);
@@ -880,6 +915,21 @@ export default function App() {
       trendLines: (s.trendLines ?? []).filter((l) => l.id !== id),
     }));
   }
+  function handleRectangleCreate(rect: Rectangle) {
+    setState((s) => ({ ...s, rectangles: [...(s.rectangles ?? []), rect] }));
+  }
+  function handleRectangleUpdate(rect: Rectangle) {
+    setState((s) => ({
+      ...s,
+      rectangles: (s.rectangles ?? []).map((r) => (r.id === rect.id ? rect : r)),
+    }));
+  }
+  function handleRectangleDelete(id: string) {
+    setState((s) => ({
+      ...s,
+      rectangles: (s.rectangles ?? []).filter((r) => r.id !== id),
+    }));
+  }
   function moveBarrier(id: string, kind: "tp" | "sl", price: number) {
     const rounded = Number(price.toFixed(pricePrecision));
     if (id === "__draft_protection__") {
@@ -1142,6 +1192,14 @@ export default function App() {
               </Button>
               <Button
                 type="text"
+                className={`drawing-tool-btn ${drawingMode === "rectangle" ? "is-active" : ""}`}
+                onClick={() => setDrawingMode(m => m === "rectangle" ? "none" : "rectangle")}
+                title="Прямоугольник"
+              >
+                <RectangleHorizontal size={15} />
+              </Button>
+              <Button
+                type="text"
                 className={`drawing-tool-btn ${drawingMode === "measure" ? "is-active" : ""}`}
                 onClick={() => setDrawingMode(m => m === "measure" ? "none" : "measure")}
                 title="Линейка"
@@ -1180,6 +1238,10 @@ export default function App() {
                 onTrendLineCreate={handleTrendLineCreate}
                 onTrendLineUpdate={handleTrendLineUpdate}
                 onTrendLineDelete={handleTrendLineDelete}
+                rectangles={state.rectangles ?? []}
+                onRectangleCreate={handleRectangleCreate}
+                onRectangleUpdate={handleRectangleUpdate}
+                onRectangleDelete={handleRectangleDelete}
                 onDrawingComplete={() => setDrawingMode("none")}
                 onInteractionChange={(active) => { chartInteractionActive.current = active; }}
               />
