@@ -302,30 +302,6 @@ g[data-trend-id].selected .trend-main-line {
   cursor: grabbing;
 }
 
-.fib-axis-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.fib-axis-badge {
-  position: absolute;
-  right: 0;
-  padding: 0 6px;
-  color: #ffffff;
-  font-family: -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif;
-  font-size: 11px;
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-  line-height: 18px;
-  height: 18px;
-  text-align: center;
-  box-sizing: border-box;
-  transform: translateY(-50%);
-}
-
 /* Floating Toolbar */
 .trend-toolbar {
   position: absolute;

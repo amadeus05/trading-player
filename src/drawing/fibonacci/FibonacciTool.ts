@@ -89,6 +89,14 @@ function applyLineStroke(line: SVGLineElement, color: string, width: number, sty
   line.style.strokeDasharray = strokeDashForStyle(style);
 }
 
+function applyTrendLineStroke(line: SVGLineElement, color: string, width: number) {
+  line.setAttribute("stroke", color);
+  line.style.stroke = color;
+  line.style.strokeWidth = String(width);
+  line.style.strokeLinecap = "butt";
+  line.style.strokeDasharray = "6 4";
+}
+
 function applyLevelLine(
   levelEls: LevelVisual,
   xLeft: number,
@@ -198,11 +206,6 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
 
   const elMap = new Map<string, FibEls>();
 
-  const axisLayer = document.createElement("div");
-  axisLayer.className = "fib-axis-layer";
-  container.appendChild(axisLayer);
-  const axisBadgeMap = new Map<string, HTMLDivElement[]>();
-
   function getPlotLayout() {
     const height = container.getBoundingClientRect().height;
     const timeScaleHeight = Math.max(28, Number(chart.timeScale().height?.()) || 28);
@@ -222,72 +225,6 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
 
   function clampPlotPair(p1: PixelPoint, p2: PixelPoint) {
     return { p1: clampPlotPoint(p1), p2: clampPlotPoint(p2) };
-  }
-
-  function getPriceScaleWidth() {
-    return Math.max(70, Number(chart.priceScale("right").width()) || 70);
-  }
-
-  function makeAxisBadge(color: string): HTMLDivElement {
-    const el = document.createElement("div");
-    el.className = "fib-axis-badge";
-    el.style.background = color;
-    el.style.visibility = "hidden";
-    return el;
-  }
-
-  function showAxisBadge(el: HTMLDivElement, text: string, y: number, color: string) {
-    el.textContent = text;
-    el.style.width = `${getPriceScaleWidth()}px`;
-    el.style.background = color;
-    el.style.top = `${y}px`;
-    el.style.visibility = "visible";
-  }
-
-  function hideAxisBadge(el: HTMLDivElement) {
-    el.style.visibility = "hidden";
-  }
-
-  function removeAxisBadges(id: string) {
-    const badges = axisBadgeMap.get(id);
-    if (!badges) return;
-    badges.forEach((badge) => badge.remove());
-    axisBadgeMap.delete(id);
-  }
-
-  function ensureAxisBadges(fibId: string): HTMLDivElement[] {
-    let badges = axisBadgeMap.get(fibId);
-    if (!badges) {
-      badges = FIB_LEVELS.map((level) => makeAxisBadge(level.color));
-      axisBadgeMap.set(fibId, badges);
-      axisLayer.append(...badges);
-    }
-    return badges;
-  }
-
-  function syncAxisBadges(fib: FibonacciRetracement, visible: boolean) {
-    const badges = ensureAxisBadges(fib.id);
-    if (!visible) {
-      badges.forEach(hideAxisBadge);
-      return;
-    }
-    const p0 = fib.point2.price;
-    const p100 = fib.point1.price;
-    const visibleRange = series.priceScale?.()?.getVisibleRange?.() as { from: number; to: number } | null | undefined;
-    FIB_LEVELS.forEach((level, index) => {
-      const price = levelPriceFromAnchors(p0, p100, level.ratio);
-      const y = series.priceToCoordinate(price);
-      const badge = badges[index];
-      if (y == null) {
-        hideAxisBadge(badge);
-        return;
-      }
-      if (visibleRange && (price < visibleRange.from || price > visibleRange.to)) {
-        hideAxisBadge(badge);
-        return;
-      }
-      showAxisBadge(badge, formatPrice(price, pricePrecision), y, level.color);
-    });
   }
 
   function removeToolbar() {
@@ -401,7 +338,6 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     els?.group.remove();
     els?.labelGroup.remove();
     elMap.delete(id);
-    removeAxisBadges(id);
     if (selectedId === id) {
       selectedId = null;
       removeToolbar();
@@ -530,6 +466,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     p1: PixelPoint,
     p2: PixelPoint,
     isSelected: boolean,
+    priceSource: "stored" | "pixels" = "stored",
   ) {
     const { p1: cp1, p2: cp2 } = clampPlotPair(p1, p2);
     const lineStyle = fibLineStyle(fib);
@@ -537,14 +474,23 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     els.trendLine.setAttribute("y1", String(cp1.y));
     els.trendLine.setAttribute("x2", String(cp2.x));
     els.trendLine.setAttribute("y2", String(cp2.y));
-    applyLineStroke(els.trendLine, "#787b86", lineStyle.width, lineStyle.style);
+    applyTrendLineStroke(els.trendLine, "#787b86", lineStyle.width);
 
     els.trendHit.setAttribute("x1", String(cp1.x));
     els.trendHit.setAttribute("y1", String(cp1.y));
     els.trendHit.setAttribute("x2", String(cp2.x));
     els.trendHit.setAttribute("y2", String(cp2.y));
 
-    renderFibLevels(els.levels, cp1, cp2, fib.point2.price, fib.point1.price, fib.showLabels !== false, lineStyle.width, lineStyle.style);
+    let p0 = fib.point2.price;
+    let p100 = fib.point1.price;
+    if (priceSource === "pixels") {
+      const anchors = anchorPricesFromPixels(series, cp1, cp2);
+      if (anchors) {
+        p0 = anchors.p0;
+        p100 = anchors.p100;
+      }
+    }
+    renderFibLevels(els.levels, cp1, cp2, p0, p100, fib.showLabels !== false, lineStyle.width, lineStyle.style);
     applyHandles(els.handle1, els.handle2, cp1, cp2, !fib.locked);
     els.group.classList.toggle("selected", isSelected);
   }
@@ -560,21 +506,17 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     if (!p1 || !p2) {
       els.group.setAttribute("visibility", "hidden");
       els.labelGroup.setAttribute("visibility", "hidden");
-      syncAxisBadges(fib, false);
       return;
     }
     els.group.setAttribute("visibility", "visible");
     els.labelGroup.setAttribute("visibility", "visible");
     renderFibGeometry(fib, els, p1, p2, selectedId === fib.id);
-    syncAxisBadges(fib, true);
   }
 
   function syncAll() {
+    if (dragActive) return;
     overlay.sync();
     fibonacciRetracements.forEach(syncOne);
-    for (const id of axisBadgeMap.keys()) {
-      if (!fibonacciRetracements.some((fib) => fib.id === id)) removeAxisBadges(id);
-    }
   }
 
   function scheduleSync() {
@@ -586,6 +528,10 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   }
 
   function runInteractionSync() {
+    if (dragActive) {
+      interactionSyncRaf = 0;
+      return;
+    }
     syncAll();
     interactionSyncRaf = requestAnimationFrame(runInteractionSync);
   }
@@ -618,19 +564,14 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   }
 
   function handlePointerUp() {
+    if (dragActive) return;
     stopInteractionSync();
   }
 
   function previewAtPixels(fib: FibonacciRetracement, p1: PixelPoint, p2: PixelPoint) {
     const els = elMap.get(fib.id);
     if (!els) return;
-    renderFibGeometry(fib, els, p1, p2, selectedId === fib.id);
-    const previewFib: FibonacciRetracement = {
-      ...fib,
-      point1: { ...fib.point1, price: pxToPrice(series, p1.y) ?? fib.point1.price },
-      point2: { ...fib.point2, price: pxToPrice(series, p2.y) ?? fib.point2.price },
-    };
-    syncAxisBadges(previewFib, true);
+    renderFibGeometry(fib, els, p1, p2, selectedId === fib.id, "pixels");
   }
 
   function ensureGhostElements() {
@@ -706,7 +647,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
       applyLevelLine({ line: ghostLevelLines![index] }, xLeft, xRight, y, level.color, ghostStyle.width, ghostStyle.style);
       applyLevelLabel(ghostLevelLabels![index], xRight, y, level.ratio, price, level.color, pricePrecision);
     });
-    applyLineStroke(ghostTrendLine!, "#787b86", ghostStyle.width, ghostStyle.style);
+    applyTrendLineStroke(ghostTrendLine!, "#787b86", ghostStyle.width);
     applyHandles(ghostHandle1!, ghostHandle2!, cp1, cp2, true);
   }
 
@@ -731,10 +672,14 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   function startDragHandle(id: string, which: "point1" | "point2", startEvent: PointerEvent) {
     const fib = fibonacciRetracements.find((item) => item.id === id);
     if (!fib) return;
+    dragActive = true;
     const rect = container.getBoundingClientRect();
     const originalP1 = toPixel(fib.point1);
     const originalP2 = toPixel(fib.point2);
-    if (!originalP1 || !originalP2) return;
+    if (!originalP1 || !originalP2) {
+      dragActive = false;
+      return;
+    }
     let moved = false;
     const target = startEvent.target as Element;
     target.setPointerCapture?.(startEvent.pointerId);
@@ -774,12 +719,14 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
         const time = xToTime(chart, clamped.x, candles);
         const price = pxToPrice(series, clamped.y);
         if (time != null && price != null && price > 0) current[which] = { time, price };
+        dragActive = false;
         syncAll();
         callbacks.onUpdate(current);
+      } else {
+        dragActive = false;
       }
     };
 
-    dragActive = true;
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp, { once: true });
   }
@@ -787,6 +734,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   function startDragBody(id: string, startEvent: PointerEvent) {
     const fib = fibonacciRetracements.find((item) => item.id === id);
     if (!fib) return;
+    dragActive = true;
     const rect = container.getBoundingClientRect();
     const startX = startEvent.clientX - rect.left;
     const startY = startEvent.clientY - rect.top;
@@ -794,7 +742,10 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     const origP2 = { ...fib.point2 };
     const p1Px = toPixel(origP1);
     const p2Px = toPixel(origP2);
-    if (!p1Px || !p2Px) return;
+    if (!p1Px || !p2Px) {
+      dragActive = false;
+      return;
+    }
     let moved = false;
     const target = startEvent.target as Element;
     target.setPointerCapture?.(startEvent.pointerId);
@@ -850,7 +801,6 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
       }
     };
 
-    dragActive = true;
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp, { once: true });
   }
@@ -976,7 +926,6 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     container.removeEventListener("pointerdown", handleBackgroundClick);
     document.removeEventListener("keydown", handleKeyDown);
     overlay.remove();
-    axisLayer.remove();
     removeToolbar();
     clearGhost();
   };
