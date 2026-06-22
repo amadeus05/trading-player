@@ -170,6 +170,10 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   let dragActive = false;
   let dragRaf = 0;
   let ghostRaf = 0;
+  let syncRaf = 0;
+  let interactionSyncRaf = 0;
+  let finalSyncRaf = 0;
+  let wheelSyncTimer = 0;
   let latestDrawPointer: { x: number; y: number } | null = null;
 
   let toolbar: HTMLDivElement | null = null;
@@ -197,7 +201,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   const axisLayer = document.createElement("div");
   axisLayer.className = "fib-axis-layer";
   container.appendChild(axisLayer);
-  const axisBadgeMap = new Map<string, { p100: HTMLDivElement; p0: HTMLDivElement }>();
+  const axisBadgeMap = new Map<string, HTMLDivElement[]>();
 
   function getPlotLayout() {
     const height = container.getBoundingClientRect().height;
@@ -224,16 +228,18 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     return Math.max(70, Number(chart.priceScale("right").width()) || 70);
   }
 
-  function makeAxisBadge(): HTMLDivElement {
+  function makeAxisBadge(color: string): HTMLDivElement {
     const el = document.createElement("div");
     el.className = "fib-axis-badge";
+    el.style.background = color;
     el.style.visibility = "hidden";
     return el;
   }
 
-  function showAxisBadge(el: HTMLDivElement, text: string, y: number) {
+  function showAxisBadge(el: HTMLDivElement, text: string, y: number, color: string) {
     el.textContent = text;
     el.style.width = `${getPriceScaleWidth()}px`;
+    el.style.background = color;
     el.style.top = `${y}px`;
     el.style.visibility = "visible";
   }
@@ -245,41 +251,43 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   function removeAxisBadges(id: string) {
     const badges = axisBadgeMap.get(id);
     if (!badges) return;
-    badges.p100.remove();
-    badges.p0.remove();
+    badges.forEach((badge) => badge.remove());
     axisBadgeMap.delete(id);
   }
 
-  function syncAxisBadges(fib: FibonacciRetracement, visible: boolean) {
-    let badges = axisBadgeMap.get(fib.id);
+  function ensureAxisBadges(fibId: string): HTMLDivElement[] {
+    let badges = axisBadgeMap.get(fibId);
     if (!badges) {
-      badges = { p100: makeAxisBadge(), p0: makeAxisBadge() };
-      axisBadgeMap.set(fib.id, badges);
-      axisLayer.append(badges.p100, badges.p0);
+      badges = FIB_LEVELS.map((level) => makeAxisBadge(level.color));
+      axisBadgeMap.set(fibId, badges);
+      axisLayer.append(...badges);
     }
+    return badges;
+  }
+
+  function syncAxisBadges(fib: FibonacciRetracement, visible: boolean) {
+    const badges = ensureAxisBadges(fib.id);
     if (!visible) {
-      hideAxisBadge(badges.p100);
-      hideAxisBadge(badges.p0);
+      badges.forEach(hideAxisBadge);
       return;
     }
-    const y100 = series.priceToCoordinate(fib.point1.price);
-    const y0 = series.priceToCoordinate(fib.point2.price);
-    const { plotHeight } = getPlotLayout();
-    if (y100 == null || y0 == null) {
-      hideAxisBadge(badges.p100);
-      hideAxisBadge(badges.p0);
-      return;
-    }
-    if (y100 >= 0 && y100 <= plotHeight) {
-      showAxisBadge(badges.p100, formatPrice(fib.point1.price, pricePrecision), y100);
-    } else {
-      hideAxisBadge(badges.p100);
-    }
-    if (y0 >= 0 && y0 <= plotHeight) {
-      showAxisBadge(badges.p0, formatPrice(fib.point2.price, pricePrecision), y0);
-    } else {
-      hideAxisBadge(badges.p0);
-    }
+    const p0 = fib.point2.price;
+    const p100 = fib.point1.price;
+    const visibleRange = series.priceScale?.()?.getVisibleRange?.() as { from: number; to: number } | null | undefined;
+    FIB_LEVELS.forEach((level, index) => {
+      const price = levelPriceFromAnchors(p0, p100, level.ratio);
+      const y = series.priceToCoordinate(price);
+      const badge = badges[index];
+      if (y == null) {
+        hideAxisBadge(badge);
+        return;
+      }
+      if (visibleRange && (price < visibleRange.from || price > visibleRange.to)) {
+        hideAxisBadge(badge);
+        return;
+      }
+      showAxisBadge(badge, formatPrice(price, pricePrecision), y, level.color);
+    });
   }
 
   function removeToolbar() {
@@ -494,16 +502,16 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     levels: LevelEls[],
     p1: PixelPoint,
     p2: PixelPoint,
+    p0: number,
+    p100: number,
     showLabels: boolean,
     width: number,
     style: DrawingLineStyle,
   ) {
-    const anchors = anchorPricesFromPixels(series, p1, p2);
-    if (!anchors) return;
     const { plotWidth } = getPlotLayout();
     const { xLeft, xRight } = horizontalSpan(p1, p2, plotWidth);
     FIB_LEVELS.forEach((level, index) => {
-      const price = levelPriceFromAnchors(anchors.p0, anchors.p100, level.ratio);
+      const price = levelPriceFromAnchors(p0, p100, level.ratio);
       const y = series.priceToCoordinate(price);
       if (y == null) return;
       const levelEls = levels[index];
@@ -536,7 +544,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     els.trendHit.setAttribute("x2", String(cp2.x));
     els.trendHit.setAttribute("y2", String(cp2.y));
 
-    renderFibLevels(els.levels, cp1, cp2, fib.showLabels !== false, lineStyle.width, lineStyle.style);
+    renderFibLevels(els.levels, cp1, cp2, fib.point2.price, fib.point1.price, fib.showLabels !== false, lineStyle.width, lineStyle.style);
     applyHandles(els.handle1, els.handle2, cp1, cp2, !fib.locked);
     els.group.classList.toggle("selected", isSelected);
   }
@@ -567,6 +575,50 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     for (const id of axisBadgeMap.keys()) {
       if (!fibonacciRetracements.some((fib) => fib.id === id)) removeAxisBadges(id);
     }
+  }
+
+  function scheduleSync() {
+    if (dragActive || syncRaf) return;
+    syncRaf = requestAnimationFrame(() => {
+      syncRaf = 0;
+      syncAll();
+    });
+  }
+
+  function runInteractionSync() {
+    syncAll();
+    interactionSyncRaf = requestAnimationFrame(runInteractionSync);
+  }
+
+  function startInteractionSync() {
+    if (!interactionSyncRaf) interactionSyncRaf = requestAnimationFrame(runInteractionSync);
+  }
+
+  function stopInteractionSync() {
+    if (interactionSyncRaf) cancelAnimationFrame(interactionSyncRaf);
+    interactionSyncRaf = 0;
+    if (finalSyncRaf) cancelAnimationFrame(finalSyncRaf);
+    finalSyncRaf = requestAnimationFrame(() => {
+      finalSyncRaf = 0;
+      scheduleSync();
+    });
+  }
+
+  function handleScaleWheel() {
+    syncAll();
+    startInteractionSync();
+    window.clearTimeout(wheelSyncTimer);
+    wheelSyncTimer = window.setTimeout(stopInteractionSync, 150);
+  }
+
+  function handlePointerDown(event: PointerEvent) {
+    const target = event.target as Element;
+    if (target.closest(".fib-toolbar, .fib-trend-hit, .fib-level-hit, .fib-handle")) return;
+    startInteractionSync();
+  }
+
+  function handlePointerUp() {
+    stopInteractionSync();
   }
 
   function previewAtPixels(fib: FibonacciRetracement, p1: PixelPoint, p2: PixelPoint) {
@@ -876,10 +928,21 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
 
   let rafId = 0;
   function loop() {
-    if (!dragActive) syncAll();
+    if (!dragActive && !interactionSyncRaf) scheduleSync();
     rafId = requestAnimationFrame(loop);
   }
   rafId = requestAnimationFrame(loop);
+
+  const onVisibleRangeChange = () => {
+    if (!dragActive) startInteractionSync();
+    window.clearTimeout(wheelSyncTimer);
+    wheelSyncTimer = window.setTimeout(stopInteractionSync, 150);
+  };
+  chart.timeScale().subscribeVisibleLogicalRangeChange(onVisibleRangeChange);
+  container.addEventListener("wheel", handleScaleWheel, { capture: true, passive: true });
+  container.addEventListener("pointerdown", handlePointerDown, { capture: true });
+  window.addEventListener("pointerup", handlePointerUp);
+  window.addEventListener("pointercancel", handlePointerUp);
 
   const unregisterDeselect = manager.registerDeselect("fibonacci", () => {
     if (selectedId === null) return;
@@ -898,8 +961,17 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     cancelAnimationFrame(rafId);
     cancelAnimationFrame(dragRaf);
     cancelAnimationFrame(ghostRaf);
+    cancelAnimationFrame(syncRaf);
+    cancelAnimationFrame(interactionSyncRaf);
+    cancelAnimationFrame(finalSyncRaf);
+    window.clearTimeout(wheelSyncTimer);
     unregisterDeselect();
     try { chart.unsubscribeClick(handleDrawClick); } catch { }
+    try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRangeChange); } catch { }
+    container.removeEventListener("wheel", handleScaleWheel, { capture: true });
+    container.removeEventListener("pointerdown", handlePointerDown, { capture: true });
+    window.removeEventListener("pointerup", handlePointerUp);
+    window.removeEventListener("pointercancel", handlePointerUp);
     window.removeEventListener("pointermove", handleDrawPointerMove);
     container.removeEventListener("pointerdown", handleBackgroundClick);
     document.removeEventListener("keydown", handleKeyDown);
