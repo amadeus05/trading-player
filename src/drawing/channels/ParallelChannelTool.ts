@@ -49,39 +49,21 @@ function hexToRgba(hex: string, opacity: number): string {
   return `rgba(${r}, ${g}, ${b}, ${opacity / 100})`;
 }
 
-function unitNormal(p1: PixelPoint, p2: PixelPoint): { nx: number; ny: number } | null {
-  const dx = p2.x - p1.x;
-  const dy = p2.y - p1.y;
-  const len = Math.hypot(dx, dy);
-  if (len === 0) return null;
-  return { nx: -dy / len, ny: dx / len };
-}
-
-function signedPerpDistance(p1: PixelPoint, p2: PixelPoint, pt: PixelPoint): number {
-  const n = unitNormal(p1, p2);
-  if (!n) return 0;
-  return (pt.x - p1.x) * n.nx + (pt.y - p1.y) * n.ny;
-}
-
-function offsetPoint(p: PixelPoint, nx: number, ny: number, dist: number): PixelPoint {
-  return { x: p.x + nx * dist, y: p.y + ny * dist };
-}
-
 function channelGeometry(p1: PixelPoint, p2: PixelPoint, widthPt: PixelPoint): ChannelGeometry | null {
-  const offset = signedPerpDistance(p1, p2, widthPt);
-  const n = unitNormal(p1, p2);
-  if (!n) return null;
-  const { nx, ny } = n;
+  if (p1.x === p2.x && p1.y === p2.y) return null;
+  // Keep both rails on the same time anchors so price-scale changes cannot
+  // introduce a horizontal shift.
+  const offset = widthPt.y - p2.y;
   return {
     offset,
     edge1: { p1, p2 },
     edge2: {
-      p1: offsetPoint(p1, nx, ny, offset),
-      p2: offsetPoint(p2, nx, ny, offset),
+      p1: { x: p1.x, y: p1.y + offset },
+      p2: { x: p2.x, y: p2.y + offset },
     },
     mid: {
-      p1: offsetPoint(p1, nx, ny, offset / 2),
-      p2: offsetPoint(p2, nx, ny, offset / 2),
+      p1: { x: p1.x, y: p1.y + offset / 2 },
+      p2: { x: p2.x, y: p2.y + offset / 2 },
     },
   };
 }
@@ -159,13 +141,12 @@ function polygonPoints(...pts: PixelPoint[]): string {
 }
 
 function pointOnParallel(p1: PixelPoint, p2: PixelPoint, offset: number, t: number): PixelPoint | null {
-  const n = unitNormal(p1, p2);
-  if (!n) return null;
+  if (p1.x === p2.x && p1.y === p2.y) return null;
   const base = {
     x: p1.x + t * (p2.x - p1.x),
     y: p1.y + t * (p2.y - p1.y),
   };
-  return offsetPoint(base, n.nx, n.ny, offset);
+  return { x: base.x, y: base.y + offset };
 }
 
 function midpoint(a: PixelPoint, b: PixelPoint): PixelPoint {
@@ -173,6 +154,7 @@ function midpoint(a: PixelPoint, b: PixelPoint): PixelPoint {
 }
 
 type WidthDragRail = "edge1" | "edge2";
+type ChannelCorner = "edge1Start" | "edge1End" | "edge2Start" | "edge2End";
 
 function widthDragGeometry(
   p1: PixelPoint,
@@ -182,16 +164,15 @@ function widthDragGeometry(
   cursor: PixelPoint,
   rail: WidthDragRail,
 ): { p1: PixelPoint; p2: PixelPoint; offset: number } | null {
-  const n = unitNormal(p1, p2);
-  if (!n) return null;
-  const deltaPerp = signedPerpDistance(p1, p2, cursor) - signedPerpDistance(p1, p2, startCursor);
+  if (p1.x === p2.x && p1.y === p2.y) return null;
+  const deltaY = cursor.y - startCursor.y;
   if (rail === "edge2") {
-    return { p1, p2, offset: startOffset + deltaPerp };
+    return { p1, p2, offset: startOffset + deltaY };
   }
   return {
-    p1: offsetPoint(p1, n.nx, n.ny, deltaPerp),
-    p2: offsetPoint(p2, n.nx, n.ny, deltaPerp),
-    offset: startOffset - deltaPerp,
+    p1: { x: p1.x, y: p1.y + deltaY },
+    p2: { x: p2.x, y: p2.y + deltaY },
+    offset: startOffset - deltaY,
   };
 }
 
@@ -258,12 +239,10 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     return { time, price };
   }
 
-  /** Точка на параллельной границе — только перпендикулярное смещение от базовой линии. */
+  /** Width is stored at point2's time; only its price defines the second rail. */
   function widthPointFromPixels(p1: PixelPoint, p2: PixelPoint, cursor: PixelPoint): { time: number; price: number } | null {
-    const offset = signedPerpDistance(p1, p2, cursor);
-    const onEdge = pointOnParallel(p1, p2, offset, 1);
-    if (!onEdge) return null;
-    return pixelToDataPoint(onEdge);
+    if (p1.x === p2.x && p1.y === p2.y) return null;
+    return pixelToDataPoint({ x: p2.x, y: cursor.y });
   }
 
   function removeToolbar() {
@@ -537,7 +516,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       startDragBody(channel.id, event);
     });
 
-    handle1.addEventListener("pointerdown", (event) => {
+    const bindCornerDrag = (corner: ChannelCorner) => (event: PointerEvent) => {
       if (!manager.canEditExistingDrawings()) return;
       event.stopPropagation();
       event.stopImmediatePropagation();
@@ -546,20 +525,11 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       selectChannel(channel.id);
       const current = parallelChannels.find((item) => item.id === channel.id);
       if (current?.locked) return;
-      startDragHandle(channel.id, "point1", event);
-    });
+      startDragCorner(channel.id, corner, event);
+    };
 
-    handle2.addEventListener("pointerdown", (event) => {
-      if (!manager.canEditExistingDrawings()) return;
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-      event.preventDefault();
-      cancelDrawingPreview();
-      selectChannel(channel.id);
-      const current = parallelChannels.find((item) => item.id === channel.id);
-      if (current?.locked) return;
-      startDragHandle(channel.id, "point2", event);
-    });
+    handle1.addEventListener("pointerdown", bindCornerDrag("edge1Start"));
+    handle2.addEventListener("pointerdown", bindCornerDrag("edge1End"));
 
     const bindWidthDrag = (rail: WidthDragRail) => (event: PointerEvent) => {
       if (!manager.canEditExistingDrawings()) return;
@@ -572,8 +542,8 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       if (current?.locked) return;
       startDragWidth(channel.id, event, rail);
     };
-    handleEdge2Start.addEventListener("pointerdown", bindWidthDrag("edge2"));
-    handleEdge2End.addEventListener("pointerdown", bindWidthDrag("edge2"));
+    handleEdge2Start.addEventListener("pointerdown", bindCornerDrag("edge2Start"));
+    handleEdge2End.addEventListener("pointerdown", bindCornerDrag("edge2End"));
     handleMid1.addEventListener("pointerdown", bindWidthDrag("edge1"));
     handleMid2.addEventListener("pointerdown", bindWidthDrag("edge2"));
 
@@ -605,7 +575,6 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
 
     const { w, h } = getPlotSize();
     const ext1 = extendedSegment(p1, p2, channel.extendLeft, channel.extendRight, w, h);
-    const n = unitNormal(p1, p2);
     const offset = geom.offset;
     let fillPts = [p1, p2, geom.edge2.p2, geom.edge2.p1];
     let line1A = p1;
@@ -615,16 +584,16 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     let midA = geom.mid.p1;
     let midB = geom.mid.p2;
 
-    if (n && (channel.extendLeft || channel.extendRight)) {
-      const ext2p1 = offsetPoint(ext1.ep1, n.nx, n.ny, offset);
-      const ext2p2 = offsetPoint(ext1.ep2, n.nx, n.ny, offset);
+    if (channel.extendLeft || channel.extendRight) {
+      const ext2p1 = { x: ext1.ep1.x, y: ext1.ep1.y + offset };
+      const ext2p2 = { x: ext1.ep2.x, y: ext1.ep2.y + offset };
       fillPts = [ext1.ep1, ext1.ep2, ext2p2, ext2p1];
       line1A = ext1.ep1;
       line1B = ext1.ep2;
       line2A = ext2p1;
       line2B = ext2p2;
-      midA = offsetPoint(ext1.ep1, n.nx, n.ny, offset / 2);
-      midB = offsetPoint(ext1.ep2, n.nx, n.ny, offset / 2);
+      midA = { x: ext1.ep1.x, y: ext1.ep1.y + offset / 2 };
+      midB = { x: ext1.ep2.x, y: ext1.ep2.y + offset / 2 };
     }
 
     els.fill.setAttribute("fill", hexToRgba(channel.fillColor, channel.fillOpacity));
@@ -667,8 +636,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       els.group.setAttribute("visibility", "hidden");
       return;
     }
-    const offset = signedPerpDistance(p1, p2, wp);
-    const widthPx = pointOnParallel(p1, p2, offset, 1) ?? wp;
+    const widthPx = { x: p2.x, y: wp.y };
     els.group.setAttribute("visibility", "visible");
     renderChannelGeometry(channel, els, p1, p2, widthPx, selectedId === channel.id);
   }
@@ -718,7 +686,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       dragActive = false;
       return;
     }
-    const startOffset = signedPerpDistance(originalP1, originalP2, originalWp);
+    const startOffset = originalWp.y - originalP2.y;
     const startCursor = {
       x: startEvent.clientX - rect.left,
       y: startEvent.clientY - rect.top,
@@ -778,9 +746,9 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     window.addEventListener("pointerup", onUp, { once: true });
   }
 
-  function startDragHandle(
+  function startDragCorner(
     id: string,
-    which: "point1" | "point2",
+    corner: ChannelCorner,
     startEvent: PointerEvent,
   ) {
     const channel = parallelChannels.find((item) => item.id === id);
@@ -794,9 +762,9 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       dragActive = false;
       return;
     }
-    const offset = signedPerpDistance(originalP1, originalP2, originalWp);
+    const offset = originalWp.y - originalP2.y;
     let moved = false;
-    const target = startEvent.target as Element;
+    const target = startEvent.currentTarget as Element;
     target.setPointerCapture?.(startEvent.pointerId);
 
     let latestEvent: PointerEvent | null = null;
@@ -808,8 +776,12 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
       const cursor = { x, y };
-      const nextP1 = which === "point1" ? cursor : originalP1;
-      const nextP2 = which === "point2" ? cursor : originalP2;
+      const baseCursor = corner.startsWith("edge2")
+        ? { x: cursor.x, y: cursor.y - offset }
+        : cursor;
+      const movesPoint1 = corner.endsWith("Start");
+      const nextP1 = movesPoint1 ? baseCursor : originalP1;
+      const nextP2 = movesPoint1 ? originalP2 : baseCursor;
       const nextWp = pointOnParallel(nextP1, nextP2, offset, 1) ?? originalWp;
       previewAtPixels(channel, nextP1, nextP2, nextWp);
     };
@@ -832,10 +804,14 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
         const x = latestEvent.clientX - rect.left;
         const y = latestEvent.clientY - rect.top;
         const cursor = { x, y };
-        const nextP1 = which === "point1" ? cursor : originalP1;
-        const nextP2 = which === "point2" ? cursor : originalP2;
-        const p1Data = which === "point1" ? pixelToDataPoint(cursor) : current.point1;
-        const p2Data = which === "point2" ? pixelToDataPoint(cursor) : current.point2;
+        const baseCursor = corner.startsWith("edge2")
+          ? { x: cursor.x, y: cursor.y - offset }
+          : cursor;
+        const movesPoint1 = corner.endsWith("Start");
+        const nextP1 = movesPoint1 ? baseCursor : originalP1;
+        const nextP2 = movesPoint1 ? originalP2 : baseCursor;
+        const p1Data = movesPoint1 ? pixelToDataPoint(baseCursor) : current.point1;
+        const p2Data = movesPoint1 ? current.point2 : pixelToDataPoint(baseCursor);
         const nextWp = pointOnParallel(nextP1, nextP2, offset, 1);
         const wpData = nextWp ? pixelToDataPoint(nextWp) : null;
         if (p1Data && p2Data && wpData) {
@@ -867,7 +843,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       dragActive = false;
       return;
     }
-    const offset = signedPerpDistance(p1Px, p2Px, wpPx);
+    const offset = wpPx.y - p2Px.y;
     let moved = false;
     const target = startEvent.target as Element;
     target.setPointerCapture?.(startEvent.pointerId);
