@@ -297,6 +297,17 @@ function Chart({
       }
       renderedIndex.current = nextIndex;
     };
+    const syncViewportState = () => {
+      const range = chart.timeScale().getVisibleLogicalRange();
+      if (!range) return;
+      savedLogicalRange.current = range;
+      followRealtime.current = Math.abs(range.to - (candleStore.candles.length - 1)) < 0.75;
+    };
+    const onVisibleRangeChange = () => {
+      syncViewportState();
+    };
+    chart.timeScale().subscribeVisibleLogicalRangeChange(onVisibleRangeChange);
+    syncViewportState();
     const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     overlay.classList.add("closed-trades-overlay");
     ref.current.appendChild(overlay);
@@ -653,6 +664,8 @@ function Chart({
       cancelAnimationFrame(handleAnimationFrame);
       cancelAnimationFrame(deferredTimeRangeFrame);
       if (selectingStart) chart.unsubscribeClick(selectStart);
+      try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRangeChange); } catch { }
+      syncViewportState();
       cleanupTrendLines();
       cleanupMeasure();
       cleanupRectangles();
