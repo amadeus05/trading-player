@@ -1,0 +1,1919 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Candle Lab — Exchange Style Preview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-0: #0b0e11;
+      --bg-1: #121214;
+      --bg-2: #1a1c22;
+      --bg-3: #25282e;
+      --bg-input: #181a1f;
+      --border: #2b2f36;
+      --border-light: #363a45;
+      --text-1: #eaecef;
+      --text-2: #adb1b8;
+      --text-3: #848e9c;
+      --orange: #f3841d;
+      --orange-dim: rgba(243, 132, 29, 0.12);
+      --long: #20b26c;
+      --long-hover: #1da55f;
+      --short: #ef454a;
+      --short-hover: #d93d42;
+      --blue: #3861fb;
+      --chart-up: #20b26c;
+      --chart-down: #ef454a;
+      --chart-grid: rgba(132, 142, 156, 0.08);
+      --radius: 4px;
+      --font: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --dd-bg: #25292e;
+      --dd-hover: #3d424a;
+      --scroll-thumb: #4a4a50;
+      --scroll-thumb-hover: #5c5c63;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      scrollbar-width: thin;
+      scrollbar-color: var(--scroll-thumb) transparent;
+    }
+
+    *::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+
+    *::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    *::-webkit-scrollbar-thumb {
+      border-radius: 999px;
+      background: var(--scroll-thumb);
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+      background: var(--scroll-thumb-hover);
+    }
+
+    *::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+
+    body {
+      min-height: 100vh;
+      font-family: var(--font);
+      background: var(--bg-0);
+      color: var(--text-1);
+      font-size: 13px;
+    }
+
+    /* ── Header ── */
+    .header {
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      background: var(--bg-1);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      background: var(--orange);
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      font-size: 14px;
+      color: #000;
+    }
+
+    .brand b {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+
+    .brand small {
+      display: block;
+      font-size: 10px;
+      color: var(--text-3);
+      font-weight: 400;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .hdr-btn {
+      padding: 6px 12px;
+      border: none;
+      border-radius: var(--radius);
+      background: transparent;
+      color: var(--text-2);
+      font-family: var(--font);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .hdr-btn:hover { color: var(--text-1); background: var(--bg-2); }
+
+    .hdr-btn.orange { color: var(--orange); }
+
+    .dot-live {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-3);
+    }
+
+    .dot-live::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--long);
+    }
+
+    .badge-count {
+      padding: 0 6px;
+      border-radius: 10px;
+      background: var(--bg-3);
+      color: var(--text-2);
+      font-size: 11px;
+      margin-left: 4px;
+    }
+
+    /* ── Layout ── */
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      height: calc(100vh - 48px);
+    }
+
+    .workspace {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background: var(--bg-0);
+    }
+
+    /* ── Chart tabs (Bybit style) ── */
+    .chart-tabs {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      height: 40px;
+      background: var(--bg-1);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .chart-tabs-left, .chart-tabs-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .chart-tab {
+      position: relative;
+      padding: 10px 0;
+      border: none;
+      background: none;
+      color: var(--text-3);
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .chart-tab:hover { color: var(--text-2); }
+
+    .chart-tab.active {
+      color: var(--text-1);
+    }
+
+    .chart-tab.active::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 2px;
+      background: var(--orange);
+    }
+
+    .chart-tab.orange-text { color: var(--orange); }
+
+    .icon-btn {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border: none;
+      border-radius: var(--radius);
+      background: transparent;
+      color: var(--text-3);
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .icon-btn:hover { background: var(--bg-2); color: var(--text-2); }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 12px;
+      background: var(--bg-1);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    /* ── Custom dropdown (Bybit exact) ── */
+    .dd {
+      position: relative;
+    }
+
+    .dd-trigger {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 9px 12px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: var(--dd-bg);
+      color: var(--text-1);
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color .15s ease, background .15s ease;
+    }
+
+    .dd-trigger:hover,
+    .dd-bybit.open .dd-trigger {
+      background: #2a2f35;
+      border-color: var(--orange);
+    }
+
+    .dd-trigger.orange .dd-value {
+      color: var(--orange);
+      font-weight: 700;
+    }
+
+    .dd-bybit.open .dd-trigger {
+      border-radius: 6px 6px 0 0;
+      background: var(--dd-bg);
+    }
+
+    .dd-caret {
+      flex-shrink: 0;
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-bottom: 5px solid #848e9c;
+      transition: transform 0.15s ease;
+    }
+
+    .dd-trigger:not(.open) .dd-caret {
+      border-bottom: none;
+      border-top: 5px solid #848e9c;
+    }
+
+    .dd-trigger.open .dd-caret {
+      transform: none;
+    }
+
+    .dd-bybit .dd-menu {
+      padding: 2px 4px 4px;
+    }
+
+    .dd-up .dd-menu {
+      top: auto;
+      bottom: calc(100% + 4px);
+      border-radius: 6px;
+      box-shadow: 0 -6px 16px rgba(0, 0, 0, 0.35);
+    }
+
+    .dd-up.dd-bybit.open .dd-trigger {
+      border-radius: 0 0 6px 6px;
+    }
+
+    .dd-up.dd-bybit .dd-menu {
+      border-radius: 6px 6px 0 0;
+    }
+
+    .dd-up .dd-trigger.open .dd-caret {
+      border-top: none;
+      border-bottom: 5px solid #848e9c;
+    }
+
+    .replay-start-dd {
+      position: relative;
+    }
+
+    .replay-start-dd .dd-menu {
+      left: 0;
+      right: auto;
+      min-width: 188px;
+      width: max-content;
+      padding: 4px;
+      background: #25292e;
+    }
+
+    .replay-start-dd .dd-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 4px;
+      color: #eaecef;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .replay-start-dd .dd-item svg {
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+      color: #848e9c;
+    }
+
+    .replay-start-dd .dd-item:hover {
+      background: #3d424a;
+    }
+
+    .replay-start-dd .dd-trigger.replay-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      width: auto;
+    }
+
+    .replay-start-dd .dd-trigger.replay-btn svg {
+      width: 16px;
+      height: 16px;
+      color: #848e9c;
+      flex-shrink: 0;
+    }
+
+    .dd-menu {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      z-index: 200;
+      padding: 4px 6px 6px;
+      border-radius: 0 0 6px 6px;
+      background: var(--dd-bg);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+      max-height: 280px;
+      overflow-y: auto;
+    }
+
+    .dd-menu.open {
+      display: block;
+    }
+
+    .dd-menu::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .dd-menu::-webkit-scrollbar-thumb {
+      border-radius: 10px;
+      background: #4a4e57;
+    }
+
+    .dd-menu::-webkit-scrollbar-thumb:hover {
+      background: #5a5e67;
+    }
+
+    .dd-bybit .dd-item {
+      padding: 5px 8px;
+      font-size: 12px;
+    }
+
+    .dd-item {
+      padding: 8px 10px;
+      border-radius: 4px;
+      color: #eaecef;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .dd-bybit .dd-item:hover:not(.active) {
+      background: var(--dd-hover);
+      color: #eaecef;
+    }
+
+    .dd-item.active {
+      background: transparent;
+      color: var(--orange);
+      font-weight: 600;
+    }
+
+    .dd-bybit .dd-item.active:hover {
+      background: transparent;
+      color: var(--orange);
+    }
+
+    .dd-bybit .dd-sep {
+      margin: 2px 6px;
+    }
+
+    .dd-sep {
+      height: 1px;
+      margin: 4px 8px;
+      background: var(--dd-hover);
+    }
+
+    .dd-item.customize {
+      color: #eaecef;
+    }
+
+    .dd-bybit .dd-item.customize:hover {
+      background: var(--dd-hover);
+      color: #eaecef;
+    }
+
+    .dd-sm .dd-trigger {
+      padding: 5px 8px;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: var(--radius);
+      background: var(--bg-2);
+    }
+
+    .dd-sm .dd-menu {
+      min-width: 72px;
+      border-radius: 6px;
+      top: calc(100% + 4px);
+      background: #2a2a2e;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+    }
+
+    .dd-sm.dd-up .dd-menu {
+      top: auto;
+      bottom: calc(100% + 4px);
+      box-shadow: 0 -6px 16px rgba(0, 0, 0, 0.35);
+    }
+
+    .dd-sm.dd-up.open .dd-trigger {
+      border-radius: 0 0 var(--radius) var(--radius);
+    }
+
+    .dd-symbol .dd-trigger {
+      background: var(--dd-bg);
+      padding: 5px 8px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .dd-symbol.open .dd-trigger {
+      border-radius: 6px 6px 0 0;
+    }
+
+    .dd-symbol .dd-menu {
+      top: 100%;
+      left: 0;
+      right: auto;
+      width: 430px;
+      min-width: 430px;
+      border-radius: 0 0 8px 8px;
+      background: #16171a;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .symbol-market-tabs {
+      display: flex;
+      gap: 14px;
+      padding: 0 10px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      border-bottom: 1px solid #25282e;
+    }
+
+    .symbol-market-tabs::-webkit-scrollbar { display: none; }
+
+    .symbol-market-tabs button {
+      flex-shrink: 0;
+      position: relative;
+      padding: 8px 0 10px;
+      border: none;
+      background: none;
+      color: #848e9c;
+      font-family: var(--font);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .symbol-market-tabs button.active { color: #eaecef; }
+
+    .symbol-market-tabs button.active::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 2px;
+      background: var(--orange);
+    }
+
+    .symbol-market-filters {
+      display: flex;
+      gap: 8px;
+      padding: 8px 10px;
+    }
+
+    .symbol-market-filters button {
+      padding: 4px 10px;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      background: #1e2024;
+      color: #848e9c;
+      font-family: var(--font);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .symbol-market-filters button.active {
+      border-color: var(--orange);
+      color: var(--orange);
+      background: rgba(243, 132, 29, 0.08);
+    }
+
+    .symbol-market-head,
+    .symbol-market-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) 0.8fr 0.7fr 0.8fr;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+    }
+
+    .symbol-market-head {
+      padding-bottom: 6px;
+      color: #848e9c;
+      font-size: 11px;
+    }
+
+    .symbol-market-head span:not(:first-child),
+    .symbol-market-row > span:not(:first-child) {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .symbol-market-list {
+      max-height: 280px;
+      overflow-y: auto;
+      padding-bottom: 6px;
+    }
+
+    .symbol-market-row {
+      min-height: 34px;
+      padding-top: 4px;
+      padding-bottom: 4px;
+      cursor: pointer;
+    }
+
+    .symbol-market-row:hover { background: #1e2024; }
+
+    .symbol-market-name {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      color: #848e9c;
+    }
+
+    .symbol-market-name svg {
+      width: 13px;
+      height: 13px;
+      flex-shrink: 0;
+    }
+
+    .symbol-market-coin {
+      display: grid;
+      place-items: center;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .symbol-market-pair {
+      overflow: hidden;
+      color: #eaecef;
+      font-size: 12px;
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .symbol-market-pair.active { color: var(--orange); }
+
+    .symbol-market-badge {
+      flex-shrink: 0;
+      padding: 1px 4px;
+      border-radius: 2px;
+      background: rgba(243, 132, 29, 0.14);
+      color: var(--orange);
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .symbol-market-price,
+    .symbol-market-vol {
+      font-size: 12px;
+      font-weight: 500;
+      color: #eaecef;
+    }
+
+    .symbol-market-chg { font-size: 12px; font-weight: 500; }
+    .symbol-market-chg.up { color: #20b26c; }
+    .symbol-market-chg.down { color: #ef454a; }
+
+    .dd-search-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px 6px;
+    }
+
+    .dd-search-field {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      height: 28px;
+      padding: 0 8px;
+      border-radius: 4px;
+      background: #25262b;
+    }
+
+    .dd-search-icon,
+    .dd-pin-btn {
+      flex-shrink: 0;
+      color: #848e9c;
+    }
+
+    .dd-search-icon {
+      width: 14px;
+      height: 14px;
+    }
+
+    .dd-search {
+      flex: 1;
+      min-width: 0;
+      padding: 0;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      color: #eaecef;
+      font-family: var(--font);
+      font-size: 12px;
+    }
+
+    .dd-search::placeholder {
+      color: transparent;
+    }
+
+    .dd-search:focus {
+      outline: none;
+    }
+
+    .dd-pin-btn {
+      display: grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .dd-pin-btn:hover {
+      color: #adb1b8;
+    }
+
+    .dd-pin-btn svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .dd-list {
+      max-height: 200px;
+      overflow-y: auto;
+      padding: 2px 4px 4px;
+    }
+
+    .dd-list .dd-item.active {
+      color: var(--orange);
+    }
+
+    .dd-symbol .dd-list {
+      display: none;
+    }
+
+    .tf-list {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      margin-left: 8px;
+      padding-left: 12px;
+      border-left: 1px solid var(--border);
+    }
+
+    .tf {
+      padding: 4px 8px;
+      border: none;
+      border-radius: 2px;
+      background: transparent;
+      color: var(--text-3);
+      font-family: var(--font);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .tf:hover { color: var(--text-2); }
+
+    .tf.active {
+      color: var(--orange);
+      font-weight: 600;
+    }
+
+    .tools {
+      display: flex;
+      gap: 2px;
+      margin-left: 12px;
+      padding-left: 12px;
+      border-left: 1px solid var(--border);
+    }
+
+    .tool {
+      width: 28px;
+      height: 28px;
+      border: none;
+      border-radius: var(--radius);
+      background: transparent;
+      color: var(--text-3);
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .tool:hover { background: var(--bg-2); color: var(--text-2); }
+    .tool.active { color: var(--orange); background: var(--orange-dim); }
+
+    .spacer { flex: 1; }
+
+    .upload-btn {
+      padding: 5px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg-2);
+      color: var(--text-2);
+      font-family: var(--font);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .upload-btn:hover { border-color: var(--border-light); color: var(--text-1); }
+
+    /* ── Chart ── */
+    .chart-area {
+      flex: 1;
+      position: relative;
+      background: var(--bg-0);
+      overflow: hidden;
+    }
+
+    .chart-grid {
+      position: absolute;
+      inset: 0 64px 24px 0;
+      background-image:
+        linear-gradient(var(--chart-grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--chart-grid) 1px, transparent 1px);
+      background-size: 56px 36px;
+    }
+
+    .symbol-label {
+      position: absolute;
+      top: 10px;
+      left: 12px;
+      z-index: 2;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-1);
+    }
+
+    .symbol-label span {
+      margin-left: 8px;
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--text-3);
+    }
+
+    .price-axis {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 24px;
+      width: 64px;
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 8px 0;
+      font-size: 11px;
+      color: var(--text-3);
+      text-align: center;
+    }
+
+    .price-now {
+      position: absolute;
+      right: 0;
+      padding: 1px 6px;
+      background: var(--orange);
+      color: #000;
+      font-size: 11px;
+      font-weight: 600;
+      transform: translateY(-50%);
+    }
+
+    .time-axis {
+      position: absolute;
+      left: 0;
+      right: 64px;
+      bottom: 0;
+      height: 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      font-size: 10px;
+      color: var(--text-3);
+    }
+
+    /* ── Replay ── */
+    .replay {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      background: var(--bg-1);
+      border-top: 1px solid var(--border);
+    }
+
+    .replay-btn {
+      padding: 6px 12px;
+      border: 1px solid transparent;
+      border-radius: var(--radius);
+      background: var(--bg-2);
+      color: var(--text-2);
+      font-family: var(--font);
+      font-size: 12px;
+      cursor: pointer;
+      transition: border-color .15s ease, color .15s ease;
+    }
+
+    .replay-btn:hover,
+    .replay-start-dd.open .replay-btn.dd-trigger {
+      color: var(--text-1);
+      border-color: var(--orange);
+    }
+
+    .play-circle {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: none;
+      background: var(--orange);
+      color: #000;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      font-size: 14px;
+    }
+
+    .play-circle:hover { filter: brightness(1.08); }
+
+    .replay-clock {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--text-3);
+    }
+
+    .replay-clock b { color: var(--text-1); font-weight: 500; }
+
+    /* ── Sidebar (Bybit trade panel) ── */
+    .sidebar {
+      background: var(--bg-1);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .sidebar::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .trade-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px 8px;
+    }
+
+    .trade-head b {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .trade-head-icons {
+      display: flex;
+      gap: 4px;
+      color: var(--text-3);
+    }
+
+    .trade-body {
+      padding: 0 14px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .row2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 11px;
+      color: var(--text-3);
+      margin-bottom: 4px;
+    }
+
+    .ticket-field {
+      padding: 8px 12px 9px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: #2c2d33;
+      transition: border-color .15s ease;
+    }
+
+    .ticket-field:hover,
+    .ticket-field:focus-within {
+      border-color: var(--orange);
+    }
+
+    .ticket-field > span {
+      display: block;
+      margin-bottom: 2px;
+      color: var(--text-3);
+      font-size: 11px;
+    }
+
+    .ticket-field-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .ticket-field-input {
+      width: 100%;
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: var(--text-1);
+      font-family: var(--font);
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .ticket-field-input:focus {
+      outline: none;
+    }
+
+    .ticket-field-unit {
+      color: var(--text-1);
+      font-size: 13px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .inp {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid transparent;
+      border-radius: var(--radius);
+      background: var(--bg-input);
+      color: var(--text-1);
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 500;
+      transition: border-color .15s ease;
+    }
+
+    .inp:hover,
+    .inp:focus {
+      border-color: var(--orange);
+      outline: none;
+    }
+
+    .order-tabs {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+
+    .order-tab {
+      position: relative;
+      border: none;
+      background: none;
+      color: var(--text-3);
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 0 0 8px;
+    }
+
+    .order-tab:hover { color: var(--text-2); }
+
+    .order-tab.active {
+      color: var(--orange);
+    }
+
+    .order-tab.active::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 2px;
+      background: var(--orange);
+    }
+
+    .order-panel-hidden {
+      display: none !important;
+    }
+
+    .market-price-hint b {
+      display: block;
+      color: #eaecef;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .market-price-hint small {
+      color: #848e9c;
+      font-size: 11px;
+    }
+
+    .order-tab-help {
+      margin-left: auto;
+      color: var(--text-3);
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 10px 0 8px;
+      font-size: 13px;
+      color: var(--text-2);
+    }
+
+    .checkbox-row input {
+      width: 14px;
+      height: 14px;
+      accent-color: var(--orange);
+    }
+
+    .checkbox-row em {
+      font-style: normal;
+      color: var(--text-3);
+      font-size: 12px;
+    }
+
+    /* Bybit slider */
+    .pct-slider {
+      position: relative;
+      padding: 8px 0 0;
+    }
+
+    .pct-track {
+      --fill: 25%;
+      height: 2px;
+      background: #3a3f4b;
+      border-radius: 1px;
+      position: relative;
+    }
+
+    .pct-track::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: var(--fill);
+      height: 100%;
+      background: var(--orange);
+      border-radius: 1px;
+    }
+
+    .pct-dots {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      right: 0;
+      transform: translateY(-50%);
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+
+    .pct-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #16171a;
+      border: 2px solid #555c6b;
+      pointer-events: auto;
+      cursor: pointer;
+    }
+
+    .pct-dot.filled {
+      border-color: var(--orange);
+    }
+
+    .pct-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+      font-size: 11px;
+      color: var(--text-3);
+    }
+
+    /* Summary dashed box */
+    .order-box {
+      padding: 10px 12px;
+      border: 1px dashed var(--border-light);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .order-box-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+    }
+
+    .order-box-row span { color: var(--text-3); }
+    .order-box-row b { font-weight: 500; color: var(--text-1); }
+    .order-box-row .g { color: var(--long); }
+    .order-box-row .r { color: var(--short); }
+
+    /* Pill buttons */
+    .trade-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .btn-long, .btn-short {
+      padding: 11px;
+      border: none;
+      border-radius: 999px;
+      font-family: var(--font);
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+
+    .btn-long { background: var(--long); }
+    .btn-long:hover { background: var(--long-hover); }
+    .btn-short { background: var(--short); }
+    .btn-short:hover { background: var(--short-hover); }
+
+    .account-tools {
+      display: flex;
+      gap: 16px;
+      padding: 10px 0;
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--text-3);
+    }
+
+    .account-tools a {
+      color: var(--text-3);
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .account-tools a:hover { color: var(--text-2); }
+    .account-tools .hl { color: var(--orange); }
+
+    /* Positions */
+    .pos-section {
+      padding: 10px 14px 4px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-3);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .pos-card {
+      margin: 0 14px 8px;
+      padding: 10px 12px;
+      background: var(--bg-input);
+      border-radius: var(--radius);
+      cursor: pointer;
+    }
+
+    .pos-card:hover { background: var(--bg-2); }
+
+    .pos-card.focused {
+      outline: 1px solid var(--orange);
+      outline-offset: -1px;
+    }
+
+    .pos-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .side-tag {
+      padding: 2px 6px;
+      border-radius: 2px;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .side-tag.long { background: rgba(32, 178, 108, 0.15); color: var(--long); }
+    .side-tag.limit { background: rgba(247, 166, 0, 0.12); color: var(--orange); }
+
+    .pos-info b { font-size: 13px; font-weight: 600; }
+    .pos-info small { display: block; font-size: 11px; color: var(--text-3); }
+
+    .pos-pnl {
+      margin-left: auto;
+      text-align: right;
+    }
+
+    .pos-pnl b { display: block; font-size: 12px; color: var(--long); font-weight: 600; }
+    .pos-pnl em { font-style: normal; font-size: 11px; color: var(--long); }
+
+    .hint {
+      margin: 8px 14px 14px;
+      padding: 10px 12px;
+      border-left: 2px solid var(--orange);
+      background: var(--orange-dim);
+      font-size: 12px;
+      color: var(--text-2);
+      line-height: 1.5;
+    }
+
+    .hint span { color: var(--text-3); font-size: 11px; }
+
+    .banner {
+      position: fixed;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 8px 16px;
+      border-radius: var(--radius);
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text-3);
+      z-index: 99;
+    }
+
+    .banner strong { color: var(--orange); }
+  </style>
+</head>
+<body>
+
+  <header class="header">
+    <div class="brand">
+      <div class="brand-mark">C</div>
+      <div>
+        <b>CANDLE LAB</b>
+        <small>Replay Terminal</small>
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="hdr-btn">История</button>
+      <span class="dot-live">LOCAL</span>
+      <button class="hdr-btn">Настройки</button>
+      <button class="hdr-btn orange">Жournal <span class="badge-count">12</span></button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <section class="workspace">
+      <!-- Chart tabs like Bybit -->
+      <div class="chart-tabs">
+        <div class="chart-tabs-left">
+          <button class="chart-tab active">Chart</button>
+          <button class="chart-tab">Overview</button>
+          <button class="chart-tab">Data</button>
+        </div>
+        <div class="chart-tabs-right">
+          <button class="chart-tab">Standard</button>
+          <button class="chart-tab orange-text">TradingView</button>
+          <button class="icon-btn" title="Настройки">⚙</button>
+          <button class="icon-btn" title="Fullscreen">⛶</button>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="dd dd-bybit dd-symbol" style="width:120px;" data-dd data-searchable>
+          <button type="button" class="dd-trigger" aria-expanded="false">
+            <span class="dd-value">TNSRUSDT</span>
+            <span class="dd-caret"></span>
+          </button>
+          <div class="dd-menu" role="listbox">
+            <div class="dd-search-wrap">
+              <div class="dd-search-field">
+                <svg class="dd-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7"></circle>
+                  <path d="M20 20l-3.5-3.5"></path>
+                </svg>
+                <input type="text" class="dd-search" placeholder="" autocomplete="off" />
+              </div>
+              <button type="button" class="dd-pin-btn" title="Pin" aria-label="Pin">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                  <path d="M12 17v5"></path>
+                  <path d="M9 3h6l1 7h-8z"></path>
+                  <path d="M9 10v4a3 3 0 0 0 6 0v-4"></path>
+                </svg>
+              </button>
+            </div>
+            <div class="symbol-market-tabs">
+              <button type="button">Favorites</button>
+              <button type="button">Spot</button>
+              <button type="button">Alpha</button>
+              <button type="button" class="active">Perpetual</button>
+              <button type="button">Futures</button>
+              <button type="button">Options</button>
+              <button type="button">TradFi</button>
+              <button type="button">Pre-Market</button>
+            </div>
+            <div class="symbol-market-filters">
+              <button type="button">USDC</button>
+              <button type="button" class="active">USDT</button>
+              <button type="button">Inverse Perpetual</button>
+            </div>
+            <div class="symbol-market-head">
+              <span>Name</span><span>Price</span><span>24H %</span><span>Volume</span>
+            </div>
+            <div class="symbol-market-list">
+              <div class="symbol-market-row" data-value="TNSRUSDT">
+                <span class="symbol-market-name">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+                  <span class="symbol-market-coin" style="background:#3b82f6">T</span>
+                  <span class="symbol-market-pair active">TNSRUSDT</span>
+                  <span class="symbol-market-badge">50%</span>
+                </span>
+                <span class="symbol-market-price">0.03349</span>
+                <span class="symbol-market-chg up">+0.22%</span>
+                <span class="symbol-market-vol">1.24M</span>
+              </div>
+              <div class="symbol-market-row" data-value="BTCUSDT">
+                <span class="symbol-market-name">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+                  <span class="symbol-market-coin" style="background:#f59e0b">B</span>
+                  <span class="symbol-market-pair">BTCUSDT</span>
+                  <span class="symbol-market-badge">50%</span>
+                </span>
+                <span class="symbol-market-price">97,234.50</span>
+                <span class="symbol-market-chg up">+1.15%</span>
+                <span class="symbol-market-vol">8.52B</span>
+              </div>
+              <div class="symbol-market-row" data-value="ETHUSDT">
+                <span class="symbol-market-name">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+                  <span class="symbol-market-coin" style="background:#8b5cf6">E</span>
+                  <span class="symbol-market-pair">ETHUSDT</span>
+                  <span class="symbol-market-badge">50%</span>
+                </span>
+                <span class="symbol-market-price">3,456.20</span>
+                <span class="symbol-market-chg down">-0.44%</span>
+                <span class="symbol-market-vol">4.18B</span>
+              </div>
+              <div class="symbol-market-row" data-value="SOLUSDT">
+                <span class="symbol-market-name">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+                  <span class="symbol-market-coin" style="background:#14b8a6">S</span>
+                  <span class="symbol-market-pair">SOLUSDT</span>
+                  <span class="symbol-market-badge">50%</span>
+                </span>
+                <span class="symbol-market-price">178.42</span>
+                <span class="symbol-market-chg up">+2.08%</span>
+                <span class="symbol-market-vol">892.4M</span>
+              </div>
+              <div class="symbol-market-row" data-value="FILUSDC">
+                <span class="symbol-market-name">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+                  <span class="symbol-market-coin" style="background:#06b6d4">F</span>
+                  <span class="symbol-market-pair">FILUSDC</span>
+                  <span class="symbol-market-badge">50%</span>
+                </span>
+                <span class="symbol-market-price">2.481</span>
+                <span class="symbol-market-chg up">+0.00%</span>
+                <span class="symbol-market-vol">1.02M</span>
+              </div>
+              <div class="symbol-market-row" data-value="EIGENUSDC">
+                <span class="symbol-market-name">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+                  <span class="symbol-market-coin" style="background:#ec4899">E</span>
+                  <span class="symbol-market-pair">EIGENUSDC</span>
+                  <span class="symbol-market-badge">50%</span>
+                </span>
+                <span class="symbol-market-price">0.697</span>
+                <span class="symbol-market-chg down">-0.00%</span>
+                <span class="symbol-market-vol">1.02M</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="tf-list">
+          <button class="tf">5m</button>
+          <button class="tf active">15m</button>
+          <button class="tf">30m</button>
+          <button class="tf">1h</button>
+          <button class="tf">3h</button>
+          <button class="tf">4h</button>
+          <button class="tf">1d</button>
+        </div>
+        <div class="tools">
+          <button class="tool" title="Trend">↗</button>
+          <button class="tool" title="Rect">▭</button>
+          <button class="tool" title="Ruler">│</button>
+          <button class="tool active" title="Fib">Fib</button>
+        </div>
+        <div class="spacer"></div>
+        <button class="upload-btn">↑ CSV</button>
+      </div>
+
+      <div class="chart-area">
+        <div class="chart-grid"></div>
+        <div class="symbol-label">TNSRUSDT <span>15m · Historical</span></div>
+        <svg style="position:absolute;inset:0 64px 24px 0;" viewBox="0 0 900 400" preserveAspectRatio="none">
+          <g opacity="0.95">
+            <rect x="30" y="260" width="7" height="35" fill="#20b26c"/><line x1="33" y1="245" x2="33" y2="305" stroke="#20b26c" stroke-width="1"/>
+            <rect x="50" y="230" width="7" height="45" fill="#20b26c"/><line x1="53" y1="210" x2="53" y2="285" stroke="#20b26c" stroke-width="1"/>
+            <rect x="70" y="250" width="7" height="28" fill="#ef454a"/><line x1="73" y1="235" x2="73" y2="288" stroke="#ef454a" stroke-width="1"/>
+            <rect x="90" y="210" width="7" height="40" fill="#20b26c"/><line x1="93" y1="195" x2="93" y2="260" stroke="#20b26c" stroke-width="1"/>
+            <rect x="110" y="190" width="7" height="35" fill="#20b26c"/><line x1="113" y1="175" x2="113" y2="235" stroke="#20b26c" stroke-width="1"/>
+            <rect x="130" y="205" width="7" height="25" fill="#ef454a"/><line x1="133" y1="192" x2="133" y2="240" stroke="#ef454a" stroke-width="1"/>
+            <rect x="150" y="175" width="7" height="38" fill="#20b26c"/><line x1="153" y1="160" x2="153" y2="225" stroke="#20b26c" stroke-width="1"/>
+            <rect x="170" y="195" width="7" height="30" fill="#ef454a"/><line x1="173" y1="180" x2="173" y2="235" stroke="#ef454a" stroke-width="1"/>
+            <rect x="190" y="165" width="7" height="35" fill="#20b26c"/><line x1="193" y1="150" x2="193" y2="210" stroke="#20b26c" stroke-width="1"/>
+            <rect x="210" y="180" width="7" height="28" fill="#ef454a"/><line x1="213" y1="168" x2="213" y2="218" stroke="#ef454a" stroke-width="1"/>
+            <rect x="230" y="155" width="7" height="32" fill="#20b26c"/><line x1="233" y1="142" x2="233" y2="197" stroke="#20b26c" stroke-width="1"/>
+            <rect x="250" y="170" width="7" height="25" fill="#20b26c"/><line x1="253" y1="158" x2="253" y2="205" stroke="#20b26c" stroke-width="1"/>
+            <rect x="270" y="145" width="7" height="35" fill="#ef454a"/><line x1="273" y1="130" x2="273" y2="190" stroke="#ef454a" stroke-width="1"/>
+            <rect x="290" y="160" width="7" height="28" fill="#20b26c"/><line x1="293" y1="148" x2="293" y2="198" stroke="#20b26c" stroke-width="1"/>
+            <rect x="310" y="135" width="7" height="32" fill="#20b26c"/><line x1="313" y1="122" x2="313" y2="177" stroke="#20b26c" stroke-width="1"/>
+            <rect x="330" y="150" width="7" height="25" fill="#ef454a"/><line x1="333" y1="140" x2="333" y2="185" stroke="#ef454a" stroke-width="1"/>
+            <rect x="350" y="125" width="7" height="35" fill="#20b26c"/><line x1="353" y1="110" x2="353" y2="170" stroke="#20b26c" stroke-width="1"/>
+            <rect x="370" y="140" width="7" height="28" fill="#20b26c"/><line x1="373" y1="128" x2="373" y2="178" stroke="#20b26c" stroke-width="1"/>
+            <rect x="390" y="118" width="7" height="30" fill="#ef454a"/><line x1="393" y1="105" x2="393" y2="158" stroke="#ef454a" stroke-width="1"/>
+            <rect x="410" y="132" width="7" height="28" fill="#20b26c"/><line x1="413" y1="120" x2="413" y2="170" stroke="#20b26c" stroke-width="1"/>
+            <rect x="430" y="110" width="7" height="32" fill="#20b26c"/><line x1="433" y1="98" x2="433" y2="152" stroke="#20b26c" stroke-width="1"/>
+            <rect x="450" y="125" width="7" height="25" fill="#ef454a"/><line x1="453" y1="115" x2="453" y2="160" stroke="#ef454a" stroke-width="1"/>
+            <rect x="470" y="105" width="7" height="30" fill="#20b26c"/><line x1="473" y1="93" x2="473" y2="145" stroke="#20b26c" stroke-width="1"/>
+            <rect x="490" y="118" width="7" height="28" fill="#20b26c"/><line x1="493" y1="106" x2="493" y2="156" stroke="#20b26c" stroke-width="1"/>
+            <rect x="510" y="100" width="7" height="32" fill="#ef454a"/><line x1="513" y1="88" x2="513" y2="142" stroke="#ef454a" stroke-width="1"/>
+            <rect x="530" y="115" width="7" height="25" fill="#20b26c"/><line x1="533" y1="105" x2="533" y2="150" stroke="#20b26c" stroke-width="1"/>
+            <rect x="550" y="95" width="7" height="30" fill="#20b26c"/><line x1="553" y1="83" x2="553" y2="135" stroke="#20b26c" stroke-width="1"/>
+            <rect x="570" y="108" width="7" height="28" fill="#ef454a"/><line x1="573" y1="96" x2="573" y2="146" stroke="#ef454a" stroke-width="1"/>
+            <rect x="590" y="90" width="7" height="32" fill="#20b26c"/><line x1="593" y1="78" x2="593" y2="132" stroke="#20b26c" stroke-width="1"/>
+            <rect x="610" y="102" width="7" height="28" fill="#20b26c"/><line x1="613" y1="90" x2="613" y2="140" stroke="#20b26c" stroke-width="1"/>
+            <rect x="630" y="85" width="7" height="30" fill="#ef454a"/><line x1="633" y1="73" x2="633" y2="125" stroke="#ef454a" stroke-width="1"/>
+            <rect x="650" y="98" width="7" height="28" fill="#20b26c"/><line x1="653" y1="86" x2="653" y2="136" stroke="#20b26c" stroke-width="1"/>
+            <rect x="670" y="80" width="7" height="32" fill="#20b26c"/><line x1="673" y1="68" x2="673" y2="122" stroke="#20b26c" stroke-width="1"/>
+            <rect x="690" y="92" width="7" height="28" fill="#ef454a"/><line x1="693" y1="80" x2="693" y2="130" stroke="#ef454a" stroke-width="1"/>
+            <rect x="710" y="75" width="7" height="30" fill="#20b26c"/><line x1="713" y1="63" x2="713" y2="115" stroke="#20b26c" stroke-width="1"/>
+            <rect x="730" y="88" width="7" height="28" fill="#20b26c"/><line x1="733" y1="76" x2="733" y2="126" stroke="#20b26c" stroke-width="1"/>
+            <rect x="750" y="70" width="7" height="32" fill="#ef454a"/><line x1="753" y1="58" x2="753" y2="112" stroke="#ef454a" stroke-width="1"/>
+            <rect x="770" y="82" width="7" height="28" fill="#20b26c"/><line x1="773" y1="70" x2="773" y2="120" stroke="#20b26c" stroke-width="1"/>
+            <rect x="790" y="65" width="7" height="30" fill="#20b26c"/><line x1="793" y1="53" x2="793" y2="105" stroke="#20b26c" stroke-width="1"/>
+          </g>
+          <line x1="180" y1="70" x2="650" y2="290" stroke="#848e9c" stroke-width="1" stroke-dasharray="4 4"/>
+          <line x1="180" y1="290" x2="650" y2="290" stroke="#848e9c" stroke-width="1"/>
+          <line x1="180" y1="240" x2="650" y2="240" stroke="#ef454a" stroke-width="1"/>
+          <line x1="180" y1="200" x2="650" y2="200" stroke="#f7a600" stroke-width="1"/>
+          <line x1="180" y1="70" x2="650" y2="70" stroke="#848e9c" stroke-width="1"/>
+          <circle cx="180" cy="70" r="4" fill="#f7a600" stroke="#fff" stroke-width="1"/>
+          <circle cx="650" cy="290" r="4" fill="#f7a600" stroke="#fff" stroke-width="1"/>
+          <line x1="0" y1="120" x2="900" y2="120" stroke="#20b26c" stroke-width="1" stroke-dasharray="4 4" opacity="0.45"/>
+          <line x1="0" y1="320" x2="900" y2="320" stroke="#ef454a" stroke-width="1" stroke-dasharray="4 4" opacity="0.45"/>
+        </svg>
+        <div class="price-axis">
+          <span>0.038</span><span>0.036</span><span>0.034</span><span>0.032</span><span>0.030</span>
+        </div>
+        <div class="price-now" style="top:42%;">0.03349</div>
+        <div class="time-axis">
+          <span>Jun 10</span><span>Jun 12</span><span>Jun 14</span><span>Jun 16</span><span>Jun 18</span>
+        </div>
+      </div>
+
+      <div class="replay">
+        <div class="dd dd-sm dd-up replay-start-dd" data-dd>
+          <button type="button" class="replay-btn dd-trigger" aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path>
+            </svg>
+            Выбрать старт
+          </button>
+          <div class="dd-menu" role="listbox">
+            <div class="dd-item" data-action="bar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg>
+              <span>Выбрать свечу</span>
+            </div>
+            <div class="dd-item" data-action="date">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg>
+              <span>Выбрать дату</span>
+            </div>
+            <div class="dd-item" data-action="first">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg>
+              <span>Первая доступная</span>
+            </div>
+            <div class="dd-item" data-action="random">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="3" width="8" height="8" rx="1"></rect><rect x="13" y="13" width="8" height="8" rx="1"></rect><circle cx="7" cy="7" r="1"></circle><circle cx="17" cy="17" r="1"></circle></svg>
+              <span>Случайная свеча</span>
+            </div>
+          </div>
+        </div>
+        <button class="icon-btn">↺</button>
+        <button class="play-circle" id="playBtn">▶</button>
+        <button class="icon-btn">⏭</button>
+        <div class="dd dd-sm dd-up" style="width:58px;" data-dd>
+          <button type="button" class="dd-trigger" aria-expanded="false">
+            <span class="dd-value">1×</span>
+            <span class="dd-caret"></span>
+          </button>
+          <div class="dd-menu" role="listbox">
+            <div class="dd-item active" data-value="1×">1×</div>
+            <div class="dd-item" data-value="5×">5×</div>
+            <div class="dd-item" data-value="10×">10×</div>
+          </div>
+        </div>
+        <div class="replay-clock">🕐 <b>18 Jun, 14:30</b> · 842 / 1200</div>
+      </div>
+    </section>
+
+    <aside class="sidebar">
+      <div class="trade-head">
+        <b>Trade</b>
+        <div class="trade-head-icons">
+          <span class="icon-btn" style="width:22px;height:22px;font-size:12px;">📰</span>
+          <span class="icon-btn" style="width:22px;height:22px;font-size:12px;">⊞</span>
+        </div>
+      </div>
+
+      <div class="trade-body">
+        <div class="row2">
+          <div class="field">
+            <label>Isolated</label>
+            <div class="dd" data-dd>
+              <button type="button" class="dd-trigger" aria-expanded="false">
+                <span class="dd-value">Isolated</span>
+                <span class="dd-caret"></span>
+              </button>
+              <div class="dd-menu" role="listbox">
+                <div class="dd-item active" data-value="Isolated">Isolated</div>
+                <div class="dd-item" data-value="Cross">Cross</div>
+              </div>
+            </div>
+          </div>
+          <div class="field">
+            <label>Leverage</label>
+            <div class="dd dd-bybit" data-dd>
+              <button type="button" class="dd-trigger orange" aria-expanded="false">
+                <span class="dd-value">10.00x</span>
+                <span class="dd-caret"></span>
+              </button>
+              <div class="dd-menu" role="listbox">
+                <div class="dd-item" data-value="1x">1x</div>
+                <div class="dd-item" data-value="3x">3x</div>
+                <div class="dd-item" data-value="5x">5x</div>
+                <div class="dd-item active" data-value="10x">10x</div>
+                <div class="dd-item" data-value="15x">15x</div>
+                <div class="dd-item" data-value="20x">20x</div>
+                <div class="dd-item" data-value="25x">25x</div>
+                <div class="dd-item" data-value="50x">50x</div>
+                <div class="dd-item" data-value="75x">75x</div>
+                <div class="dd-item" data-value="100x">100x</div>
+                <div class="dd-sep"></div>
+                <div class="dd-item customize" data-value="Customize">Customize</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="order-tabs">
+          <button type="button" class="order-tab" data-tab="limit">Limit</button>
+          <button type="button" class="order-tab active" data-tab="market">Market</button>
+          <span class="order-tab-help">?</span>
+        </div>
+
+        <div class="field order-limit-panel order-panel-hidden">
+          <label>Price</label>
+          <input class="inp" value="0.03349" />
+        </div>
+
+        <div class="ticket-field market-price-hint order-market-panel">
+          <span>Price</span>
+          <b>0.03349</b>
+          <small>Market · исполнение по текущей свече</small>
+        </div>
+
+        <div class="ticket-field">
+          <span>Value</span>
+          <div class="ticket-field-row">
+            <input class="ticket-field-input" value="100" />
+            <span class="ticket-field-unit">USDT ▾</span>
+          </div>
+        </div>
+
+        <div class="pct-slider" id="pctSlider">
+          <div class="pct-track">
+            <div class="pct-dots">
+              <span class="pct-dot filled" data-pct="0"></span>
+              <span class="pct-dot filled" data-pct="25"></span>
+              <span class="pct-dot" data-pct="50"></span>
+              <span class="pct-dot" data-pct="75"></span>
+              <span class="pct-dot" data-pct="100"></span>
+            </div>
+          </div>
+          <div class="pct-labels"><span>0</span><span>100%</span></div>
+        </div>
+
+        <div class="order-box">
+          <div class="order-box-row"><span>Quantity</span><b>2,985.07 TNSR</b></div>
+          <div class="order-box-row"><span>Cost</span><b>10.00 USDT</b></div>
+          <div class="order-box-row"><span>Liq. Price (Long)</span><b class="g">0.03014</b></div>
+          <div class="order-box-row"><span>Liq. Price (Short)</span><b class="r">0.03684</b></div>
+        </div>
+
+        <div class="checkbox-row">
+          <input type="checkbox" checked id="tpsl" />
+          <label for="tpsl">TP / SL</label>
+        </div>
+
+        <div class="row2 order-stops-panel">
+          <div class="field"><label>Take Profit</label><input class="inp" value="0.03450" /></div>
+          <div class="field"><label>Stop Loss</label><input class="inp" value="0.03280" /></div>
+        </div>
+
+        <div class="trade-row">
+          <button class="btn-long">Long</button>
+          <button class="btn-short">Short</button>
+        </div>
+
+        <div class="account-tools">
+          <a>📟 Калькулятор</a>
+          <a class="hl">📈 P&amp;L</a>
+        </div>
+      </div>
+
+      <div class="pos-section">Позиции и заявки</div>
+      <div class="pos-card focused">
+        <div class="pos-row">
+          <span class="side-tag long">LONG</span>
+          <div class="pos-info">
+            <b>0.03320</b>
+            <small>10x · 2,985 TNSR</small>
+          </div>
+          <div class="pos-pnl">
+            <b>+12.45 USDT</b>
+            <em>+4.18%</em>
+          </div>
+        </div>
+      </div>
+      <div class="pos-card">
+        <div class="pos-row">
+          <span class="side-tag limit">LIMIT</span>
+          <div class="pos-info">
+            <b>0.03180</b>
+            <small>5x · 1,500 TNSR</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="hint">
+        Будущие свечи скрыты<br />
+        <span>Доступно до 18 Jun, 14:30</span>
+      </div>
+    </aside>
+  </div>
+
+  <div class="banner"><strong>Exchange Style</strong> — Bybit/Binance палитра: #0b0e11 фон, оранжевый #f7a600, Long #20b26c, Short #ef454a</div>
+
+  <script>
+    function initDropdowns() {
+      const closeAll = (except) => {
+        document.querySelectorAll("[data-dd]").forEach((root) => {
+          if (root === except) return;
+          root.querySelector(".dd-trigger")?.classList.remove("open");
+          root.querySelector(".dd-menu")?.classList.remove("open");
+          root.classList.remove("open");
+          root.querySelector(".dd-trigger")?.setAttribute("aria-expanded", "false");
+        });
+      };
+
+      document.querySelectorAll("[data-dd]").forEach((root) => {
+        const trigger = root.querySelector(".dd-trigger");
+        const menu = root.querySelector(".dd-menu");
+        const valueEl = root.querySelector(".dd-value");
+        const searchInput = root.querySelector(".dd-search");
+        const list = root.querySelector(".symbol-market-list") || root.querySelector(".dd-list") || menu;
+        if (!trigger || !menu) return;
+
+        const filterItems = (query) => {
+          list.querySelectorAll(".symbol-market-row, .dd-item").forEach((item) => {
+            const text = (item.dataset.value || item.querySelector("span")?.textContent || item.textContent).trim().toLowerCase();
+            item.style.display = text.includes(query.trim().toLowerCase()) ? "" : "none";
+          });
+        };
+
+        trigger.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const open = menu.classList.contains("open");
+          closeAll(root);
+          if (!open) {
+            trigger.classList.add("open");
+            menu.classList.add("open");
+            root.classList.add("open");
+            trigger.setAttribute("aria-expanded", "true");
+            if (searchInput) {
+              searchInput.value = "";
+              filterItems("");
+              setTimeout(() => searchInput.focus(), 0);
+            }
+          }
+        });
+
+        searchInput?.addEventListener("input", (e) => filterItems(e.target.value));
+        searchInput?.addEventListener("click", (e) => e.stopPropagation());
+        searchInput?.addEventListener("keydown", (e) => e.stopPropagation());
+        root.querySelector(".dd-pin-btn")?.addEventListener("click", (e) => e.stopPropagation());
+
+        root.querySelectorAll(".symbol-market-tabs button, .symbol-market-filters button").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const group = btn.closest(".symbol-market-tabs, .symbol-market-filters");
+            group?.querySelectorAll("button").forEach((x) => x.classList.remove("active"));
+            btn.classList.add("active");
+          });
+        });
+
+        list.querySelectorAll(".symbol-market-row, .dd-item").forEach((item) => {
+          item.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (item.classList.contains("customize")) return;
+            if (valueEl) {
+              const raw = item.dataset.value || item.querySelector("span")?.textContent || item.textContent.trim();
+              valueEl.textContent = /^\d+x$/i.test(raw)
+                ? `${parseFloat(raw)}.00x`
+                : raw;
+            }
+            menu.querySelectorAll(".symbol-market-pair").forEach((x) => x.classList.remove("active"));
+            item.querySelector(".symbol-market-pair")?.classList.add("active");
+            menu.querySelectorAll(".dd-item").forEach((x) => x.classList.remove("active"));
+            if (item.classList.contains("dd-item")) item.classList.add("active");
+            if (searchInput) {
+              searchInput.value = "";
+              filterItems("");
+            }
+            trigger.classList.remove("open");
+            menu.classList.remove("open");
+            root.classList.remove("open");
+            trigger.setAttribute("aria-expanded", "false");
+          });
+        });
+      });
+
+      document.addEventListener("click", () => closeAll(null));
+    }
+
+    initDropdowns();
+
+    document.querySelectorAll(".tf").forEach((b) => b.addEventListener("click", () => {
+      document.querySelectorAll(".tf").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+    }));
+    document.querySelectorAll(".tool").forEach((b) => b.addEventListener("click", () => {
+      document.querySelectorAll(".tool").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+    }));
+    function initOrderTabs() {
+      const limitPanel = document.querySelector(".order-limit-panel");
+      const marketPanel = document.querySelector(".order-market-panel");
+      document.querySelectorAll(".order-tab").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".order-tab").forEach((x) => x.classList.remove("active"));
+          btn.classList.add("active");
+          const isLimit = btn.dataset.tab === "limit";
+          limitPanel?.classList.toggle("order-panel-hidden", !isLimit);
+          marketPanel?.classList.toggle("order-panel-hidden", isLimit);
+        });
+      });
+    }
+
+    initOrderTabs();
+
+    document.getElementById("tpsl")?.addEventListener("change", (event) => {
+      document.querySelector(".order-stops-panel")?.classList.toggle("order-panel-hidden", !event.target.checked);
+    });
+
+    (function initPctSlider() {
+      const root = document.getElementById("pctSlider");
+      if (!root) return;
+      const track = root.querySelector(".pct-track");
+      const dots = [...root.querySelectorAll(".pct-dot")];
+      const setPct = (pct) => {
+        track.style.setProperty("--fill", `${pct}%`);
+        dots.forEach((dot) => {
+          const value = Number(dot.dataset.pct);
+          dot.classList.toggle("filled", value <= pct);
+        });
+      };
+      dots.forEach((dot) => dot.addEventListener("click", () => setPct(Number(dot.dataset.pct))));
+      setPct(25);
+    })();
+
+    document.querySelectorAll(".chart-tab").forEach((b) => {
+      if (b.classList.contains("orange-text")) return;
+      b.addEventListener("click", () => {
+        document.querySelectorAll(".chart-tab").forEach((x) => {
+          if (!x.classList.contains("orange-text")) x.classList.remove("active");
+        });
+        b.classList.add("active");
+      });
+    });
+    let playing = false;
+    document.getElementById("playBtn").addEventListener("click", function () {
+      playing = !playing;
+      this.textContent = playing ? "⏸" : "▶";
+    });
+  </script>
+</body>
+</html>
