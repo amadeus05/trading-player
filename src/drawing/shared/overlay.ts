@@ -1,4 +1,8 @@
+import type { IChartApi } from "lightweight-charts";
+
 const SVG_NS = "http://www.w3.org/2000/svg";
+const DRAWING_OVERLAY_ATTRIBUTE = "data-drawing-overlay";
+const wheelForwardingContainers = new WeakSet<HTMLElement>();
 
 export interface DrawingOverlay {
   svg: SVGSVGElement;
@@ -16,9 +20,55 @@ interface SharedOverlayEntry {
 
 const sharedByContainer = new WeakMap<HTMLElement, Map<string, SharedOverlayEntry>>();
 
+function ensureWheelForwarding(container: HTMLElement): void {
+  if (wheelForwardingContainers.has(container)) return;
+  wheelForwardingContainers.add(container);
+  container.addEventListener("wheel", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element) || !target.closest(`svg[${DRAWING_OVERLAY_ATTRIBUTE}]`)) {
+      return;
+    }
+    const overlays = Array.from(
+      container.querySelectorAll<SVGSVGElement>(`svg[${DRAWING_OVERLAY_ATTRIBUTE}]`),
+    );
+    const visibility = overlays.map((overlay) => overlay.style.visibility);
+    overlays.forEach((overlay) => { overlay.style.visibility = "hidden"; });
+    const underlyingElement = document.elementFromPoint(event.clientX, event.clientY);
+    overlays.forEach((overlay, index) => { overlay.style.visibility = visibility[index]; });
+
+    if (underlyingElement && container.contains(underlyingElement)) {
+      underlyingElement.dispatchEvent(new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        view: window,
+        detail: event.detail,
+        screenX: event.screenX,
+        screenY: event.screenY,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+        metaKey: event.metaKey,
+        button: event.button,
+        buttons: event.buttons,
+        relatedTarget: event.relatedTarget,
+        deltaX: event.deltaX,
+        deltaY: event.deltaY,
+        deltaZ: event.deltaZ,
+        deltaMode: event.deltaMode,
+      }));
+    }
+    if (event.cancelable) event.preventDefault();
+  }, { capture: true, passive: false });
+}
+
 function buildOverlaySvg(container: HTMLElement, className: string): SharedOverlayEntry {
+  ensureWheelForwarding(container);
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.classList.add(className);
+  svg.setAttribute(DRAWING_OVERLAY_ATTRIBUTE, "true");
   const defs = document.createElementNS(SVG_NS, "defs");
   const clipPath = document.createElementNS(SVG_NS, "clipPath");
   const clipRect = document.createElementNS(SVG_NS, "rect");
@@ -33,7 +83,7 @@ function buildOverlaySvg(container: HTMLElement, className: string): SharedOverl
 
 function makeOverlayHandle(
   container: HTMLElement,
-  chart: any,
+  chart: IChartApi,
   entry: SharedOverlayEntry,
   onRemove: () => void,
 ): DrawingOverlay {
@@ -57,7 +107,11 @@ function makeOverlayHandle(
   };
 }
 
-export function createDrawingOverlay(container: HTMLElement, chart: any, className: string): DrawingOverlay {
+export function createDrawingOverlay(
+  container: HTMLElement,
+  chart: IChartApi,
+  className: string,
+): DrawingOverlay {
   if (className === "fib-overlay") {
     let classMap = sharedByContainer.get(container);
     if (!classMap) {
