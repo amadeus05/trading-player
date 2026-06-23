@@ -7,6 +7,10 @@ export interface DrawingCrudCallbacks<T extends { id: string }> {
   onDrawingComplete: () => void;
 }
 
+export interface ChartCandleStore {
+  candles: Array<{ time: number; volume?: number }>;
+}
+
 export interface ManagedDrawingToolOptions {
   manager: import("../DrawingManager").DrawingManager;
 }

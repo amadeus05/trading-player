@@ -5,7 +5,7 @@
 import type { Candle } from "../../types";
 import { timeToLogical, timeToX, xToTime } from "../shared/coordinates";
 import { createDrawingOverlay } from "../shared/overlay";
-import type { ManagedDrawingToolOptions } from "../shared/types";
+import type { ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const TV_BLUE = "#2962FF";
@@ -92,24 +92,34 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
   container: HTMLDivElement;
   chart: any;
   series: any;
-  candles: Candle[];
+  candleStore: ChartCandleStore;
   active: boolean;
   pricePrecision: number;
   onComplete: () => void;
 }): () => void {
-  const { container, chart, series, candles, active, pricePrecision, onComplete } = opts;
+  const { container, chart, series, candleStore, active, pricePrecision, onComplete } = opts;
 
   if (!active) return () => {};
 
-  const timeframeSec = candles.length > 1 ? candles[1].time - candles[0].time : 3600;
-  const volumePrefix = new Float64Array(candles.length + 1);
-  for (let i = 0; i < candles.length; i += 1) volumePrefix[i + 1] = volumePrefix[i] + candles[i].volume;
+  let volumePrefix = new Float64Array(0);
+  const ensureVolumePrefix = () => {
+    const candles = candleStore.candles;
+    if (volumePrefix.length === candles.length + 1) return;
+    volumePrefix = new Float64Array(candles.length + 1);
+    for (let i = 0; i < candles.length; i += 1) volumePrefix[i + 1] = volumePrefix[i] + (candles[i].volume ?? 0);
+  };
+  const timeframeSec = () => {
+    const candles = candleStore.candles;
+    return candles.length > 1 ? candles[1].time - candles[0].time : 3600;
+  };
   const lowerBound = (time: number) => {
+    const candles = candleStore.candles;
     let low = 0, high = candles.length;
     while (low < high) { const middle = (low + high) >> 1; if (candles[middle].time < time) low = middle + 1; else high = middle; }
     return low;
   };
   const upperBound = (time: number) => {
+    const candles = candleStore.candles;
     let low = 0, high = candles.length;
     while (low < high) { const middle = (low + high) >> 1; if (candles[middle].time <= time) low = middle + 1; else high = middle; }
     return low;
@@ -176,7 +186,7 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
   drawingGroup.append(guideTop, guideBottom, guideLeft, guideRight);
 
   function toPixel(pt: { time: number; price: number }): { x: number; y: number } | null {
-    const x = timeToX(chart, pt.time, candles);
+    const x = timeToX(chart, pt.time, candleStore.candles);
     const y = series.priceToCoordinate(pt.price);
     if (x == null || y == null) return null;
     return { x, y };
@@ -190,11 +200,12 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
   }
 
   function calculateStats(p1: { time: number; price: number }, p2: { time: number; price: number }) {
+    ensureVolumePrefix();
     const priceDelta = p2.price - p1.price;
     const pctChange = p1.price !== 0 ? (priceDelta / p1.price) * 100 : 0;
     const timeDelta = p2.time - p1.time;
-    const logical1 = timeToLogical(p1.time, candles);
-    const logical2 = timeToLogical(p2.time, candles);
+    const logical1 = timeToLogical(p1.time, candleStore.candles);
+    const logical2 = timeToLogical(p2.time, candleStore.candles);
     const barCount = logical1 != null && logical2 != null ? Math.round(Math.abs(logical2 - logical1)) : 0;
     const tMin = Math.min(p1.time, p2.time);
     const tMax = Math.max(p1.time, p2.time);
@@ -320,8 +331,8 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
 
     showPriceLabel(priceLabelTop, formatPrice(highPrice, pricePrecision), top, priceScaleWidth);
     showPriceLabel(priceLabelBottom, formatPrice(lowPrice, pricePrecision), bottom, priceScaleWidth);
-    showTimeLabel(timeLabelLeft, formatAxisTime(earlyTime, timeframeSec), left, plotBottom, timeScaleHeight);
-    showTimeLabel(timeLabelRight, formatAxisTime(lateTime, timeframeSec), right, plotBottom, timeScaleHeight);
+    showTimeLabel(timeLabelLeft, formatAxisTime(earlyTime, timeframeSec()), left, plotBottom, timeScaleHeight);
+    showTimeLabel(timeLabelRight, formatAxisTime(lateTime, timeframeSec()), right, plotBottom, timeScaleHeight);
   }
 
   function hideAll() {
@@ -389,7 +400,7 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
     const sourceEvent = event.sourceEvent as PointerEvent | undefined;
     const x = sourceEvent ? sourceEvent.clientX - bounds.left : null;
     const y = sourceEvent ? sourceEvent.clientY - bounds.top : null;
-    const time = x != null ? xToTime(chart, x, candles) : (event.time as number | undefined);
+    const time = x != null ? xToTime(chart, x, candleStore.candles) : (event.time as number | undefined);
     const price = y != null ? pxToPrice(series, y) : null;
     if (time == null || price == null || price <= 0) return;
 
@@ -410,7 +421,7 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
     const x = event.clientX - bounds.left;
     const y = event.clientY - bounds.top;
     const p1px = toPixel(point1) || point1.px;
-    const time2 = xToTime(chart, x, candles);
+    const time2 = xToTime(chart, x, candleStore.candles);
     const price2 = pxToPrice(series, y);
     if (time2 == null || price2 == null || price2 <= 0) return;
     drawMeasurement(point1, { time: time2, price: price2 }, p1px, { x, y });

@@ -7,7 +7,7 @@ import { timeToX, xToTime } from "../shared/coordinates";
 import { createDrawingOverlay } from "../shared/overlay";
 import { forgetFloatingPanelPosition, mountFloatingPanel } from "../shared/floatingPanel";
 import { mountAnchoredPopup } from "../shared/popup";
-import type { DrawingCrudCallbacks, ManagedDrawingToolOptions } from "../shared/types";
+import type { DrawingCrudCallbacks, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 import { createDrawingToolbar } from "../shared/DrawingToolbar";
 
 export type RectangleCallbacks = DrawingCrudCallbacks<Rectangle>;
@@ -145,13 +145,13 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
   container: HTMLDivElement;
   chart: any;
   series: any;
-  candles: { time: number }[];
+  candleStore: ChartCandleStore;
   rectangles: Rectangle[];
   drawingMode: string;
   datasetId: string;
   callbacks: RectangleCallbacks;
 }): () => void {
-  const { container, chart, series, candles, drawingMode, datasetId, callbacks, manager } = opts;
+  const { container, chart, series, candleStore, drawingMode, datasetId, callbacks, manager } = opts;
   let rectangles = [...opts.rectangles];
 
   const getPlotWidth = () => Math.max(0, Number(chart.timeScale().width()) || 0);
@@ -205,7 +205,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
   function openTextEditor(rect: Rectangle) {
     if (rect.locked) return;
     closeTextEditor();
-    const bounds = getBounds(rect, chart, series, candles);
+    const bounds = getBounds(rect, chart, series, candleStore.candles);
     if (!bounds) return;
     const visibleBounds = clampHorizontalBounds(bounds);
     const input = document.createElement("input");
@@ -708,7 +708,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
   function syncOne(rect: Rectangle) {
     let els = elMap.get(rect.id);
     if (!els) { els = buildEls(rect); elMap.set(rect.id, els); }
-    const b = getBounds(rect, chart, series, candles);
+    const b = getBounds(rect, chart, series, candleStore.candles);
     if (!b) { els.group.setAttribute("visibility", "hidden"); return; }
     els.group.setAttribute("visibility", "visible");
     applyPixelBounds(els, b, rect, selectedId === rect.id);
@@ -725,7 +725,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     const cb = container.getBoundingClientRect();
     const sx = startEv.clientX - cb.left;
     const sy = startEv.clientY - cb.top;
-    const origB = getBounds(rect, chart, series, candles);
+    const origB = getBounds(rect, chart, series, candleStore.candles);
     if (!origB) return;
     const target = startEv.target as Element;
     try { (target as any).setPointerCapture(startEv.pointerId); } catch { }
@@ -753,8 +753,8 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
         const dx = (latestEv.clientX - cb.left) - sx;
         const dy = (latestEv.clientY - cb.top) - sy;
         const nb = { x: origB.x + dx, y: origB.y + dy, w: origB.w, h: origB.h };
-        const tL = xToTime(chart, nb.x, candles);
-        const tR = xToTime(chart, nb.x + nb.w, candles);
+        const tL = xToTime(chart, nb.x, candleStore.candles);
+        const tR = xToTime(chart, nb.x + nb.w, candleStore.candles);
         const pT = series.coordinateToPrice(nb.y);
         const pB = series.coordinateToPrice(nb.y + nb.h);
         const r = rectangles.find((item) => item.id === id);
@@ -775,7 +775,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     const rect = rectangles.find((r) => r.id === id);
     if (!rect) return;
     const cb = container.getBoundingClientRect();
-    const origB = getBounds(rect, chart, series, candles);
+    const origB = getBounds(rect, chart, series, candleStore.candles);
     if (!origB) return;
     const target = startEv.target as Element;
     try { (target as any).setPointerCapture(startEv.pointerId); } catch { }
@@ -801,8 +801,8 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
         const nb = calcResizedBounds(origB, pos, mx, my);
         const r = rectangles.find((item) => item.id === id);
         if (r) {
-          const tL = xToTime(chart, nb.x, candles);
-          const tR = xToTime(chart, nb.x + nb.w, candles);
+          const tL = xToTime(chart, nb.x, candleStore.candles);
+          const tR = xToTime(chart, nb.x + nb.w, candleStore.candles);
           const pT = series.coordinateToPrice(nb.y);
           const pB = series.coordinateToPrice(nb.y + nb.h);
           if (tL != null && tR != null && pT != null && pB != null) {
@@ -858,8 +858,8 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       if (Math.abs(ex - drawStart.x) > 5 && Math.abs(ey - drawStart.y) > 5) {
         const xMin = Math.min(ex, drawStart.x), xMax = Math.max(ex, drawStart.x);
         const yMin = Math.min(ey, drawStart.y), yMax = Math.max(ey, drawStart.y);
-        const tL = xToTime(chart, xMin, candles);
-        const tR = xToTime(chart, xMax, candles);
+        const tL = xToTime(chart, xMin, candleStore.candles);
+        const tR = xToTime(chart, xMax, candleStore.candles);
         const pT = series.coordinateToPrice(yMin);
         const pB = series.coordinateToPrice(yMax);
 

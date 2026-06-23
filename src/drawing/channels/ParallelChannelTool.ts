@@ -8,7 +8,7 @@ import { pointToPixel, xToTime } from "../shared/coordinates";
 import { mountFloatingPanel } from "../shared/floatingPanel";
 import { openColorPalette } from "../shared/colorPalette";
 import { createDrawingOverlay } from "../shared/overlay";
-import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions } from "../shared/types";
+import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 import { createDrawingToolbar, drawingStyleIcon } from "../shared/DrawingToolbar";
 import { mountAnchoredPopup } from "../shared/popup";
 
@@ -199,13 +199,13 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   container: HTMLDivElement;
   chart: any;
   series: any;
-  candles: { time: number }[];
+  candleStore: ChartCandleStore;
   parallelChannels: ParallelChannel[];
   drawingMode: DrawingMode;
   datasetId: string;
   callbacks: ParallelChannelCallbacks;
 }): () => void {
-  const { container, chart, series, candles, drawingMode, datasetId, callbacks, manager } = opts;
+  const { container, chart, series, candleStore, drawingMode, datasetId, callbacks, manager } = opts;
   let parallelChannels = [...opts.parallelChannels];
 
   const overlay = createDrawingOverlay(container, chart, "parallel-channel-overlay");
@@ -248,11 +248,11 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   }
 
   function toPixel(pt: { time: number; price: number }): PixelPoint | null {
-    return pointToPixel(chart, series, pt, candles);
+    return pointToPixel(chart, series, pt, candleStore.candles);
   }
 
   function pixelToDataPoint(px: PixelPoint): { time: number; price: number } | null {
-    const time = xToTime(chart, px.x, candles);
+    const time = xToTime(chart, px.x, candleStore.candles);
     const price = pxToPrice(series, px.y);
     if (time == null || price == null || price <= 0) return null;
     return { time, price };
@@ -937,7 +937,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     const sourceEvent = event.sourceEvent as PointerEvent | undefined;
     const x = sourceEvent ? sourceEvent.clientX - rect.left : null;
     const y = sourceEvent ? sourceEvent.clientY - rect.top : null;
-    const time = x != null ? xToTime(chart, x, candles) : (event.time as number | undefined);
+    const time = x != null ? xToTime(chart, x, candleStore.candles) : (event.time as number | undefined);
     const price = y != null ? pxToPrice(series, y) : (event.seriesData?.get(series)?.close as number | undefined);
     if (time == null || price == null || price <= 0) return null;
     return { time, price };

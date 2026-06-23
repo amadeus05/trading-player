@@ -9,7 +9,7 @@ import { pointToPixel, xToTime } from "../shared/coordinates";
 import { mountFloatingPanel } from "../shared/floatingPanel";
 import { openColorPalette } from "../shared/colorPalette";
 import { createDrawingOverlay } from "../shared/overlay";
-import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions } from "../shared/types";
+import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 import { createDrawingToolbar, drawingStyleIcon } from "../shared/DrawingToolbar";
 import { mountAnchoredPopup } from "../shared/popup";
 export type { DrawingMode } from "../shared/types";
@@ -65,7 +65,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
   container: HTMLDivElement;
   chart: any;
   series: any;
-  candles: { time: number }[];
+  candleStore: ChartCandleStore;
   trendLines: TrendLine[];
   drawingMode: DrawingMode;
   datasetId: string;
@@ -73,7 +73,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
   onSelect?: (id: string | null) => void;
   callbacks: TrendLineCallbacks;
 }): () => void {
-  const { container, chart, series, candles, drawingMode, datasetId, callbacks, onSelect, manager } = opts;
+  const { container, chart, series, candleStore, drawingMode, datasetId, callbacks, onSelect, manager } = opts;
   let trendLines = [...opts.trendLines];
 
   /* ---- SVG overlay ---- */
@@ -333,7 +333,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
   /* ---- Helpers ---- */
 
   function toPixel(pt: { time: number; price: number }): PixelPoint | null {
-    return pointToPixel(chart, series, pt, candles);
+    return pointToPixel(chart, series, pt, candleStore.candles);
   }
 
   function extendedPoints(tl: TrendLine, p1: PixelPoint, p2: PixelPoint): { ep1: PixelPoint; ep2: PixelPoint } {
@@ -624,7 +624,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       if (lineObj && moved && latestEvent) {
         const x = latestEvent.clientX - rect.left;
         const y = latestEvent.clientY - rect.top;
-        const time = xToTime(chart, x, candles);
+        const time = xToTime(chart, x, candleStore.candles);
         const price = pxToPrice(series, y);
         if (time != null && price != null && price > 0) lineObj[which] = { time, price };
         syncAll();
@@ -683,9 +683,9 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       if (target.releasePointerCapture) target.releasePointerCapture(e.pointerId);
       const lineObj = trendLines.find((l) => l.id === id);
       if (lineObj && moved) {
-        const newP1Time = xToTime(chart, p1Px.x + finalDx, candles);
+        const newP1Time = xToTime(chart, p1Px.x + finalDx, candleStore.candles);
         const newP1Price = pxToPrice(series, p1Px.y + finalDy);
-        const newP2Time = xToTime(chart, p2Px.x + finalDx, candles);
+        const newP2Time = xToTime(chart, p2Px.x + finalDx, candleStore.candles);
         const newP2Price = pxToPrice(series, p2Px.y + finalDy);
         if (newP1Time != null && newP1Price != null && newP2Time != null && newP2Price != null && newP1Price > 0 && newP2Price > 0) {
           lineObj.point1 = { time: newP1Time, price: newP1Price };
@@ -709,7 +709,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     const sourceEvent = event.sourceEvent as PointerEvent | undefined;
     const x = sourceEvent ? sourceEvent.clientX - rect.left : null;
     const y = sourceEvent ? sourceEvent.clientY - rect.top : null;
-    const time = x != null ? xToTime(chart, x, candles) : (event.time as number | undefined);
+    const time = x != null ? xToTime(chart, x, candleStore.candles) : (event.time as number | undefined);
     const price = y != null ? pxToPrice(series, y) : (event.seriesData?.get(series)?.close as number | undefined);
     if (time == null || price == null || price <= 0) return;
 

@@ -216,6 +216,10 @@ function Chart({
   const savedPriceRange = useRef<{ from: number; to: number } | null>(null);
   const manualPriceScale = useRef(false);
   const appliedFocusRevision = useRef(focusRevision);
+  const chartRuntimeRef = useRef<{
+    applyReplayIndex: (nextIndex: number, allCandles: Candle[]) => void;
+  } | null>(null);
+  const prevReplayIndexRef = useRef(index);
   const callbacksRef = useRef({ onBarrierChange, onStartSelected, onEntryMarkerChange, onTrendLineCreate, onTrendLineUpdate, onTrendLineDelete, onRectangleCreate, onRectangleUpdate, onRectangleDelete, onFibonacciCreate, onFibonacciUpdate, onFibonacciDelete, onFibonacciTrendExtensionCreate, onFibonacciTrendExtensionUpdate, onFibonacciTrendExtensionDelete, onParallelChannelCreate, onParallelChannelUpdate, onParallelChannelDelete, onDrawingComplete });
   callbacksRef.current = { onBarrierChange, onStartSelected, onEntryMarkerChange, onTrendLineCreate, onTrendLineUpdate, onTrendLineDelete, onRectangleCreate, onRectangleUpdate, onRectangleDelete, onFibonacciCreate, onFibonacciUpdate, onFibonacciDelete, onFibonacciTrendExtensionCreate, onFibonacciTrendExtensionUpdate, onFibonacciTrendExtensionDelete, onParallelChannelCreate, onParallelChannelUpdate, onParallelChannelDelete, onDrawingComplete };
   useEffect(() => {
@@ -232,6 +236,7 @@ function Chart({
       savedPriceRange.current = null;
     }
     if (!visible.length) return;
+    const candleStore = { candles: visible as Candle[] };
     const chart = createChart(ref.current, {
       autoSize: true,
       layout: { background: { color: "#0d0f15" }, textColor: "#7f8494" },
@@ -255,7 +260,7 @@ function Chart({
       borderVisible: false,
       priceFormat: { type: "price", precision: pricePrecision, minMove: 10 ** -pricePrecision },
     });
-    cs.setData(visible as any);
+    cs.setData(candleStore.candles as any);
     if (manualPriceScale.current && savedPriceRange.current) {
       cs.priceScale().setVisibleRange(savedPriceRange.current);
     }
@@ -265,12 +270,33 @@ function Chart({
     });
     vs.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     vs.setData(
-      visible.map((c) => ({
+      candleStore.candles.map((c) => ({
         time: c.time as any,
         value: c.volume,
         color: c.close >= c.open ? "#2bd9a855" : "#ff5c7355",
       })),
     );
+    const applyReplayIndex = (nextIndex: number, allCandles: Candle[]) => {
+      if (!allCandles.length) return;
+      const nextSafeIndex = Math.max(0, Math.min(nextIndex, allCandles.length - 1));
+      const nextVisible = allCandles.slice(0, nextSafeIndex + 1);
+      candleStore.candles = nextVisible;
+      cs.setData(nextVisible as any);
+      vs.setData(
+        nextVisible.map((c) => ({
+          time: c.time as any,
+          value: c.volume,
+          color: c.close >= c.open ? "#2bd9a855" : "#ff5c7355",
+        })),
+      );
+      const replayMoved = renderedIndex.current !== null && renderedIndex.current !== nextIndex;
+      if (savedLogicalRange.current && (!replayMoved || !followRealtime.current)) {
+        chart.timeScale().setVisibleLogicalRange(savedLogicalRange.current);
+      } else {
+        chart.timeScale().scrollToRealTime();
+      }
+      renderedIndex.current = nextIndex;
+    };
     const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     overlay.classList.add("closed-trades-overlay");
     ref.current.appendChild(overlay);
@@ -289,10 +315,11 @@ function Chart({
         return { trade, group, target, risk, exitPath };
       });
     const candleIndexAt = (time: number) => {
-      let low = 0, high = visible.length - 1, found = -1;
+      const series = candleStore.candles;
+      let low = 0, high = series.length - 1, found = -1;
       while (low <= high) {
         const middle = (low + high) >> 1;
-        if (visible[middle].time <= time) { found = middle; low = middle + 1; }
+        if (series[middle].time <= time) { found = middle; low = middle + 1; }
         else high = middle - 1;
       }
       return found;
@@ -305,7 +332,7 @@ function Chart({
     };
     const syncClosedTradeOverlays = () => {
       closedTradeShapes.forEach(({ trade, group, target, risk, exitPath }) => {
-        if (trade.entryTime < visible[0].time || trade.exitTime! > visible.at(-1)!.time) {
+        if (trade.entryTime < candleStore.candles[0].time || trade.exitTime! > candleStore.candles.at(-1)!.time) {
           group.setAttribute("visibility", "hidden");
           return;
         }
@@ -448,7 +475,6 @@ function Chart({
       if (selectingStart && typeof event.time === "number") callbacksRef.current.onStartSelected(Number(event.time));
     };
     if (selectingStart) chart.subscribeClick(selectStart);
-    const replayMoved = renderedIndex.current !== null && renderedIndex.current !== index;
     let deferredTimeRangeFrame = 0;
     if (timeframeChanged) {
       // Keep a stable bar density across timeframes. The replay candle stays
@@ -462,21 +488,20 @@ function Chart({
     } else if (forceFocus) {
       const timeSpan = savedTimeRange.current
         ? Math.max(60, savedTimeRange.current.to - savedTimeRange.current.from)
-        : Math.max(60, visible[Math.max(0, safeIndex - 100)]
-          ? visible[safeIndex].time - visible[Math.max(0, safeIndex - 100)].time
+        : Math.max(60, candleStore.candles[Math.max(0, safeIndex - 100)]
+          ? candleStore.candles[safeIndex].time - candleStore.candles[Math.max(0, safeIndex - 100)].time
           : 100 * 60);
-      const centerTime = visible[safeIndex].time;
+      const centerTime = candleStore.candles[safeIndex].time;
       chart.timeScale().setVisibleRange({
         from: (centerTime - timeSpan / 2) as any,
         to: (centerTime + timeSpan / 2) as any,
       });
-    } else if (savedLogicalRange.current && (!replayMoved || !followRealtime.current)) {
-      chart.timeScale().setVisibleLogicalRange(savedLogicalRange.current);
+      renderedIndex.current = index;
     } else {
-      chart.timeScale().scrollToRealTime();
+      applyReplayIndex(index, candles);
     }
     appliedFocusRevision.current = focusRevision;
-    renderedIndex.current = index;
+    if (timeframeChanged) renderedIndex.current = index;
     const priceScaleWidth = Math.max(70, chart.priceScale("right").width());
     let chartAlive = true;
     const markManualScale = (event: PointerEvent) => {
@@ -510,13 +535,15 @@ function Chart({
     };
     ref.current.addEventListener("pointerdown", markManualScale);
     ref.current.addEventListener("dblclick", resetManualScale);
-    ref.current.addEventListener("wheel", zoomPriceScale, { capture: true, passive: false });
+    ref.current.addEventListener("wheel", zoomPriceScale, { capture: true, passive: false     });
+    chartRuntimeRef.current = { applyReplayIndex };
+    prevReplayIndexRef.current = index;
     const cleanupTrendLines = attachTrendLineTool({
       manager: drawingManager,
       container: ref.current!,
       chart,
       series: cs,
-      candles: visible,
+      candleStore,
       trendLines: trendLines.filter((l) => l.datasetId === datasetId),
       drawingMode,
       datasetId,
@@ -534,7 +561,7 @@ function Chart({
       container: ref.current!,
       chart,
       series: cs,
-      candles: visible,
+      candleStore,
       active: drawingMode === "measure",
       pricePrecision,
       onComplete: () => callbacksRef.current.onDrawingComplete(),
@@ -544,7 +571,7 @@ function Chart({
       container: ref.current!,
       chart,
       series: cs,
-      candles: visible,
+      candleStore,
       rectangles: rectangles.filter((r) => r.datasetId === datasetId),
       drawingMode,
       datasetId,
@@ -560,7 +587,7 @@ function Chart({
       container: ref.current!,
       chart,
       series: cs,
-      candles: visible,
+      candleStore,
       fibonacciRetracements: fibonacciRetracements.filter((f) => f.datasetId === datasetId),
       drawingMode,
       datasetId,
@@ -577,7 +604,7 @@ function Chart({
       container: ref.current!,
       chart,
       series: cs,
-      candles: visible,
+      candleStore,
       fibonacciTrendExtensions: fibonacciTrendExtensions.filter((f) => f.datasetId === datasetId),
       drawingMode,
       datasetId,
@@ -594,7 +621,7 @@ function Chart({
       container: ref.current!,
       chart,
       series: cs,
-      candles: visible,
+      candleStore,
       parallelChannels: parallelChannels.filter((c) => c.datasetId === datasetId),
       drawingMode,
       datasetId,
@@ -610,12 +637,12 @@ function Chart({
       const range = chart.timeScale().getVisibleLogicalRange();
       savedLogicalRange.current = range;
       if (range) {
-        const from = logicalToTime(range.from, visible);
-        const to = logicalToTime(range.to, visible);
+        const from = logicalToTime(range.from, candleStore.candles);
+        const to = logicalToTime(range.to, candleStore.candles);
         if (from != null && to != null) savedTimeRange.current = { from, to };
       }
       savedCandleInterval.current = candleInterval;
-      if (range) followRealtime.current = Math.abs(range.to - (visible.length - 1)) < 0.75;
+      if (range) followRealtime.current = Math.abs(range.to - (candleStore.candles.length - 1)) < 0.75;
       if (manualPriceScale.current) savedPriceRange.current = cs.priceScale().getVisibleRange();
       ref.current?.removeEventListener("pointerdown", markManualScale);
       ref.current?.removeEventListener("dblclick", resetManualScale);
@@ -634,8 +661,15 @@ function Chart({
       cleanupParallelChannels();
       drawingManager.destroy();
       chart.remove();
+      chartRuntimeRef.current = null;
     };
-  }, [candles, index, barriers, trades, selectingStart, focusRevision, pricePrecision, entryMarker, showClosedTradeOverlays, markersEditable, drawingMode, datasetId]);
+  }, [candles, barriers, trades, selectingStart, focusRevision, pricePrecision, entryMarker, showClosedTradeOverlays, markersEditable, drawingMode, datasetId]);
+
+  useEffect(() => {
+    if (prevReplayIndexRef.current === index) return;
+    prevReplayIndexRef.current = index;
+    chartRuntimeRef.current?.applyReplayIndex(index, candles);
+  }, [index, candles]);
   return <div
     className={`chart ${selectingStart ? "selecting-replay-start" : ""}`}
     ref={ref}
