@@ -3,7 +3,7 @@
  */
 
 import type { Rectangle } from "../../types";
-import { timeToX, xToTime } from "../shared/coordinates";
+import { snapXToNearestCandle, timeToX, xToSnappedTime } from "../shared/coordinates";
 import { createDrawingOverlay } from "../shared/overlay";
 import { forgetFloatingPanelPosition, mountFloatingPanel } from "../shared/floatingPanel";
 import { mountAnchoredPopup } from "../shared/popup";
@@ -735,7 +735,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     const render = () => {
       dragRaf = 0;
       const e = latestEv; if (!e) return;
-      const dx = (e.clientX - cb.left) - sx;
+      const dx = snapXToNearestCandle(chart, origB.x + (e.clientX - cb.left) - sx) - origB.x;
       const dy = (e.clientY - cb.top) - sy;
       if (!moved && Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
       moved = true;
@@ -750,11 +750,11 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       dragActive = false;
       try { (target as any).releasePointerCapture(e.pointerId); } catch { }
       if (moved && latestEv) {
-        const dx = (latestEv.clientX - cb.left) - sx;
+        const dx = snapXToNearestCandle(chart, origB.x + (latestEv.clientX - cb.left) - sx) - origB.x;
         const dy = (latestEv.clientY - cb.top) - sy;
         const nb = { x: origB.x + dx, y: origB.y + dy, w: origB.w, h: origB.h };
-        const tL = xToTime(chart, nb.x, candleStore.candles);
-        const tR = xToTime(chart, nb.x + nb.w, candleStore.candles);
+        const tL = xToSnappedTime(chart, nb.x, candleStore.candles);
+        const tR = xToSnappedTime(chart, nb.x + nb.w, candleStore.candles);
         const pT = series.coordinateToPrice(nb.y);
         const pB = series.coordinateToPrice(nb.y + nb.h);
         const r = rectangles.find((item) => item.id === id);
@@ -784,7 +784,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     const render = () => {
       dragRaf = 0;
       const e = latestEv; if (!e) return;
-      const mx = e.clientX - cb.left, my = e.clientY - cb.top;
+      const mx = snapXToNearestCandle(chart, e.clientX - cb.left), my = e.clientY - cb.top;
       const nb = calcResizedBounds(origB, pos, mx, my);
       const els = elMap.get(id); if (!els) return;
       applyPixelBounds(els, nb, rect, true);
@@ -797,12 +797,12 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       dragActive = false;
       try { (target as any).releasePointerCapture(e.pointerId); } catch { }
       if (latestEv) {
-        const mx = latestEv.clientX - cb.left, my = latestEv.clientY - cb.top;
+        const mx = snapXToNearestCandle(chart, latestEv.clientX - cb.left), my = latestEv.clientY - cb.top;
         const nb = calcResizedBounds(origB, pos, mx, my);
         const r = rectangles.find((item) => item.id === id);
         if (r) {
-          const tL = xToTime(chart, nb.x, candleStore.candles);
-          const tR = xToTime(chart, nb.x + nb.w, candleStore.candles);
+          const tL = xToSnappedTime(chart, nb.x, candleStore.candles);
+          const tR = xToSnappedTime(chart, nb.x + nb.w, candleStore.candles);
           const pT = series.coordinateToPrice(nb.y);
           const pB = series.coordinateToPrice(nb.y + nb.h);
           if (tL != null && tR != null && pT != null && pB != null) {
@@ -829,7 +829,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     drawOverlay.addEventListener("pointerdown", (e) => {
       e.preventDefault(); e.stopPropagation();
       const cb = container.getBoundingClientRect();
-      drawStart = { x: Math.max(0, Math.min(e.clientX - cb.left, getPlotWidth())), y: e.clientY - cb.top };
+      drawStart = { x: snapXToNearestCandle(chart, Math.max(0, Math.min(e.clientX - cb.left, getPlotWidth()))), y: e.clientY - cb.top };
       isDrawing = true;
       ghostRect = document.createElementNS(SVG_NS, "rect");
       ghostRect.setAttribute("class", "rect-ghost-el");
@@ -840,7 +840,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     drawOverlay.addEventListener("pointermove", (e) => {
       if (!isDrawing || !drawStart || !ghostRect) return;
       const cb = container.getBoundingClientRect();
-      const mx = Math.max(0, Math.min(e.clientX - cb.left, getPlotWidth())), my = e.clientY - cb.top;
+      const mx = snapXToNearestCandle(chart, Math.max(0, Math.min(e.clientX - cb.left, getPlotWidth()))), my = e.clientY - cb.top;
       ghostRect.setAttribute("x", String(Math.min(mx, drawStart.x)));
       ghostRect.setAttribute("y", String(Math.min(my, drawStart.y)));
       ghostRect.setAttribute("width", String(Math.abs(mx - drawStart.x)));
@@ -853,13 +853,13 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       ghostRect?.remove(); ghostRect = null;
 
       const cb = container.getBoundingClientRect();
-      const ex = Math.max(0, Math.min(e.clientX - cb.left, getPlotWidth())), ey = e.clientY - cb.top;
+      const ex = snapXToNearestCandle(chart, Math.max(0, Math.min(e.clientX - cb.left, getPlotWidth()))), ey = e.clientY - cb.top;
 
       if (Math.abs(ex - drawStart.x) > 5 && Math.abs(ey - drawStart.y) > 5) {
         const xMin = Math.min(ex, drawStart.x), xMax = Math.max(ex, drawStart.x);
         const yMin = Math.min(ey, drawStart.y), yMax = Math.max(ey, drawStart.y);
-        const tL = xToTime(chart, xMin, candleStore.candles);
-        const tR = xToTime(chart, xMax, candleStore.candles);
+        const tL = xToSnappedTime(chart, xMin, candleStore.candles);
+        const tR = xToSnappedTime(chart, xMax, candleStore.candles);
         const pT = series.coordinateToPrice(yMin);
         const pB = series.coordinateToPrice(yMax);
 

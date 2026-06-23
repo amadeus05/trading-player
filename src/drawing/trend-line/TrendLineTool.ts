@@ -5,7 +5,7 @@
  */
 
 import type { TrendLine } from "../../types";
-import { pointToPixel, xToTime } from "../shared/coordinates";
+import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { mountFloatingPanel } from "../shared/floatingPanel";
 import { openColorPalette } from "../shared/colorPalette";
 import { createDrawingOverlay } from "../shared/overlay";
@@ -605,7 +605,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       const e = latestEvent;
       if (!e) return;
       moved = true;
-      const x = e.clientX - rect.left;
+      const x = snapXToNearestCandle(chart, e.clientX - rect.left);
       const y = e.clientY - rect.top;
       previewAtPixels(tl, which === "point1" ? { x, y } : originalP1, which === "point2" ? { x, y } : originalP2);
     };
@@ -624,7 +624,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       if (lineObj && moved && latestEvent) {
         const x = latestEvent.clientX - rect.left;
         const y = latestEvent.clientY - rect.top;
-        const time = xToTime(chart, x, candleStore.candles);
+        const time = xToSnappedTime(chart, x, candleStore.candles);
         const price = pxToPrice(series, y);
         if (time != null && price != null && price > 0) lineObj[which] = { time, price };
         syncAll();
@@ -662,7 +662,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       dragRaf = 0;
       const e = latestEvent;
       if (!e) return;
-      const dx = (e.clientX - rect.left) - startX;
+      const dx = snapXToNearestCandle(chart, p1Px.x + (e.clientX - rect.left) - startX) - p1Px.x;
       const dy = (e.clientY - rect.top) - startY;
 
       if (!moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
@@ -683,9 +683,9 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       if (target.releasePointerCapture) target.releasePointerCapture(e.pointerId);
       const lineObj = trendLines.find((l) => l.id === id);
       if (lineObj && moved) {
-        const newP1Time = xToTime(chart, p1Px.x + finalDx, candleStore.candles);
+        const newP1Time = xToSnappedTime(chart, p1Px.x + finalDx, candleStore.candles);
         const newP1Price = pxToPrice(series, p1Px.y + finalDy);
-        const newP2Time = xToTime(chart, p2Px.x + finalDx, candleStore.candles);
+        const newP2Time = xToSnappedTime(chart, p2Px.x + finalDx, candleStore.candles);
         const newP2Price = pxToPrice(series, p2Px.y + finalDy);
         if (newP1Time != null && newP1Price != null && newP2Time != null && newP2Price != null && newP1Price > 0 && newP2Price > 0) {
           lineObj.point1 = { time: newP1Time, price: newP1Price };
@@ -709,7 +709,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     const sourceEvent = event.sourceEvent as PointerEvent | undefined;
     const x = sourceEvent ? sourceEvent.clientX - rect.left : null;
     const y = sourceEvent ? sourceEvent.clientY - rect.top : null;
-    const time = x != null ? xToTime(chart, x, candleStore.candles) : (event.time as number | undefined);
+    const time = x != null ? xToSnappedTime(chart, x, candleStore.candles) : (event.time as number | undefined);
     const price = y != null ? pxToPrice(series, y) : (event.seriesData?.get(series)?.close as number | undefined);
     if (time == null || price == null || price <= 0) return;
 
@@ -756,7 +756,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
   function handleMouseMove(event: MouseEvent) {
     if (!ghostLine || !drawPoint1) return;
     const rect = container.getBoundingClientRect();
-    const x = event.clientX - rect.left;
+    const x = snapXToNearestCandle(chart, event.clientX - rect.left);
     const y = event.clientY - rect.top;
     ghostLine.setAttribute("x2", String(x));
     ghostLine.setAttribute("y2", String(y));

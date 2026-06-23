@@ -78,6 +78,17 @@ export function xToTime(chart: any, x: number, candles: TimeCandle[]): number | 
   return logical == null ? null : logicalToTime(logical, candles);
 }
 
+export function xToSnappedTime(chart: any, x: number, candles: TimeCandle[]): number | null {
+  const logical = coordinateToLogicalFloat(chart, x);
+  return logical == null ? null : logicalToTime(Math.round(logical), candles);
+}
+
+export function snapXToNearestCandle(chart: any, x: number): number {
+  const logical = coordinateToLogicalFloat(chart, x);
+  if (logical == null) return x;
+  return logicalToCoordinateFloat(chart, Math.round(logical)) ?? x;
+}
+
 export function pointToPixel(chart: any, series: any, point: DrawingPoint, candles: TimeCandle[]): PixelPoint | null {
   const x = timeToX(chart, point.time, candles);
   const y = series.priceToCoordinate(point.price);

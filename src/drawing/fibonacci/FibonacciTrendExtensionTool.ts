@@ -4,7 +4,7 @@
  */
 
 import type { FibonacciTrendExtension } from "../../types";
-import { pointToPixel, xToTime } from "../shared/coordinates";
+import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { createDrawingToolbar, drawingStyleIcon, type DrawingLineStyle } from "../shared/DrawingToolbar";
 import { mountFloatingPanel } from "../shared/floatingPanel";
 import { createDrawingOverlay } from "../shared/overlay";
@@ -871,7 +871,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     if (!drawPoint1) return;
     const rect = container.getBoundingClientRect();
     latestDrawPointer = clampPlotPoint({
-      x: event.clientX - rect.left,
+      x: snapXToNearestCandle(chart, event.clientX - rect.left),
       y: event.clientY - rect.top,
     });
     if (!ghostRaf) ghostRaf = requestAnimationFrame(flushGhostPreview);
@@ -900,13 +900,13 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       if (!event) return;
       moved = true;
       const dragged = clampPlotPoint({
-        x: event.clientX - rect.left,
+        x: snapXToNearestCandle(chart, event.clientX - rect.left),
         y: event.clientY - rect.top,
       });
       const p1 = which === "point1" ? dragged : originalP1;
       const p2 = which === "point2" ? dragged : originalP2;
       const p3 = which === "point3" ? dragged : originalP3;
-      const dragTime = xToTime(chart, dragged.x, candleStore.candles);
+      const dragTime = xToSnappedTime(chart, dragged.x, candleStore.candles);
       const dragPrice = pxToPrice(series, dragged.y);
       if (dragTime != null && dragPrice != null && dragPrice > 0) {
         if (which === "point1") fib.point1 = { time: dragTime, price: dragPrice };
@@ -933,7 +933,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
           x: latestEvent.clientX - rect.left,
           y: latestEvent.clientY - rect.top,
         });
-        const time = xToTime(chart, clamped.x, candleStore.candles);
+        const time = xToSnappedTime(chart, clamped.x, candleStore.candles);
         const price = pxToPrice(series, clamped.y);
         if (time != null && price != null && price > 0) current[which] = { time, price };
         dragActive = false;
@@ -976,7 +976,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       dragRaf = 0;
       const event = latestEvent;
       if (!event) return;
-      const dx = (event.clientX - rect.left) - startX;
+      const dx = snapXToNearestCandle(chart, p1Px.x + (event.clientX - rect.left) - startX) - p1Px.x;
       const dy = (event.clientY - rect.top) - startY;
       if (!moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
       moved = true;
@@ -1006,11 +1006,11 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
         const fp1 = clampPlotPoint({ x: p1Px.x + finalDx, y: p1Px.y + finalDy });
         const fp2 = clampPlotPoint({ x: p2Px.x + finalDx, y: p2Px.y + finalDy });
         const fp3 = clampPlotPoint({ x: p3Px.x + finalDx, y: p3Px.y + finalDy });
-        const newP1Time = xToTime(chart, fp1.x, candleStore.candles);
+        const newP1Time = xToSnappedTime(chart, fp1.x, candleStore.candles);
         const newP1Price = pxToPrice(series, fp1.y);
-        const newP2Time = xToTime(chart, fp2.x, candleStore.candles);
+        const newP2Time = xToSnappedTime(chart, fp2.x, candleStore.candles);
         const newP2Price = pxToPrice(series, fp2.y);
-        const newP3Time = xToTime(chart, fp3.x, candleStore.candles);
+        const newP3Time = xToSnappedTime(chart, fp3.x, candleStore.candles);
         const newP3Price = pxToPrice(series, fp3.y);
         if (
           newP1Time != null && newP1Price != null && newP2Time != null && newP2Price != null && newP3Time != null && newP3Price != null
@@ -1041,7 +1041,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       y = clamped.y;
       latestDrawPointer = { x, y };
     }
-    const time = x != null ? xToTime(chart, x, candleStore.candles) : (event.time as number | undefined);
+    const time = x != null ? xToSnappedTime(chart, x, candleStore.candles) : (event.time as number | undefined);
     const price = y != null ? pxToPrice(series, y) : (event.seriesData?.get(series)?.close as number | undefined);
     if (time == null || price == null || price <= 0) return;
 
@@ -1054,7 +1054,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       flushGhostPreview();
     } else {
       const pointer = latestDrawPointer ?? (x != null && y != null ? { x, y } : null);
-      const p3Time = pointer ? xToTime(chart, pointer.x, candleStore.candles) : time;
+      const p3Time = pointer ? xToSnappedTime(chart, pointer.x, candleStore.candles) : time;
       const p3Price = pointer ? pxToPrice(series, pointer.y) : price;
       if (p3Time == null || p3Price == null || p3Price <= 0) return;
 

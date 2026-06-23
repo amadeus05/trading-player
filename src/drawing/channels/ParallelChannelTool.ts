@@ -4,7 +4,7 @@
  */
 
 import type { ParallelChannel } from "../../types";
-import { pointToPixel, xToTime } from "../shared/coordinates";
+import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { mountFloatingPanel } from "../shared/floatingPanel";
 import { openColorPalette } from "../shared/colorPalette";
 import { createDrawingOverlay } from "../shared/overlay";
@@ -233,7 +233,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   }
 
   function pixelToDataPoint(px: PixelPoint): { time: number; price: number } | null {
-    const time = xToTime(chart, px.x, candleStore.candles);
+    const time = xToSnappedTime(chart, px.x, candleStore.candles);
     const price = pxToPrice(series, px.y);
     if (time == null || price == null || price <= 0) return null;
     return { time, price };
@@ -773,7 +773,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       const event = latestEvent;
       if (!event) return;
       moved = true;
-      const x = event.clientX - rect.left;
+      const x = snapXToNearestCandle(chart, event.clientX - rect.left);
       const y = event.clientY - rect.top;
       const cursor = { x, y };
       const baseCursor = corner.startsWith("edge2")
@@ -801,7 +801,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       target.releasePointerCapture?.(event.pointerId);
       const current = parallelChannels.find((item) => item.id === id);
       if (current && moved && latestEvent) {
-        const x = latestEvent.clientX - rect.left;
+        const x = snapXToNearestCandle(chart, latestEvent.clientX - rect.left);
         const y = latestEvent.clientY - rect.top;
         const cursor = { x, y };
         const baseCursor = corner.startsWith("edge2")
@@ -855,7 +855,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       dragRaf = 0;
       const event = latestEvent;
       if (!event) return;
-      const dx = (event.clientX - rect.left) - startX;
+      const dx = snapXToNearestCandle(chart, p1Px.x + (event.clientX - rect.left) - startX) - p1Px.x;
       const dy = (event.clientY - rect.top) - startY;
       if (!moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
       moved = true;
@@ -913,7 +913,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     const sourceEvent = event.sourceEvent as PointerEvent | undefined;
     const x = sourceEvent ? sourceEvent.clientX - rect.left : null;
     const y = sourceEvent ? sourceEvent.clientY - rect.top : null;
-    const time = x != null ? xToTime(chart, x, candleStore.candles) : (event.time as number | undefined);
+    const time = x != null ? xToSnappedTime(chart, x, candleStore.candles) : (event.time as number | undefined);
     const price = y != null ? pxToPrice(series, y) : (event.seriesData?.get(series)?.close as number | undefined);
     if (time == null || price == null || price <= 0) return null;
     return { time, price };
@@ -981,7 +981,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   function handleMouseMove(event: MouseEvent) {
     if (dragActive) return;
     const rect = container.getBoundingClientRect();
-    const x = event.clientX - rect.left;
+    const x = snapXToNearestCandle(chart, event.clientX - rect.left);
     const y = event.clientY - rect.top;
     const cursor = { x, y };
 
