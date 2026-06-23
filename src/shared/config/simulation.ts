@@ -1,0 +1,20 @@
+import type { Barrier, Persisted, SimulationSettings } from "../../types";
+
+export const PAPER_BALANCE_USDT = 1_000;
+
+export const DEFAULT_SIMULATION_SETTINGS: SimulationSettings = {
+  makerFeePct: 0.02,
+  takerFeePct: 0.055,
+  slippagePct: 0.02,
+  stopSlippagePct: 0.05,
+  showClosedTradeOverlays: true,
+};
+
+export const INITIAL_PLAYER_STATE: Persisted = {
+  datasets: [],
+  trades: [],
+  annotations: [],
+  settings: DEFAULT_SIMULATION_SETTINGS,
+};
+
+export const NO_BARRIERS: Barrier[] = [];
