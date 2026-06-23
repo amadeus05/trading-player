@@ -102,6 +102,7 @@ export function ReplayChart({
     applyReplayIndex: (nextIndex: number, allCandles: Candle[]) => void;
   } | null>(null);
   const prevReplayIndexRef = useRef(index);
+  const previousDrawingModeRef = useRef(drawingMode);
   const callbacksRef = useRef({
     onBarrierChange,
     onStartSelected,
@@ -124,6 +125,8 @@ export function ReplayChart({
     const timeframeChanged = savedCandleInterval.current != null
       && candleInterval != null
       && savedCandleInterval.current !== candleInterval;
+    const drawingModeChanged = previousDrawingModeRef.current !== drawingMode;
+    const viewportBeforeModeChange = drawingModeChanged ? savedLogicalRange.current : null;
     const forceFocus = appliedFocusRevision.current !== focusRevision;
     if (forceFocus) {
       manualPriceScale.current = false;
@@ -165,14 +168,18 @@ export function ReplayChart({
     vs.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     vs.setData(candleStore.candles.map(toVolumeData));
     let replayUpdateInProgress = false;
-    const applyReplayIndex = (nextIndex: number, allCandles: Candle[]) => {
+    const applyReplayIndex = (
+      nextIndex: number,
+      allCandles: Candle[],
+      forcedRange: LogicalRange | null = null,
+    ) => {
       if (!allCandles.length) return;
       const nextSafeIndex = Math.max(0, Math.min(nextIndex, allCandles.length - 1));
       const nextVisible = allCandles.slice(0, nextSafeIndex + 1);
       const shouldFollowRealtime = followRealtime.current;
-      const preservedRange = shouldFollowRealtime
+      const preservedRange = forcedRange ?? (shouldFollowRealtime
         ? null
-        : savedLogicalRange.current ?? chart.timeScale().getVisibleLogicalRange();
+        : savedLogicalRange.current ?? chart.timeScale().getVisibleLogicalRange());
 
       replayUpdateInProgress = true;
       try {
@@ -252,9 +259,10 @@ export function ReplayChart({
       });
       renderedIndex.current = index;
     } else {
-      applyReplayIndex(index, candles);
+      applyReplayIndex(index, candles, viewportBeforeModeChange);
     }
     appliedFocusRevision.current = focusRevision;
+    previousDrawingModeRef.current = drawingMode;
     if (timeframeChanged) renderedIndex.current = index;
     const priceScaleWidth = Math.max(70, chart.priceScale("right").width());
     let chartAlive = true;
