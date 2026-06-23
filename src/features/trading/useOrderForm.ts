@@ -1,0 +1,118 @@
+import { useMemo, useState } from "react";
+import type { Candle } from "../../types";
+import { PAPER_BALANCE_USDT } from "../../shared/config/simulation";
+import type { AmountUnit, OrderType } from "./types";
+
+interface UseOrderFormOptions {
+  currentCandle?: Candle;
+  pricePrecision: number;
+}
+
+export function useOrderForm({
+  currentCandle,
+  pricePrecision,
+}: UseOrderFormOptions) {
+  const [orderType, setOrderType] = useState<OrderType>("MARKET");
+  const [leverage, setLeverage] = useState(10);
+  const [amountUnit, setAmountUnit] = useState<AmountUnit>("USDT");
+  const [orderValue, setOrderValue] = useState(100);
+  const [allocationPercent, setAllocationPercent] = useState(1);
+  const [limitPrice, setLimitPrice] = useState(0);
+  const [protectionEnabled, setProtectionEnabled] = useState(false);
+  const [takeProfit, setTakeProfit] = useState(0);
+  const [stopLoss, setStopLoss] = useState(0);
+
+  const ticket = useMemo(() => {
+    const ticketPrice = orderType === "MARKET"
+      ? currentCandle?.close ?? 0
+      : limitPrice || currentCandle?.close || 0;
+    const ticketQuantity = ticketPrice > 0
+      ? amountUnit === "USDT" ? orderValue / ticketPrice : orderValue
+      : 0;
+    const ticketNotional = ticketQuantity * ticketPrice;
+    return {
+      ticketPrice,
+      ticketQuantity,
+      ticketNotional,
+      ticketMargin: ticketNotional / leverage,
+      longLiquidation: ticketPrice > 0 && leverage > 1
+        ? ticketPrice * (1 - 1 / leverage)
+        : null,
+      shortLiquidation: ticketPrice > 0 && leverage > 1
+        ? ticketPrice * (1 + 1 / leverage)
+        : null,
+    };
+  }, [amountUnit, currentCandle?.close, leverage, limitPrice, orderType, orderValue]);
+
+  const changeOrderType = (nextOrderType: OrderType) => {
+    setOrderType(nextOrderType);
+    if (nextOrderType === "LIMIT" && currentCandle) setLimitPrice(currentCandle.close);
+  };
+
+  const changeProtection = (enabled: boolean) => {
+    setProtectionEnabled(enabled);
+    if (!enabled || !currentCandle?.close) return;
+    const currentPrice = currentCandle.close;
+    if (orderType === "LIMIT") {
+      setLimitPrice(Number(currentPrice.toFixed(pricePrecision)));
+    }
+    setTakeProfit(Number((currentPrice * 1.01).toFixed(pricePrecision)));
+    setStopLoss(Number((currentPrice * 0.99).toFixed(pricePrecision)));
+  };
+
+  const changeOrderValue = (nextValue: number) => {
+    setOrderValue(nextValue);
+    const notional = amountUnit === "USDT"
+      ? nextValue
+      : nextValue * ticket.ticketPrice;
+    setAllocationPercent(
+      Math.min(100, notional / leverage / PAPER_BALANCE_USDT * 100),
+    );
+  };
+
+  const changeAmountUnit = (nextUnit: AmountUnit) => {
+    setOrderValue(nextUnit === "USDT" ? ticket.ticketNotional : ticket.ticketQuantity);
+    setAmountUnit(nextUnit);
+  };
+
+  const changeAllocation = (percent: number) => {
+    setAllocationPercent(percent);
+    const notional = PAPER_BALANCE_USDT * (percent / 100) * leverage;
+    setOrderValue(
+      amountUnit === "USDT"
+        ? notional
+        : ticket.ticketPrice ? notional / ticket.ticketPrice : 0,
+    );
+  };
+
+  const resetProtection = () => {
+    setProtectionEnabled(false);
+    setTakeProfit(0);
+    setStopLoss(0);
+  };
+
+  return {
+    orderType,
+    leverage,
+    amountUnit,
+    orderValue,
+    allocationPercent,
+    limitPrice,
+    protectionEnabled,
+    takeProfit,
+    stopLoss,
+    ...ticket,
+    changeAllocation,
+    changeAmountUnit,
+    changeOrderType,
+    changeOrderValue,
+    changeProtection,
+    resetProtection,
+    setLeverage,
+    setLimitPrice,
+    setStopLoss,
+    setTakeProfit,
+  };
+}
+
+export type OrderFormController = ReturnType<typeof useOrderForm>;

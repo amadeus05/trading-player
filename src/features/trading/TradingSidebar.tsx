@@ -2,39 +2,19 @@ import { Button, Card, Checkbox, InputNumber, Select, Slider, Tag, Tooltip } fro
 import { Check, CircleHelp, Pencil, X } from "lucide-react";
 import type { Candle, Trade } from "../../types";
 import { formatDateTime, formatNumber, formatPrice } from "../../shared/lib/market";
-import type { AmountUnit, OrderType } from "./types";
+import type { OrderFormController } from "./useOrderForm";
 
 interface TradingSidebarProps {
   currentCandle?: Candle;
   pricePrecision: number;
   baseAsset: string;
   quoteAsset: string;
-  orderType: OrderType;
-  leverage: number;
-  amountUnit: AmountUnit;
-  orderValue: number;
-  allocationPercent: number;
-  limitPrice: number;
-  protectionEnabled: boolean;
-  takeProfit: number;
-  stopLoss: number;
-  ticketQuantity: number;
-  ticketMargin: number;
-  longLiquidation: number | null;
-  shortLiquidation: number | null;
+  orderForm: OrderFormController;
   hasBlockingTrade: boolean;
   workingTrades: Trade[];
   focusedTradeId: string | null;
   editingTradeId: string | null;
-  onOrderTypeChange: (type: OrderType) => void;
-  onLeverageChange: (leverage: number) => void;
-  onAmountUnitChange: (unit: AmountUnit) => void;
-  onOrderValueChange: (value: number) => void;
-  onAllocationChange: (percent: number) => void;
-  onLimitPriceChange: (price: number) => void;
   onProtectionChange: (enabled: boolean) => void;
-  onTakeProfitChange: (price: number) => void;
-  onStopLossChange: (price: number) => void;
   onPlaceOrder: (side: Trade["side"]) => void;
   onTradeFocus: (id: string | null) => void;
   onTradeEditStart: (trade: Trade) => void;
@@ -49,32 +29,12 @@ export function TradingSidebar({
   pricePrecision,
   baseAsset,
   quoteAsset,
-  orderType,
-  leverage,
-  amountUnit,
-  orderValue,
-  allocationPercent,
-  limitPrice,
-  protectionEnabled,
-  takeProfit,
-  stopLoss,
-  ticketQuantity,
-  ticketMargin,
-  longLiquidation,
-  shortLiquidation,
+  orderForm,
   hasBlockingTrade,
   workingTrades,
   focusedTradeId,
   editingTradeId,
-  onOrderTypeChange,
-  onLeverageChange,
-  onAmountUnitChange,
-  onOrderValueChange,
-  onAllocationChange,
-  onLimitPriceChange,
   onProtectionChange,
-  onTakeProfitChange,
-  onStopLossChange,
   onPlaceOrder,
   onTradeFocus,
   onTradeEditStart,
@@ -83,6 +43,29 @@ export function TradingSidebar({
   onCancelOrder,
   onCloseTrade,
 }: TradingSidebarProps) {
+  const {
+    orderType,
+    leverage,
+    amountUnit,
+    orderValue,
+    allocationPercent,
+    limitPrice,
+    protectionEnabled,
+    takeProfit,
+    stopLoss,
+    ticketQuantity,
+    ticketMargin,
+    longLiquidation,
+    shortLiquidation,
+    changeAllocation: onAllocationChange,
+    changeAmountUnit: onAmountUnitChange,
+    changeOrderType: onOrderTypeChange,
+    changeOrderValue: onOrderValueChange,
+    setLeverage: onLeverageChange,
+    setLimitPrice: onLimitPriceChange,
+    setTakeProfit: onTakeProfitChange,
+    setStopLoss: onStopLossChange,
+  } = orderForm;
   return (
     <aside>
       <div className="orderHeader"><b>Trade</b></div>

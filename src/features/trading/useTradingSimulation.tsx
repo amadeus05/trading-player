@@ -1,13 +1,16 @@
-import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, type Dispatch, type SetStateAction } from "react";
 import { App as AntApp } from "antd";
-import type { Barrier, Candle, Persisted, SimulationSettings, Trade } from "../../types";
-import { IntrabarExitResolver } from "../../simulation/IntrabarExitResolver";
+import type { Candle, Persisted, SimulationSettings, Trade } from "../../types";
 import { formatNumber, formatPrice } from "../../shared/lib/market";
-import type { AmountUnit, OrderType, TradeEditDraft } from "./types";
-
-const intrabarExitResolver = new IntrabarExitResolver();
+import { advanceSimulation, type SimulationEvent } from "./lib/advanceSimulation";
+import { calculateManualClose } from "./lib/calculateTradeResult";
+import { createOrder, type CreateOrderError } from "./lib/createOrder";
+import type { TradeEditDraft } from "./types";
+import type { OrderFormController } from "./useOrderForm";
 
 interface UseTradingSimulationOptions {
+  enabled: boolean;
+  datasetId: string;
   state: Persisted;
   setState: Dispatch<SetStateAction<Persisted>>;
   rawCandles: Candle[];
@@ -15,22 +18,20 @@ interface UseTradingSimulationOptions {
   timeframe: number;
   settings: SimulationSettings;
   pricePrecision: number;
-  orderType: OrderType;
-  leverage: number;
-  amountUnit: AmountUnit;
-  orderValue: number;
-  limitPrice: number;
-  protectionEnabled: boolean;
-  takeProfit: number;
-  stopLoss: number;
-  setProtectionEnabled: Dispatch<SetStateAction<boolean>>;
-  setTakeProfit: Dispatch<SetStateAction<number>>;
-  setStopLoss: Dispatch<SetStateAction<number>>;
+  orderForm: OrderFormController;
   setFocusedTradeId: Dispatch<SetStateAction<string | null>>;
   setTradeEditDraft: Dispatch<SetStateAction<TradeEditDraft | null>>;
 }
 
+const orderErrorMessages: Record<CreateOrderError, string> = {
+  "invalid-size": "Проверьте цену и размер заявки",
+  "missing-protection": "Включите TP/SL и укажите обе цены",
+  "invalid-barriers": "Проверьте расположение TP/SL относительно цены входа",
+};
+
 export function useTradingSimulation({
+  enabled,
+  datasetId,
   state,
   setState,
   rawCandles,
@@ -38,28 +39,34 @@ export function useTradingSimulation({
   timeframe,
   settings,
   pricePrecision,
-  orderType,
-  leverage,
-  amountUnit,
-  orderValue,
-  limitPrice,
-  protectionEnabled,
-  takeProfit,
-  stopLoss,
-  setProtectionEnabled,
-  setTakeProfit,
-  setStopLoss,
+  orderForm,
   setFocusedTradeId,
   setTradeEditDraft,
 }: UseTradingSimulationOptions) {
+  const {
+    orderType,
+    leverage,
+    amountUnit,
+    orderValue,
+    limitPrice,
+    protectionEnabled,
+    takeProfit,
+    stopLoss,
+    resetProtection,
+  } = orderForm;
   const { message, notification } = AntApp.useApp();
+  const processedTick = useRef<string | null>(null);
   const notifiedTrades = useRef(new Set<string>());
-  const workingTrades = state.trades.filter(
-    (trade) => trade.status === "OPEN" || trade.status === "PENDING",
+  const workingTrades = useMemo(
+    () => state.trades.filter((trade) => trade.status === "OPEN" || trade.status === "PENDING"),
+    [state.trades],
   );
   const blockingTrade = workingTrades.at(-1);
+  const tickKey = currentCandle
+    ? `${datasetId}:${timeframe}:${currentCandle.time}`
+    : null;
 
-  const notifyTradeClosed = (
+  const notifyTradeClosed = useCallback((
     trade: Trade,
     outcome: NonNullable<Trade["outcome"]>,
     exit: number,
@@ -83,98 +90,41 @@ export function useTradingSimulation({
       ),
       duration: 5,
     });
-  };
+  }, [notification]);
 
-  useEffect(() => {
-    if (!currentCandle) return;
-    const filled = state.trades.filter((trade) =>
-      trade.status === "PENDING"
-      && (trade.createdTime ?? trade.entryTime) < currentCandle.time
-      && currentCandle.low <= trade.entry
-      && currentCandle.high >= trade.entry,
-    );
-    if (!filled.length) return;
-    const ids = new Set(filled.map((trade) => trade.id));
-    setState((current) => ({
-      ...current,
-      trades: current.trades.map((trade) => ids.has(trade.id)
-        ? { ...trade, status: "OPEN", entryTime: currentCandle.time }
-        : trade),
-      annotations: current.annotations.map((barrier) => ids.has(barrier.id)
-        ? { ...barrier, entryTime: currentCandle.time }
-        : barrier),
-    }));
-    filled.forEach((trade) => {
-      void message.success(`${trade.side} limit исполнен по ${formatPrice(trade.entry, pricePrecision)}`);
-    });
-  }, [currentCandle?.time]);
-
-  useEffect(() => {
-    if (!currentCandle) return;
-    const closures = state.trades.flatMap((trade) => {
-      if (trade.status !== "OPEN" || trade.entryTime >= currentCandle.time) return [];
-      const intrabar = intrabarExitResolver.resolve(
-        rawCandles,
-        currentCandle.time,
-        timeframe * 60,
-        trade,
+  const publishSimulationEvent = useCallback((event: SimulationEvent) => {
+    if (event.type === "order-filled") {
+      void message.success(
+        `${event.trade.side} limit исполнен по ${formatPrice(event.trade.entry, pricePrecision)}`,
       );
-      let outcome: "TP" | "SL";
-      let exitTime: number;
-      if (intrabar.kind === "resolved") {
-        outcome = intrabar.outcome;
-        exitTime = intrabar.candleTime;
-      } else if (intrabar.kind === "not-hit") {
-        return [];
-      } else {
-        const slHit = trade.side === "LONG"
-          ? currentCandle.low <= trade.sl
-          : currentCandle.high >= trade.sl;
-        const tpHit = trade.side === "LONG"
-          ? currentCandle.high >= trade.tp
-          : currentCandle.low <= trade.tp;
-        if (!slHit && !tpHit) return [];
-        outcome = slHit ? "SL" : "TP";
-        exitTime = currentCandle.time;
-      }
-      const slHit = outcome === "SL";
-      const rawExit = slHit ? trade.sl : trade.tp;
-      const stopSlip = (trade.stopSlippagePct ?? settings.stopSlippagePct) / 100;
-      const exit = slHit
-        ? rawExit * (trade.side === "LONG" ? 1 - stopSlip : 1 + stopSlip)
-        : rawExit;
-      const grossResult = (trade.side === "LONG"
-        ? exit - trade.entry
-        : trade.entry - exit) * trade.size;
-      const exitFeePct = outcome === "TP"
-        ? trade.makerFeePct ?? settings.makerFeePct
-        : trade.takerFeePct ?? settings.takerFeePct;
-      const exitFee = exit * trade.size * exitFeePct / 100;
-      const fees = (trade.entryFee ?? 0) + exitFee;
-      return [{ trade, outcome, exitTime, exit, grossResult, fees, result: grossResult - fees }];
+      return;
+    }
+    notifyTradeClosed(event.trade, event.outcome, event.exit, event.result);
+  }, [message, notifyTradeClosed, pricePrecision]);
+
+  useEffect(() => {
+    if (!enabled || !currentCandle || !tickKey || processedTick.current === tickKey) return;
+    processedTick.current = tickKey;
+    const advanced = advanceSimulation({
+      state,
+      rawCandles,
+      candle: currentCandle,
+      timeframeMinutes: timeframe,
+      settings,
     });
-    if (!closures.length) return;
-    const byId = new Map(closures.map((closure) => [closure.trade.id, closure]));
-    setState((current) => ({
-      ...current,
-      trades: current.trades.map((trade) => {
-        const closed = byId.get(trade.id);
-        return closed ? {
-          ...trade,
-          status: "CLOSED",
-          exitTime: closed.exitTime,
-          exit: closed.exit,
-          grossResult: closed.grossResult,
-          fees: closed.fees,
-          result: closed.result,
-          outcome: closed.outcome,
-        } : trade;
-      }),
-    }));
-    closures.forEach(({ trade, outcome, exit, result }) => {
-      notifyTradeClosed(trade, outcome, exit, result);
-    });
-  }, [currentCandle?.time]);
+    if (advanced.state !== state) setState(advanced.state);
+    advanced.events.forEach(publishSimulationEvent);
+  }, [
+    currentCandle,
+    enabled,
+    publishSimulationEvent,
+    rawCandles,
+    setState,
+    settings,
+    state,
+    tickKey,
+    timeframe,
+  ]);
 
   const placeOrder = (side: Trade["side"]) => {
     if (!currentCandle) return;
@@ -182,71 +132,38 @@ export function useTradingSimulation({
       void message.warning("Сначала закройте позицию или отмените лимитную заявку");
       return;
     }
-    const requestedEntry = orderType === "MARKET"
-      ? currentCandle.close
-      : limitPrice || currentCandle.close;
-    const entrySlip = settings.slippagePct / 100;
-    const entry = orderType === "MARKET"
-      ? requestedEntry * (side === "LONG" ? 1 + entrySlip : 1 - entrySlip)
-      : requestedEntry;
-    if (!Number.isFinite(entry) || entry <= 0 || orderValue <= 0) {
-      void message.warning("Проверьте цену и размер заявки");
-      return;
-    }
-    const size = amountUnit === "USDT" ? orderValue / entry : orderValue;
-    const entryFeePct = orderType === "MARKET" ? settings.takerFeePct : settings.makerFeePct;
-    const entryFee = entry * size * entryFeePct / 100;
-    if (!protectionEnabled || stopLoss <= 0 || takeProfit <= 0) {
-      void message.warning("Включите TP/SL и укажите обе цены");
-      return;
-    }
-    const invalidBarriers = side === "LONG"
-      ? stopLoss >= entry || takeProfit <= entry
-      : stopLoss <= entry || takeProfit >= entry;
-    if (invalidBarriers) {
-      void message.warning(side === "LONG"
-        ? "Для LONG: SL ниже цены, TP выше цены"
-        : "Для SHORT: SL выше цены, TP ниже цены");
-      return;
-    }
-    const trade: Trade = {
+    const created = createOrder({
       id: crypto.randomUUID(),
       side,
-      entryTime: currentCandle.time,
-      createdTime: currentCandle.time,
-      entry,
-      size,
-      sl: stopLoss,
-      tp: takeProfit,
-      status: orderType === "MARKET" ? "OPEN" : "PENDING",
+      candle: currentCandle,
+      timeframeMinutes: timeframe,
+      settings,
       orderType,
       leverage,
-      inputUnit: amountUnit,
-      inputValue: orderValue,
-      entryFee,
-      makerFeePct: settings.makerFeePct,
-      takerFeePct: settings.takerFeePct,
-      slippagePct: settings.slippagePct,
-      stopSlippagePct: settings.stopSlippagePct,
-      comment: "",
-    };
-    const barrier: Barrier = {
-      id: trade.id,
-      entryTime: currentCandle.time,
-      upper: side === "LONG" ? takeProfit : stopLoss,
-      lower: side === "LONG" ? stopLoss : takeProfit,
-      timeLimit: currentCandle.time + timeframe * 60 * 24,
-    };
+      amountUnit,
+      orderValue,
+      limitPrice,
+      protectionEnabled,
+      takeProfit,
+      stopLoss,
+    });
+    if (!created.ok) {
+      const detail = created.error === "invalid-barriers"
+        ? side === "LONG"
+          ? "Для LONG: SL ниже цены, TP выше цены"
+          : "Для SHORT: SL выше цены, TP ниже цены"
+        : orderErrorMessages[created.error];
+      void message.warning(detail);
+      return;
+    }
     setState((current) => ({
       ...current,
-      trades: [...current.trades, trade],
-      annotations: [...current.annotations, barrier],
+      trades: [...current.trades, created.trade],
+      annotations: [...current.annotations, created.barrier],
     }));
-    setProtectionEnabled(false);
-    setFocusedTradeId(trade.id);
+    setFocusedTradeId(created.trade.id);
     setTradeEditDraft(null);
-    setTakeProfit(0);
-    setStopLoss(0);
+    resetProtection();
     void message.success(orderType === "MARKET" ? `${side} открыт` : `${side} limit размещён`);
   };
 
@@ -265,26 +182,18 @@ export function useTradingSimulation({
       return;
     }
     if (!currentCandle) return;
-    const slippage = (trade.slippagePct ?? settings.slippagePct) / 100;
-    const exit = currentCandle.close * (trade.side === "LONG" ? 1 - slippage : 1 + slippage);
-    const grossResult = (trade.side === "LONG" ? exit - trade.entry : trade.entry - exit) * trade.size;
-    const exitFee = exit * trade.size * (trade.takerFeePct ?? settings.takerFeePct) / 100;
-    const fees = (trade.entryFee ?? 0) + exitFee;
-    const result = grossResult - fees;
+    const close = calculateManualClose(trade, currentCandle.close, settings);
     setState((current) => ({
       ...current,
       trades: current.trades.map((item) => item.id === trade.id ? {
         ...item,
         status: "CLOSED",
         exitTime: currentCandle.time,
-        exit,
-        grossResult,
-        fees,
-        result,
+        ...close,
         outcome: "MANUAL",
       } : item),
     }));
-    notifyTradeClosed(trade, "MANUAL", exit, result);
+    notifyTradeClosed(trade, "MANUAL", close.exit, close.result);
   };
 
   const deleteTrade = (id: string) => {

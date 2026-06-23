@@ -14,12 +14,7 @@ import {
 import type {
   Barrier,
   Candle,
-  FibonacciRetracement,
-  FibonacciTrendExtension,
-  ParallelChannel,
-  Rectangle,
   Trade,
-  TrendLine,
 } from "../../types";
 import {
   attachFibonacciTool,
@@ -30,14 +25,11 @@ import {
   attachTrendLineTool,
   DrawingManager,
   type DrawingMode,
-  type FibonacciCallbacks,
-  type FibonacciTrendExtensionCallbacks,
-  type ParallelChannelCallbacks,
-  type RectangleCallbacks,
 } from "../../drawing";
 import { logicalToTime } from "../../drawing/shared/coordinates";
 import { attachClosedTradeOverlay } from "./closedTradeOverlay";
 import { attachPriceMarkers } from "./priceMarkers";
+import type { DrawingActions, DrawingCollections } from "../drawings/useDrawingCollections";
 
 const toCandlestickData = (candle: Candle): CandlestickData<UTCTimestamp> => ({
   time: candle.time as UTCTimestamp,
@@ -52,6 +44,28 @@ const toVolumeData = (candle: Candle): HistogramData<UTCTimestamp> => ({
   value: candle.volume,
   color: candle.close >= candle.open ? "#2bd9a855" : "#ff5c7355",
 });
+
+interface ReplayChartProps {
+  candles: Candle[];
+  index: number;
+  barriers: Barrier[];
+  trades: Trade[];
+  onBarrierChange: (id: string, kind: "tp" | "sl", price: number) => void;
+  selectingStart: boolean;
+  onStartSelected: (time: number) => void;
+  focusRevision: number;
+  onInteractionChange: (active: boolean) => void;
+  pricePrecision: number;
+  entryMarker?: { id: string; price: number };
+  onEntryMarkerChange: (id: string, price: number) => void;
+  showClosedTradeOverlays: boolean;
+  markersEditable: boolean;
+  drawings: DrawingCollections;
+  drawingActions: DrawingActions;
+  drawingMode: DrawingMode;
+  datasetId: string;
+  onDrawingComplete: () => void;
+}
 
 export function ReplayChart({
   candles,
@@ -68,68 +82,12 @@ export function ReplayChart({
   onEntryMarkerChange,
   showClosedTradeOverlays,
   markersEditable,
-  trendLines,
+  drawings,
+  drawingActions,
   drawingMode,
   datasetId,
-  onTrendLineCreate,
-  onTrendLineUpdate,
-  onTrendLineDelete,
-  rectangles,
-  onRectangleCreate,
-  onRectangleUpdate,
-  onRectangleDelete,
-  fibonacciRetracements,
-  onFibonacciCreate,
-  onFibonacciUpdate,
-  onFibonacciDelete,
-  fibonacciTrendExtensions,
-  onFibonacciTrendExtensionCreate,
-  onFibonacciTrendExtensionUpdate,
-  onFibonacciTrendExtensionDelete,
-  parallelChannels,
-  onParallelChannelCreate,
-  onParallelChannelUpdate,
-  onParallelChannelDelete,
   onDrawingComplete,
-}: {
-  candles: Candle[];
-  index: number;
-  barriers: Barrier[];
-  trades: Trade[];
-  onBarrierChange: (id: string, kind: "tp" | "sl", price: number) => void;
-  selectingStart: boolean;
-  onStartSelected: (time: number) => void;
-  focusRevision: number;
-  onInteractionChange: (active: boolean) => void;
-  pricePrecision: number;
-  entryMarker?: { id: string; price: number };
-  onEntryMarkerChange: (id: string, price: number) => void;
-  showClosedTradeOverlays: boolean;
-  markersEditable: boolean;
-  trendLines: TrendLine[];
-  drawingMode: DrawingMode;
-  datasetId: string;
-  onTrendLineCreate: (line: TrendLine) => void;
-  onTrendLineUpdate: (line: TrendLine) => void;
-  onTrendLineDelete: (id: string) => void;
-  rectangles: Rectangle[];
-  onRectangleCreate: RectangleCallbacks["onCreate"];
-  onRectangleUpdate: RectangleCallbacks["onUpdate"];
-  onRectangleDelete: RectangleCallbacks["onDelete"];
-  fibonacciRetracements: FibonacciRetracement[];
-  onFibonacciCreate: FibonacciCallbacks["onCreate"];
-  onFibonacciUpdate: FibonacciCallbacks["onUpdate"];
-  onFibonacciDelete: FibonacciCallbacks["onDelete"];
-  fibonacciTrendExtensions: FibonacciTrendExtension[];
-  onFibonacciTrendExtensionCreate: FibonacciTrendExtensionCallbacks["onCreate"];
-  onFibonacciTrendExtensionUpdate: FibonacciTrendExtensionCallbacks["onUpdate"];
-  onFibonacciTrendExtensionDelete: FibonacciTrendExtensionCallbacks["onDelete"];
-  parallelChannels: ParallelChannel[];
-  onParallelChannelCreate: ParallelChannelCallbacks["onCreate"];
-  onParallelChannelUpdate: ParallelChannelCallbacks["onUpdate"];
-  onParallelChannelDelete: ParallelChannelCallbacks["onDelete"];
-  onDrawingComplete: () => void;
-}) {
+}: ReplayChartProps) {
   const ref = useRef<HTMLDivElement>(null);
   const selectedTrendLineId = useRef<string | null>(null);
   const savedLogicalRange = useRef<LogicalRange | null>(null);
@@ -144,8 +102,20 @@ export function ReplayChart({
     applyReplayIndex: (nextIndex: number, allCandles: Candle[]) => void;
   } | null>(null);
   const prevReplayIndexRef = useRef(index);
-  const callbacksRef = useRef({ onBarrierChange, onStartSelected, onEntryMarkerChange, onTrendLineCreate, onTrendLineUpdate, onTrendLineDelete, onRectangleCreate, onRectangleUpdate, onRectangleDelete, onFibonacciCreate, onFibonacciUpdate, onFibonacciDelete, onFibonacciTrendExtensionCreate, onFibonacciTrendExtensionUpdate, onFibonacciTrendExtensionDelete, onParallelChannelCreate, onParallelChannelUpdate, onParallelChannelDelete, onDrawingComplete });
-  callbacksRef.current = { onBarrierChange, onStartSelected, onEntryMarkerChange, onTrendLineCreate, onTrendLineUpdate, onTrendLineDelete, onRectangleCreate, onRectangleUpdate, onRectangleDelete, onFibonacciCreate, onFibonacciUpdate, onFibonacciDelete, onFibonacciTrendExtensionCreate, onFibonacciTrendExtensionUpdate, onFibonacciTrendExtensionDelete, onParallelChannelCreate, onParallelChannelUpdate, onParallelChannelDelete, onDrawingComplete };
+  const callbacksRef = useRef({
+    onBarrierChange,
+    onStartSelected,
+    onEntryMarkerChange,
+    drawingActions,
+    onDrawingComplete,
+  });
+  callbacksRef.current = {
+    onBarrierChange,
+    onStartSelected,
+    onEntryMarkerChange,
+    drawingActions,
+    onDrawingComplete,
+  };
   useEffect(() => {
     if (!ref.current || !candles.length) return;
     const safeIndex = Math.max(0, Math.min(index, candles.length - 1));
@@ -328,15 +298,15 @@ export function ReplayChart({
       chart,
       series: cs,
       candleStore,
-      trendLines: trendLines.filter((l) => l.datasetId === datasetId),
+      trendLines: drawings.trendLines.filter((line) => line.datasetId === datasetId),
       drawingMode,
       datasetId,
       selectedId: selectedTrendLineId.current,
       onSelect: (id) => { selectedTrendLineId.current = id; },
       callbacks: {
-        onCreate: (line) => callbacksRef.current.onTrendLineCreate(line),
-        onUpdate: (line) => callbacksRef.current.onTrendLineUpdate(line),
-        onDelete: (id) => callbacksRef.current.onTrendLineDelete(id),
+        onCreate: (line) => callbacksRef.current.drawingActions.trendLines.onCreate(line),
+        onUpdate: (line) => callbacksRef.current.drawingActions.trendLines.onUpdate(line),
+        onDelete: (id) => callbacksRef.current.drawingActions.trendLines.onDelete(id),
         onDrawingComplete: () => callbacksRef.current.onDrawingComplete(),
       },
     });
@@ -356,13 +326,13 @@ export function ReplayChart({
       chart,
       series: cs,
       candleStore,
-      rectangles: rectangles.filter((r) => r.datasetId === datasetId),
+      rectangles: drawings.rectangles.filter((rectangle) => rectangle.datasetId === datasetId),
       drawingMode,
       datasetId,
       callbacks: {
-        onCreate: (rect) => callbacksRef.current.onRectangleCreate(rect),
-        onUpdate: (rect) => callbacksRef.current.onRectangleUpdate(rect),
-        onDelete: (id) => callbacksRef.current.onRectangleDelete(id),
+        onCreate: (rectangle) => callbacksRef.current.drawingActions.rectangles.onCreate(rectangle),
+        onUpdate: (rectangle) => callbacksRef.current.drawingActions.rectangles.onUpdate(rectangle),
+        onDelete: (id) => callbacksRef.current.drawingActions.rectangles.onDelete(id),
         onDrawingComplete: () => callbacksRef.current.onDrawingComplete(),
       },
     });
@@ -372,14 +342,14 @@ export function ReplayChart({
       chart,
       series: cs,
       candleStore,
-      fibonacciRetracements: fibonacciRetracements.filter((f) => f.datasetId === datasetId),
+      fibonacciRetracements: drawings.fibonacciRetracements.filter((fibonacci) => fibonacci.datasetId === datasetId),
       drawingMode,
       datasetId,
       pricePrecision,
       callbacks: {
-        onCreate: (fib) => callbacksRef.current.onFibonacciCreate(fib),
-        onUpdate: (fib) => callbacksRef.current.onFibonacciUpdate(fib),
-        onDelete: (id) => callbacksRef.current.onFibonacciDelete(id),
+        onCreate: (fibonacci) => callbacksRef.current.drawingActions.fibonacciRetracements.onCreate(fibonacci),
+        onUpdate: (fibonacci) => callbacksRef.current.drawingActions.fibonacciRetracements.onUpdate(fibonacci),
+        onDelete: (id) => callbacksRef.current.drawingActions.fibonacciRetracements.onDelete(id),
         onDrawingComplete: () => callbacksRef.current.onDrawingComplete(),
       },
     });
@@ -389,14 +359,14 @@ export function ReplayChart({
       chart,
       series: cs,
       candleStore,
-      fibonacciTrendExtensions: fibonacciTrendExtensions.filter((f) => f.datasetId === datasetId),
+      fibonacciTrendExtensions: drawings.fibonacciTrendExtensions.filter((extension) => extension.datasetId === datasetId),
       drawingMode,
       datasetId,
       pricePrecision,
       callbacks: {
-        onCreate: (fib) => callbacksRef.current.onFibonacciTrendExtensionCreate(fib),
-        onUpdate: (fib) => callbacksRef.current.onFibonacciTrendExtensionUpdate(fib),
-        onDelete: (id) => callbacksRef.current.onFibonacciTrendExtensionDelete(id),
+        onCreate: (extension) => callbacksRef.current.drawingActions.fibonacciTrendExtensions.onCreate(extension),
+        onUpdate: (extension) => callbacksRef.current.drawingActions.fibonacciTrendExtensions.onUpdate(extension),
+        onDelete: (id) => callbacksRef.current.drawingActions.fibonacciTrendExtensions.onDelete(id),
         onDrawingComplete: () => callbacksRef.current.onDrawingComplete(),
       },
     });
@@ -406,13 +376,13 @@ export function ReplayChart({
       chart,
       series: cs,
       candleStore,
-      parallelChannels: parallelChannels.filter((c) => c.datasetId === datasetId),
+      parallelChannels: drawings.parallelChannels.filter((channel) => channel.datasetId === datasetId),
       drawingMode,
       datasetId,
       callbacks: {
-        onCreate: (channel) => callbacksRef.current.onParallelChannelCreate(channel),
-        onUpdate: (channel) => callbacksRef.current.onParallelChannelUpdate(channel),
-        onDelete: (id) => callbacksRef.current.onParallelChannelDelete(id),
+        onCreate: (channel) => callbacksRef.current.drawingActions.parallelChannels.onCreate(channel),
+        onUpdate: (channel) => callbacksRef.current.drawingActions.parallelChannels.onUpdate(channel),
+        onDelete: (id) => callbacksRef.current.drawingActions.parallelChannels.onDelete(id),
         onDrawingComplete: () => callbacksRef.current.onDrawingComplete(),
       },
     });

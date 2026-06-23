@@ -4,7 +4,8 @@ import { loadPlayerState, savePlayerState } from "../../shared/api/playerStateAp
 import { DEFAULT_SIMULATION_SETTINGS, INITIAL_PLAYER_STATE } from "../../shared/config/simulation";
 
 export function usePersistedPlayerState() {
-  const hydrated = useRef(false);
+  const hydratedRef = useRef(false);
+  const [hydrated, setHydrated] = useState(false);
   const [state, setState] = useState<Persisted>(INITIAL_PLAYER_STATE);
   const [initialDatasetId, setInitialDatasetId] = useState("");
 
@@ -21,17 +22,18 @@ export function usePersistedPlayerState() {
       })
       .catch(() => undefined)
       .finally(() => {
-        hydrated.current = true;
+        hydratedRef.current = true;
+        setHydrated(true);
       });
   }, []);
 
   useEffect(() => {
-    if (!hydrated.current) return;
+    if (!hydratedRef.current) return;
     const timeoutId = window.setTimeout(() => {
       void savePlayerState(state).catch(() => undefined);
     }, 300);
     return () => window.clearTimeout(timeoutId);
   }, [state]);
 
-  return { state, setState, initialDatasetId };
+  return { state, setState, initialDatasetId, hydrated };
 }

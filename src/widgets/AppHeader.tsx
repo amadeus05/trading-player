@@ -1,6 +1,6 @@
 import { Button, Tag } from "antd";
 import { BarChart3, BookOpen, Settings } from "lucide-react";
-import { HistoryManager } from "../HistoryManager";
+import { HistoryManager } from "../features/datasets/HistoryManager";
 import type { Dataset } from "../types";
 
 interface AppHeaderProps {

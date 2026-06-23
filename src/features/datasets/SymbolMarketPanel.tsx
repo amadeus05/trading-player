@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Input } from "antd";
 import { Pin, Search, Star } from "lucide-react";
-import type { Candle } from "./types";
+import type { Candle } from "../../types";
 
 type DatasetItem = { id: string; name: string; candles?: Candle[] };
 
