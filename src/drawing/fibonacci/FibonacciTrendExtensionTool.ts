@@ -70,13 +70,33 @@ function formatPrice(value: number, precision: number): string {
 }
 
 function levelHorizontalSpan(p2: PixelPoint, p3: PixelPoint, plotWidth: number) {
-  const xLeft = Math.max(0, Math.min(Math.min(p2.x, p3.x), plotWidth));
-  const xRight = Math.max(xLeft, Math.min(Math.max(p2.x, p3.x), plotWidth));
-  return { xLeft, xRight };
+  const p2x = Math.max(0, Math.min(p2.x, plotWidth));
+  const p3x = Math.max(0, Math.min(p3.x, plotWidth));
+  const xLeft = Math.min(p2x, p3x);
+  const xRight = Math.max(p2x, p3x);
+  // Подписи на стороне точки 3; при пересечении через точку 2 — инверсия
+  const labelOnRight = p3x >= p2x;
+  return { xLeft, xRight, labelOnRight };
+}
+
+function anchorPricesFromPixels(
+  series: any,
+  p1: PixelPoint,
+  p2: PixelPoint,
+  p3: PixelPoint,
+): { price1: number; price2: number; price3: number } | null {
+  const price1 = pxToPrice(series, p1.y);
+  const price2 = pxToPrice(series, p2.y);
+  const price3 = pxToPrice(series, p3.y);
+  if (price1 == null || price2 == null || price3 == null) return null;
+  return { price1, price2, price3 };
 }
 
 function trendExtensionPrice(price1: number, price2: number, price3: number, ratio: number): number {
-  return price3 + (price2 - price1) * ratio;
+  const bc = price2 - price3;
+  const ab = price2 - price1;
+  // Единая формула: 0% на C, 100% на B, extension продолжает BC-масштаб + AB
+  return price3 + bc * ratio + ab * Math.max(0, ratio - 1);
 }
 
 interface LevelVisual {
@@ -122,13 +142,24 @@ function applyLevelLine(
   }
 }
 
-function applyLevelLabel(label: SVGTextElement, xRight: number, y: number, ratio: number, price: number, color: string, precision: number) {
-  label.setAttribute("x", String(xRight + FIB_LABEL_GAP));
+function applyLevelLabel(
+  label: SVGTextElement,
+  xLeft: number,
+  xRight: number,
+  y: number,
+  ratio: number,
+  price: number,
+  color: string,
+  precision: number,
+  labelOnRight: boolean,
+) {
+  const x = labelOnRight ? xRight + FIB_LABEL_GAP : xLeft - FIB_LABEL_GAP;
+  label.setAttribute("x", String(x));
   label.setAttribute("y", String(y));
   label.removeAttribute("dy");
   label.setAttribute("dominant-baseline", "central");
   label.setAttribute("fill", color);
-  label.setAttribute("text-anchor", "start");
+  label.setAttribute("text-anchor", labelOnRight ? "start" : "end");
   label.textContent = `${formatRatio(ratio)} (${formatPrice(price, precision)})`;
   label.setAttribute("visibility", "visible");
 }
@@ -491,21 +522,17 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
   function renderFibLevels(
     levels: LevelEls[],
     fills: SVGRectElement[] | null,
-    p1: PixelPoint,
     p2: PixelPoint,
     p3: PixelPoint,
+    price1: number,
+    price2: number,
+    price3: number,
     showLabels: boolean,
     width: number,
     style: DrawingLineStyle,
   ) {
     const { plotWidth } = getPlotLayout();
-    const { xLeft, xRight } = levelHorizontalSpan(p2, p3, plotWidth);
-
-    const price1 = pxToPrice(series, p1.y);
-    const price2 = pxToPrice(series, p2.y);
-    const price3 = pxToPrice(series, p3.y);
-
-    if (price1 == null || price2 == null || price3 == null) return;
+    const { xLeft, xRight, labelOnRight } = levelHorizontalSpan(p2, p3, plotWidth);
 
     const levelYs: number[] = [];
 
@@ -517,7 +544,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       const levelEls = levels[index];
       applyLevelLine(levelEls, xLeft, xRight, y, level.color, width, style);
       if (showLabels && levelEls.label) {
-        applyLevelLabel(levelEls.label, xRight, y, level.ratio, price, level.color, pricePrecision);
+        applyLevelLabel(levelEls.label, xLeft, xRight, y, level.ratio, price, level.color, pricePrecision, labelOnRight);
       } else if (levelEls.label) {
         levelEls.label.setAttribute("visibility", "hidden");
       }
@@ -532,19 +559,17 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     levelLines: SVGLineElement[],
     levelLabels: SVGTextElement[] | null,
     fills: SVGRectElement[] | null,
-    p1: PixelPoint,
     p2: PixelPoint,
     p3: PixelPoint,
+    price1: number,
+    price2: number,
+    price3: number,
     lineWidth: number,
     lineStyle: DrawingLineStyle,
     showLabels: boolean,
   ) {
     const { plotWidth } = getPlotLayout();
-    const { xLeft, xRight } = levelHorizontalSpan(p2, p3, plotWidth);
-    const price1 = pxToPrice(series, p1.y);
-    const price2 = pxToPrice(series, p2.y);
-    const price3 = pxToPrice(series, p3.y);
-    if (price1 == null || price2 == null || price3 == null) return;
+    const { xLeft, xRight, labelOnRight } = levelHorizontalSpan(p2, p3, plotWidth);
 
     const levelYs: number[] = [];
     FIB_TREND_EXT_LEVELS.forEach((level, index) => {
@@ -554,7 +579,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       levelYs[index] = y;
       applyLevelLine({ line: levelLines[index] }, xLeft, xRight, y, level.color, lineWidth, lineStyle);
       if (showLabels && levelLabels) {
-        applyLevelLabel(levelLabels[index], xRight, y, level.ratio, price, level.color, pricePrecision);
+        applyLevelLabel(levelLabels[index], xLeft, xRight, y, level.ratio, price, level.color, pricePrecision, labelOnRight);
       } else if (levelLabels) {
         levelLabels[index].setAttribute("visibility", "hidden");
       }
@@ -571,9 +596,22 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     p2: PixelPoint,
     p3: PixelPoint,
     isSelected: boolean,
+    priceSource: "stored" | "pixels" = "stored",
   ) {
     const { p1: cp1, p2: cp2, p3: cp3 } = clampPlotPair(p1, p2, p3);
     const lineStyle = fibLineStyle(fib);
+
+    let price1 = fib.point1.price;
+    let price2 = fib.point2.price;
+    let price3 = fib.point3.price;
+    if (priceSource === "pixels") {
+      const anchors = anchorPricesFromPixels(series, cp1, cp2, cp3);
+      if (anchors) {
+        price1 = anchors.price1;
+        price2 = anchors.price2;
+        price3 = anchors.price3;
+      }
+    }
 
     // Первая трендовая линия (от p1 к p2)
     els.trendLine1.setAttribute("x1", String(cp1.x));
@@ -599,7 +637,18 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     els.trendHit2.setAttribute("x2", String(cp3.x));
     els.trendHit2.setAttribute("y2", String(cp3.y));
 
-    renderFibLevels(els.levels, els.fills, cp1, cp2, cp3, fib.showLabels !== false, lineStyle.width, lineStyle.style);
+    renderFibLevels(
+      els.levels,
+      els.fills,
+      cp2,
+      cp3,
+      price1,
+      price2,
+      price3,
+      fib.showLabels !== false,
+      lineStyle.width,
+      lineStyle.style,
+    );
     applyHandles(els.handle1, els.handle2, els.handle3, cp1, cp2, cp3, !fib.locked);
     els.group.classList.toggle("selected", isSelected);
   }
@@ -682,7 +731,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     const els = elMap.get(fib.id);
     if (!els) return;
     overlay.sync();
-    renderFibGeometry(fib, els, p1, p2, p3, selectedId === fib.id);
+    renderFibGeometry(fib, els, p1, p2, p3, selectedId === fib.id, "pixels");
   }
 
   function ensureGhostElements() {
@@ -778,17 +827,22 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       applyTrendLineStroke(ghostTrendLine2!, "#787b86", DEFAULT_FIB_LINE.width);
       ghostTrendLine2!.style.display = "";
       ghostLevelLines!.forEach((line) => { line.style.display = ""; });
-      renderFibLevelsToLines(
-        ghostLevelLines!,
-        ghostLevelLabels,
-        ghostLevelFills,
-        cp1,
-        cp2,
-        cp3,
-        DEFAULT_FIB_LINE.width,
-        DEFAULT_FIB_LINE.style,
-        true,
-      );
+      const anchors = anchorPricesFromPixels(series, cp1, cp2, cp3);
+      if (anchors) {
+        renderFibLevelsToLines(
+          ghostLevelLines!,
+          ghostLevelLabels,
+          ghostLevelFills,
+          cp2,
+          cp3,
+          anchors.price1,
+          anchors.price2,
+          anchors.price3,
+          DEFAULT_FIB_LINE.width,
+          DEFAULT_FIB_LINE.style,
+          true,
+        );
+      }
       applyHandles(ghostHandle1!, ghostHandle2!, ghostHandle3!, cp1, cp2, cp3, true);
     } else {
       ghostTrendLine2!.style.display = "none";
@@ -858,9 +912,16 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
         x: event.clientX - rect.left,
         y: event.clientY - rect.top,
       });
-      const p1 = which === "point1" ? dragged : (toPixel(fib.point1) ?? originalP1);
-      const p2 = which === "point2" ? dragged : (toPixel(fib.point2) ?? originalP2);
-      const p3 = which === "point3" ? dragged : (toPixel(fib.point3) ?? originalP3);
+      const p1 = which === "point1" ? dragged : originalP1;
+      const p2 = which === "point2" ? dragged : originalP2;
+      const p3 = which === "point3" ? dragged : originalP3;
+      const dragTime = xToTime(chart, dragged.x, candles);
+      const dragPrice = pxToPrice(series, dragged.y);
+      if (dragTime != null && dragPrice != null && dragPrice > 0) {
+        if (which === "point1") fib.point1 = { time: dragTime, price: dragPrice };
+        else if (which === "point2") fib.point2 = { time: dragTime, price: dragPrice };
+        else fib.point3 = { time: dragTime, price: dragPrice };
+      }
       previewAtPixels(fib, p1, p2, p3);
     };
 
@@ -1001,12 +1062,17 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       drawPoint2 = { time, price };
       flushGhostPreview();
     } else {
+      const pointer = latestDrawPointer ?? (x != null && y != null ? { x, y } : null);
+      const p3Time = pointer ? xToTime(chart, pointer.x, candles) : time;
+      const p3Price = pointer ? pxToPrice(series, pointer.y) : price;
+      if (p3Time == null || p3Price == null || p3Price <= 0) return;
+
       const newFib: FibonacciTrendExtension = {
         id: crypto.randomUUID(),
         datasetId,
         point1: drawPoint1,
         point2: drawPoint2,
-        point3: { time, price },
+        point3: { time: p3Time, price: p3Price },
         showLabels: true,
         locked: false,
         lineWidth: DEFAULT_FIB_LINE.width,
@@ -1061,6 +1127,8 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     if (!dragActive && !interactionSyncRaf) scheduleSync();
     rafId = requestAnimationFrame(loop);
   }
+  // Render before the browser can paint an empty overlay on replay ticks.
+  syncAll();
   rafId = requestAnimationFrame(loop);
 
   const onVisibleRangeChange = () => {
@@ -1105,7 +1173,11 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     window.removeEventListener("pointermove", handleDrawPointerMove);
     container.removeEventListener("pointerdown", handleBackgroundClick);
     document.removeEventListener("keydown", handleKeyDown);
-    overlay.remove();
+    // The chart is recreated on every replay tick. Keep the already-painted
+    // geometry as a non-interactive bridge until its replacement has painted.
+    // Removing it immediately exposes one empty frame and makes the grid flash.
+    svg.style.pointerEvents = "none";
+    requestAnimationFrame(() => requestAnimationFrame(() => overlay.remove()));
     removeToolbar();
     clearGhost();
   };
