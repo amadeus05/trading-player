@@ -302,6 +302,10 @@ g[data-trend-id].selected .trend-main-line {
   cursor: grabbing;
 }
 
+.fib-trend-ext-fill {
+  pointer-events: none;
+}
+
 /* Parallel Channel SVG Overlay */
 .parallel-channel-overlay {
   position: absolute;
