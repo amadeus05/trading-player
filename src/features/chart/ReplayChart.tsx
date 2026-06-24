@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import {
   CandlestickSeries,
   CrosshairMode,
@@ -100,6 +100,7 @@ export function ReplayChart({
   const appliedFocusRevision = useRef(focusRevision);
   const chartRuntimeRef = useRef<{
     applyReplayIndex: (nextIndex: number, allCandles: Candle[]) => void;
+    syncOverlays: () => void;
   } | null>(null);
   const prevReplayIndexRef = useRef(index);
   const previousDrawingModeRef = useRef(drawingMode);
@@ -145,7 +146,14 @@ export function ReplayChart({
         mode: drawingMode === "measure" ? CrosshairMode.Hidden : CrosshairMode.Normal,
       },
       rightPriceScale: { borderColor: "#232632" },
-      timeScale: { borderColor: "#232632", timeVisible: true },
+      timeScale: {
+        borderColor: "#232632",
+        timeVisible: true,
+        // Replay adds bars into the right whitespace; the default auto-shift
+        // races overlay coordinate sync and causes a 1-bar flicker.
+        shiftVisibleRangeOnNewBar: false,
+        allowShiftVisibleRangeOnWhitespaceReplacement: false,
+      },
     });
     const drawingManager = new DrawingManager(ref.current);
     drawingManager.setMode(drawingMode);
@@ -180,20 +188,35 @@ export function ReplayChart({
       const preservedRange = forcedRange ?? (shouldFollowRealtime
         ? null
         : savedLogicalRange.current ?? chart.timeScale().getVisibleLogicalRange());
+      const previousVisible = candleStore.candles;
+      const delta = renderedIndex.current == null ? 0 : nextSafeIndex - renderedIndex.current;
+      const canAppendOneBar = delta === 1
+        && nextVisible.length === previousVisible.length + 1
+        && previousVisible.length > 0
+        && nextVisible[previousVisible.length - 1].time === previousVisible[previousVisible.length - 1].time;
 
       replayUpdateInProgress = true;
       try {
         candleStore.candles = nextVisible;
-        cs.setData(nextVisible.map(toCandlestickData));
-        vs.setData(nextVisible.map(toVolumeData));
+        if (canAppendOneBar) {
+          const appended = nextVisible[nextVisible.length - 1];
+          cs.update(toCandlestickData(appended));
+          vs.update(toVolumeData(appended));
+        } else {
+          cs.setData(nextVisible.map(toCandlestickData));
+          vs.setData(nextVisible.map(toVolumeData));
+        }
+
         if (preservedRange) {
           chart.timeScale().setVisibleLogicalRange(preservedRange);
         } else if (shouldFollowRealtime) {
           chart.timeScale().scrollToRealTime();
         }
+
         savedLogicalRange.current = chart.timeScale().getVisibleLogicalRange() ?? preservedRange;
         followRealtime.current = shouldFollowRealtime;
         renderedIndex.current = nextIndex;
+        drawingManager.syncOverlays();
       } finally {
         replayUpdateInProgress = false;
       }
@@ -207,6 +230,7 @@ export function ReplayChart({
     };
     const onVisibleRangeChange = () => {
       syncViewportState();
+      if (!replayUpdateInProgress) drawingManager.scheduleOverlaySync();
     };
     chart.timeScale().subscribeVisibleLogicalRangeChange(onVisibleRangeChange);
     syncViewportState();
@@ -218,7 +242,7 @@ export function ReplayChart({
       trades,
       visible: showClosedTradeOverlays,
     });
-    const cleanupPriceMarkers = attachPriceMarkers({
+    const priceMarkers = attachPriceMarkers({
       container: ref.current,
       series: cs,
       barriers,
@@ -232,6 +256,8 @@ export function ReplayChart({
         callbacksRef.current.onEntryMarkerChange(id, price),
       onFrame: closedTradeOverlay.sync,
     });
+    const unregisterClosedTradeSync = drawingManager.registerOverlaySync(closedTradeOverlay.sync);
+    const unregisterPriceMarkerSync = drawingManager.registerOverlaySync(priceMarkers.sync);
     const selectStart = (event: MouseEventParams<Time>) => {
       if (selectingStart && typeof event.time === "number") callbacksRef.current.onStartSelected(Number(event.time));
     };
@@ -298,7 +324,10 @@ export function ReplayChart({
     ref.current.addEventListener("pointerdown", markManualScale);
     ref.current.addEventListener("dblclick", resetManualScale);
     ref.current.addEventListener("wheel", zoomPriceScale, { capture: true, passive: false     });
-    chartRuntimeRef.current = { applyReplayIndex };
+    chartRuntimeRef.current = {
+      applyReplayIndex,
+      syncOverlays: () => drawingManager.scheduleOverlaySync(),
+    };
     prevReplayIndexRef.current = index;
     const cleanupTrendLines = attachTrendLineTool({
       manager: drawingManager,
@@ -394,6 +423,7 @@ export function ReplayChart({
         onDrawingComplete: () => callbacksRef.current.onDrawingComplete(),
       },
     });
+    drawingManager.syncOverlays();
     return () => {
       chartAlive = false;
       const range = chart.timeScale().getVisibleLogicalRange();
@@ -410,7 +440,9 @@ export function ReplayChart({
       ref.current?.removeEventListener("dblclick", resetManualScale);
       ref.current?.removeEventListener("wheel", zoomPriceScale, { capture: true });
       closedTradeOverlay.destroy();
-      cleanupPriceMarkers();
+      priceMarkers.cleanup();
+      unregisterClosedTradeSync();
+      unregisterPriceMarkerSync();
       cancelAnimationFrame(deferredTimeRangeFrame);
       if (selectingStart) chart.unsubscribeClick(selectStart);
       try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRangeChange); } catch { }
@@ -427,7 +459,7 @@ export function ReplayChart({
     };
   }, [candles, barriers, trades, selectingStart, focusRevision, pricePrecision, entryMarker, showClosedTradeOverlays, markersEditable, drawingMode, datasetId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (prevReplayIndexRef.current === index) return;
     prevReplayIndexRef.current = index;
     chartRuntimeRef.current?.applyReplayIndex(index, candles);

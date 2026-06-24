@@ -12,6 +12,9 @@ export class DrawingManager {
   private selectedOverlay: SVGSVGElement | null = null;
   private activeKind: DrawingSelectionKind | null = null;
   private deselectByKind = new Map<DrawingSelectionKind, () => void>();
+  private overlaySyncById = new Map<symbol, () => void>();
+  private overlayLoopId = 0;
+  private pendingOverlaySyncFrame = 0;
 
   constructor(private readonly container: HTMLElement) {
     this.applyMode();
@@ -43,6 +46,41 @@ export class DrawingManager {
     };
   }
 
+  registerOverlaySync(sync: () => void): () => void {
+    const id = Symbol("overlay-sync");
+    this.overlaySyncById.set(id, sync);
+    return () => {
+      this.overlaySyncById.delete(id);
+    };
+  }
+
+  syncOverlays(): void {
+    this.overlaySyncById.forEach((sync) => sync());
+  }
+
+  /** One shared rAF loop for all drawing overlays — avoids per-tool sync races. */
+  ensureOverlayLoop(): void {
+    if (this.overlayLoopId) return;
+    const loop = () => {
+      this.syncOverlays();
+      this.overlayLoopId = requestAnimationFrame(loop);
+    };
+    this.overlayLoopId = requestAnimationFrame(loop);
+  }
+
+  /**
+   * Sync overlays after lightweight-charts has applied data/viewport changes.
+   */
+  scheduleOverlaySync(): void {
+    cancelAnimationFrame(this.pendingOverlaySyncFrame);
+    this.pendingOverlaySyncFrame = requestAnimationFrame(() => {
+      this.pendingOverlaySyncFrame = requestAnimationFrame(() => {
+        this.pendingOverlaySyncFrame = 0;
+        this.syncOverlays();
+      });
+    });
+  }
+
   activateSelection(kind: DrawingSelectionKind, element: SVGElement | null): void {
     if (this.activeKind && this.activeKind !== kind) {
       this.deselectByKind.get(this.activeKind)?.();
@@ -68,6 +106,11 @@ export class DrawingManager {
 
   destroy(): void {
     this.clearSelection();
+    cancelAnimationFrame(this.overlayLoopId);
+    cancelAnimationFrame(this.pendingOverlaySyncFrame);
+    this.overlayLoopId = 0;
+    this.pendingOverlaySyncFrame = 0;
+    this.overlaySyncById.clear();
     delete this.container.dataset.drawingMode;
     delete this.container.dataset.drawingActive;
   }

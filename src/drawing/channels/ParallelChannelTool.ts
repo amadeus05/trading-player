@@ -1024,19 +1024,16 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     }
   }
 
-  let rafId = 0;
-  function loop() {
-    if (!dragActive) syncAll();
-    rafId = requestAnimationFrame(loop);
-  }
-  rafId = requestAnimationFrame(loop);
-
   const unregisterDeselect = manager.registerDeselect("parallelchannel", () => {
     if (selectedId === null) return;
     selectedId = null;
     removeToolbar();
     syncAll();
   });
+  const unregisterOverlaySync = manager.registerOverlaySync(() => {
+    if (!dragActive) syncAll();
+  });
+  manager.ensureOverlayLoop();
 
   if (drawingMode === "parallelchannel") {
     chart.subscribeClick(handleDrawClick);
@@ -1046,9 +1043,9 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   document.addEventListener("keydown", handleKeyDown);
 
   return () => {
-    cancelAnimationFrame(rafId);
     cancelAnimationFrame(dragRaf);
     unregisterDeselect();
+    unregisterOverlaySync();
     try { chart.unsubscribeClick(handleDrawClick); } catch { /* noop */ }
     container.removeEventListener("mousemove", handleMouseMove);
     container.removeEventListener("pointerdown", handleBackgroundClick);

@@ -112,22 +112,21 @@ export function attachPriceMarkers({
     }
   }
 
-  let animationFrame = 0;
   const sync = () => {
     onFrame();
     positions.forEach(({ handle, price }) => {
       const y = series.priceToCoordinate(price());
       if (y !== null) handle.style.top = `${y}px`;
     });
-    animationFrame = requestAnimationFrame(sync);
   };
-  animationFrame = requestAnimationFrame(sync);
 
-  return () => {
-    cancelAnimationFrame(animationFrame);
-    handles.forEach((handle) => handle.remove());
-    priceLines.forEach((line) => {
-      try { series.removePriceLine(line); } catch { /* chart may already be disposed */ }
-    });
+  return {
+    sync,
+    cleanup: () => {
+      handles.forEach((handle) => handle.remove());
+      priceLines.forEach((line) => {
+        try { series.removePriceLine(line); } catch { /* chart may already be disposed */ }
+      });
+    },
   };
 }

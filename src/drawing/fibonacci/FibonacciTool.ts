@@ -867,18 +867,11 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     }
   }
 
-  let rafId = 0;
-  function loop() {
-    if (!dragActive && !interactionSyncRaf) syncAll();
-    rafId = requestAnimationFrame(loop);
-  }
   syncAll();
-  rafId = requestAnimationFrame(loop);
+  manager.ensureOverlayLoop();
 
   const onVisibleRangeChange = () => {
-    if (!dragActive) startInteractionSync();
-    window.clearTimeout(wheelSyncTimer);
-    wheelSyncTimer = window.setTimeout(stopInteractionSync, 150);
+    if (!dragActive) manager.scheduleOverlaySync();
   };
   chart.timeScale().subscribeVisibleLogicalRangeChange(onVisibleRangeChange);
   container.addEventListener("wheel", handleScaleWheel, { capture: true, passive: true });
@@ -893,6 +886,11 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     syncAll();
   });
 
+  const unregisterOverlaySync = manager.registerOverlaySync(() => {
+    if (!dragActive) syncAll();
+  });
+  manager.ensureOverlayLoop();
+
   if (drawingMode === "fibonacci") {
     chart.subscribeClick(handleDrawClick);
   }
@@ -900,13 +898,13 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   document.addEventListener("keydown", handleKeyDown);
 
   return () => {
-    cancelAnimationFrame(rafId);
     cancelAnimationFrame(dragRaf);
     cancelAnimationFrame(ghostRaf);
     cancelAnimationFrame(interactionSyncRaf);
     cancelAnimationFrame(finalSyncRaf);
     window.clearTimeout(wheelSyncTimer);
     unregisterDeselect();
+    unregisterOverlaySync();
     try { chart.unsubscribeClick(handleDrawClick); } catch { }
     try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRangeChange); } catch { }
     container.removeEventListener("wheel", handleScaleWheel, { capture: true });

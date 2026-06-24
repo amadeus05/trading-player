@@ -97,7 +97,7 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
   pricePrecision: number;
   onComplete: () => void;
 }): () => void {
-  const { container, chart, series, candleStore, active, pricePrecision, onComplete } = opts;
+  const { container, chart, series, candleStore, active, pricePrecision, onComplete, manager } = opts;
 
   if (!active) return () => {};
 
@@ -427,8 +427,7 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
     drawMeasurement(point1, { time: time2, price: price2 }, p1px, { x, y });
   }
 
-  let rafId = 0;
-  function syncLoop() {
+  function syncOverlayPositions() {
     overlay.sync();
     if (point1) {
       const p1px = toPixel(point1);
@@ -447,9 +446,10 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
         }
       }
     }
-    rafId = requestAnimationFrame(syncLoop);
   }
-  rafId = requestAnimationFrame(syncLoop);
+
+  const unregisterOverlaySync = manager.registerOverlaySync(syncOverlayPositions);
+  manager.ensureOverlayLoop();
 
   function handleKeyDown(event: KeyboardEvent) {
     if (event.key === "Escape") {
@@ -475,7 +475,7 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
   }, 200);
 
   function cleanup() {
-    cancelAnimationFrame(rafId);
+    unregisterOverlaySync();
     clearTimeout(dismissTimeout);
     try { chart.unsubscribeClick(handleDrawClick); } catch {}
     container.removeEventListener("mousemove", handleMouseMove);

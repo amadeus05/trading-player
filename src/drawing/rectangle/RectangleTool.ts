@@ -930,17 +930,15 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     syncAll();
   });
 
-  let rafId = 0;
-  const loop = () => {
+  const unregisterOverlaySync = manager.registerOverlaySync(() => {
     if (!dragActive) syncAll();
-    rafId = requestAnimationFrame(loop);
-  };
-  rafId = requestAnimationFrame(loop);
+  });
+  manager.ensureOverlayLoop();
 
   return () => {
-    cancelAnimationFrame(rafId);
     cancelAnimationFrame(dragRaf);
     unregisterDeselect();
+    unregisterOverlaySync();
     container.removeEventListener("pointerdown", onBgPointerDown);
     document.removeEventListener("keydown", onKey);
     drawOverlay?.remove();

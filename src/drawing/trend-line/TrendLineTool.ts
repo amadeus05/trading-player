@@ -798,14 +798,6 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     }
   }
 
-  /* ---- Sync loop ---- */
-  let rafId = 0;
-  function loop() {
-    if (!dragActive) syncAll();
-    rafId = requestAnimationFrame(loop);
-  }
-  rafId = requestAnimationFrame(loop);
-
   const unregisterDeselect = manager.registerDeselect("trendline", () => {
     if (selectedId === null) return;
     selectedId = null;
@@ -813,6 +805,10 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     removeToolbar();
     syncAll();
   });
+  const unregisterOverlaySync = manager.registerOverlaySync(() => {
+    if (!dragActive) syncAll();
+  });
+  manager.ensureOverlayLoop();
 
   /* ---- Attach events ---- */
   if (drawingMode === "trendline") {
@@ -824,9 +820,9 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
 
   /* ---- Cleanup ---- */
   return () => {
-    cancelAnimationFrame(rafId);
     cancelAnimationFrame(dragRaf);
     unregisterDeselect();
+    unregisterOverlaySync();
     try { chart.unsubscribeClick(handleDrawClick); } catch { }
     container.removeEventListener("mousemove", handleMouseMove);
     container.removeEventListener("pointerdown", handleBackgroundClick);
