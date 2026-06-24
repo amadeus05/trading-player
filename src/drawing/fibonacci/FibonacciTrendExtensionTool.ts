@@ -99,10 +99,8 @@ function anchorPricesFromPixels(
 }
 
 function trendExtensionPrice(price1: number, price2: number, price3: number, ratio: number): number {
-  const bc = price2 - price3;
-  const ab = price2 - price1;
-  // Единая формула: 0% на C, 100% на B, extension продолжает BC-масштаб + AB
-  return price3 + bc * ratio + ab * Math.max(0, ratio - 1);
+  const impulse = price2 - price1;
+  return price3 + impulse * ratio;
 }
 
 interface LevelVisual {
