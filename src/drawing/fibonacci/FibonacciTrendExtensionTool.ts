@@ -74,9 +74,15 @@ function levelHorizontalSpan(p2: PixelPoint, p3: PixelPoint, plotWidth: number) 
   const p3x = Math.max(0, Math.min(p3.x, plotWidth));
   const xLeft = Math.min(p2x, p3x);
   const xRight = Math.max(p2x, p3x);
+  return { xLeft, xRight };
+}
+
+function levelLabelSpan(p2: PixelPoint, p3: PixelPoint) {
+  const labelLeft = Math.min(p2.x, p3.x);
+  const labelRight = Math.max(p2.x, p3.x);
   // Подписи на стороне точки 3; при пересечении через точку 2 — инверсия
-  const labelOnRight = p3x >= p2x;
-  return { xLeft, xRight, labelOnRight };
+  const labelOnRight = p3.x >= p2.x;
+  return { labelLeft, labelRight, labelOnRight };
 }
 
 function anchorPricesFromPixels(
@@ -254,10 +260,6 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       x: Math.max(0, Math.min(p.x, plotWidth)),
       y: Math.max(0, Math.min(p.y, plotHeight)),
     };
-  }
-
-  function clampPlotPair(p1: PixelPoint, p2: PixelPoint, p3: PixelPoint) {
-    return { p1: clampPlotPoint(p1), p2: clampPlotPoint(p2), p3: clampPlotPoint(p3) };
   }
 
   function removeToolbar() {
@@ -531,7 +533,8 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     style: DrawingLineStyle,
   ) {
     const { plotWidth } = getPlotLayout();
-    const { xLeft, xRight, labelOnRight } = levelHorizontalSpan(p2, p3, plotWidth);
+    const { xLeft, xRight } = levelHorizontalSpan(p2, p3, plotWidth);
+    const { labelLeft, labelRight, labelOnRight } = levelLabelSpan(p2, p3);
 
     const levelYs: number[] = [];
 
@@ -543,7 +546,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       const levelEls = levels[index];
       applyLevelLine(levelEls, xLeft, xRight, y, level.color, width, style);
       if (showLabels && levelEls.label) {
-        applyLevelLabel(levelEls.label, xLeft, xRight, y, level.ratio, price, level.color, pricePrecision, labelOnRight);
+        applyLevelLabel(levelEls.label, labelLeft, labelRight, y, level.ratio, price, level.color, pricePrecision, labelOnRight);
       } else if (levelEls.label) {
         levelEls.label.setAttribute("visibility", "hidden");
       }
@@ -568,7 +571,8 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     showLabels: boolean,
   ) {
     const { plotWidth } = getPlotLayout();
-    const { xLeft, xRight, labelOnRight } = levelHorizontalSpan(p2, p3, plotWidth);
+    const { xLeft, xRight } = levelHorizontalSpan(p2, p3, plotWidth);
+    const { labelLeft, labelRight, labelOnRight } = levelLabelSpan(p2, p3);
 
     const levelYs: number[] = [];
     FIB_TREND_EXT_LEVELS.forEach((level, index) => {
@@ -578,7 +582,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       levelYs[index] = y;
       applyLevelLine({ line: levelLines[index] }, xLeft, xRight, y, level.color, lineWidth, lineStyle);
       if (showLabels && levelLabels) {
-        applyLevelLabel(levelLabels[index], xLeft, xRight, y, level.ratio, price, level.color, pricePrecision, labelOnRight);
+        applyLevelLabel(levelLabels[index], labelLeft, labelRight, y, level.ratio, price, level.color, pricePrecision, labelOnRight);
       } else if (levelLabels) {
         levelLabels[index].setAttribute("visibility", "hidden");
       }
@@ -597,14 +601,13 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     isSelected: boolean,
     priceSource: "stored" | "pixels" = "stored",
   ) {
-    const { p1: cp1, p2: cp2, p3: cp3 } = clampPlotPair(p1, p2, p3);
     const lineStyle = fibLineStyle(fib);
 
     let price1 = fib.point1.price;
     let price2 = fib.point2.price;
     let price3 = fib.point3.price;
     if (priceSource === "pixels") {
-      const anchors = anchorPricesFromPixels(series, cp1, cp2, cp3);
+      const anchors = anchorPricesFromPixels(series, p1, p2, p3);
       if (anchors) {
         price1 = anchors.price1;
         price2 = anchors.price2;
@@ -613,34 +616,34 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     }
 
     // Первая трендовая линия (от p1 к p2)
-    els.trendLine1.setAttribute("x1", String(cp1.x));
-    els.trendLine1.setAttribute("y1", String(cp1.y));
-    els.trendLine1.setAttribute("x2", String(cp2.x));
-    els.trendLine1.setAttribute("y2", String(cp2.y));
+    els.trendLine1.setAttribute("x1", String(p1.x));
+    els.trendLine1.setAttribute("y1", String(p1.y));
+    els.trendLine1.setAttribute("x2", String(p2.x));
+    els.trendLine1.setAttribute("y2", String(p2.y));
     applyTrendLineStroke(els.trendLine1, "#787b86", lineStyle.width);
 
-    els.trendHit1.setAttribute("x1", String(cp1.x));
-    els.trendHit1.setAttribute("y1", String(cp1.y));
-    els.trendHit1.setAttribute("x2", String(cp2.x));
-    els.trendHit1.setAttribute("y2", String(cp2.y));
+    els.trendHit1.setAttribute("x1", String(p1.x));
+    els.trendHit1.setAttribute("y1", String(p1.y));
+    els.trendHit1.setAttribute("x2", String(p2.x));
+    els.trendHit1.setAttribute("y2", String(p2.y));
 
     // Вторая трендовая линия (от p2 к p3)
-    els.trendLine2.setAttribute("x1", String(cp2.x));
-    els.trendLine2.setAttribute("y1", String(cp2.y));
-    els.trendLine2.setAttribute("x2", String(cp3.x));
-    els.trendLine2.setAttribute("y2", String(cp3.y));
+    els.trendLine2.setAttribute("x1", String(p2.x));
+    els.trendLine2.setAttribute("y1", String(p2.y));
+    els.trendLine2.setAttribute("x2", String(p3.x));
+    els.trendLine2.setAttribute("y2", String(p3.y));
     applyTrendLineStroke(els.trendLine2, "#787b86", lineStyle.width);
 
-    els.trendHit2.setAttribute("x1", String(cp2.x));
-    els.trendHit2.setAttribute("y1", String(cp2.y));
-    els.trendHit2.setAttribute("x2", String(cp3.x));
-    els.trendHit2.setAttribute("y2", String(cp3.y));
+    els.trendHit2.setAttribute("x1", String(p2.x));
+    els.trendHit2.setAttribute("y1", String(p2.y));
+    els.trendHit2.setAttribute("x2", String(p3.x));
+    els.trendHit2.setAttribute("y2", String(p3.y));
 
     renderFibLevels(
       els.levels,
       els.fills,
-      cp2,
-      cp3,
+      p2,
+      p3,
       price1,
       price2,
       price3,
@@ -648,7 +651,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       lineStyle.width,
       lineStyle.style,
     );
-    applyHandles(els.handle1, els.handle2, els.handle3, cp1, cp2, cp3, !fib.locked);
+    applyHandles(els.handle1, els.handle2, els.handle3, p1, p2, p3, !fib.locked);
     els.group.classList.toggle("selected", isSelected);
   }
 
@@ -800,32 +803,29 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
   function updateGhost(p1: PixelPoint, p2: PixelPoint, p3?: PixelPoint) {
     ensureGhostElements();
     overlay.sync();
-    const { p1: cp1, p2: cp2, p3: cp3 } = p3 
-      ? clampPlotPair(p1, p2, p3)
-      : { p1: clampPlotPoint(p1), p2: clampPlotPoint(p2), p3: null };
 
-    ghostTrendLine1!.setAttribute("x1", String(cp1.x));
-    ghostTrendLine1!.setAttribute("y1", String(cp1.y));
-    ghostTrendLine1!.setAttribute("x2", String(cp2.x));
-    ghostTrendLine1!.setAttribute("y2", String(cp2.y));
+    ghostTrendLine1!.setAttribute("x1", String(p1.x));
+    ghostTrendLine1!.setAttribute("y1", String(p1.y));
+    ghostTrendLine1!.setAttribute("x2", String(p2.x));
+    ghostTrendLine1!.setAttribute("y2", String(p2.y));
     applyTrendLineStroke(ghostTrendLine1!, "#787b86", DEFAULT_FIB_LINE.width);
 
-    if (cp3) {
-      ghostTrendLine2!.setAttribute("x1", String(cp2.x));
-      ghostTrendLine2!.setAttribute("y1", String(cp2.y));
-      ghostTrendLine2!.setAttribute("x2", String(cp3.x));
-      ghostTrendLine2!.setAttribute("y2", String(cp3.y));
+    if (p3) {
+      ghostTrendLine2!.setAttribute("x1", String(p2.x));
+      ghostTrendLine2!.setAttribute("y1", String(p2.y));
+      ghostTrendLine2!.setAttribute("x2", String(p3.x));
+      ghostTrendLine2!.setAttribute("y2", String(p3.y));
       applyTrendLineStroke(ghostTrendLine2!, "#787b86", DEFAULT_FIB_LINE.width);
       ghostTrendLine2!.style.display = "";
       ghostLevelLines!.forEach((line) => { line.style.display = ""; });
-      const anchors = anchorPricesFromPixels(series, cp1, cp2, cp3);
+      const anchors = anchorPricesFromPixels(series, p1, p2, p3);
       if (anchors) {
         renderFibLevelsToLines(
           ghostLevelLines!,
           ghostLevelLabels,
           ghostLevelFills,
-          cp2,
-          cp3,
+          p2,
+          p3,
           anchors.price1,
           anchors.price2,
           anchors.price3,
@@ -834,16 +834,16 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
           true,
         );
       }
-      applyHandles(ghostHandle1!, ghostHandle2!, ghostHandle3!, cp1, cp2, cp3, true);
+      applyHandles(ghostHandle1!, ghostHandle2!, ghostHandle3!, p1, p2, p3, true);
     } else {
       ghostTrendLine2!.style.display = "none";
       ghostLevelLines?.forEach((line) => { line.style.display = "none"; });
       ghostLevelLabels?.forEach((label) => label.setAttribute("visibility", "hidden"));
       ghostLevelFills?.forEach((fill) => fill.setAttribute("visibility", "hidden"));
-      ghostHandle1!.setAttribute("cx", String(cp1.x));
-      ghostHandle1!.setAttribute("cy", String(cp1.y));
-      ghostHandle2!.setAttribute("cx", String(cp2.x));
-      ghostHandle2!.setAttribute("cy", String(cp2.y));
+      ghostHandle1!.setAttribute("cx", String(p1.x));
+      ghostHandle1!.setAttribute("cy", String(p1.y));
+      ghostHandle2!.setAttribute("cx", String(p2.x));
+      ghostHandle2!.setAttribute("cy", String(p2.y));
       ghostHandle1!.style.display = "";
       ghostHandle2!.style.display = "";
       ghostHandle3!.style.display = "none";

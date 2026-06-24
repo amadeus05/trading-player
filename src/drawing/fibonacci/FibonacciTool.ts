@@ -76,6 +76,10 @@ function horizontalSpan(p1: PixelPoint, p2: PixelPoint, plotWidth?: number) {
   return { xLeft, xRight: Math.max(xLeft, xRight) };
 }
 
+function retracementLabelAnchorX(p1: PixelPoint, p2: PixelPoint) {
+  return Math.max(p1.x, p2.x);
+}
+
 interface LevelVisual {
   line: SVGLineElement;
   hit?: SVGLineElement;
@@ -220,10 +224,6 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
       x: Math.max(0, Math.min(p.x, plotWidth)),
       y: Math.max(0, Math.min(p.y, plotHeight)),
     };
-  }
-
-  function clampPlotPair(p1: PixelPoint, p2: PixelPoint) {
-    return { p1: clampPlotPoint(p1), p2: clampPlotPoint(p2) };
   }
 
   function removeToolbar() {
@@ -445,6 +445,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   ) {
     const { plotWidth } = getPlotLayout();
     const { xLeft, xRight } = horizontalSpan(p1, p2, plotWidth);
+    const labelAnchorX = retracementLabelAnchorX(p1, p2);
     FIB_LEVELS.forEach((level, index) => {
       const price = levelPriceFromAnchors(p0, p100, level.ratio);
       const y = series.priceToCoordinate(price);
@@ -452,7 +453,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
       const levelEls = levels[index];
       applyLevelLine(levelEls, xLeft, xRight, y, level.color, width, style);
       if (showLabels && levelEls.label) {
-        applyLevelLabel(levelEls.label, xRight, y, level.ratio, price, level.color, pricePrecision);
+        applyLevelLabel(levelEls.label, labelAnchorX, y, level.ratio, price, level.color, pricePrecision);
       } else if (levelEls.label) {
         levelEls.label.setAttribute("visibility", "hidden");
       }
@@ -467,30 +468,29 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     isSelected: boolean,
     priceSource: "stored" | "pixels" = "stored",
   ) {
-    const { p1: cp1, p2: cp2 } = clampPlotPair(p1, p2);
     const lineStyle = fibLineStyle(fib);
-    els.trendLine.setAttribute("x1", String(cp1.x));
-    els.trendLine.setAttribute("y1", String(cp1.y));
-    els.trendLine.setAttribute("x2", String(cp2.x));
-    els.trendLine.setAttribute("y2", String(cp2.y));
+    els.trendLine.setAttribute("x1", String(p1.x));
+    els.trendLine.setAttribute("y1", String(p1.y));
+    els.trendLine.setAttribute("x2", String(p2.x));
+    els.trendLine.setAttribute("y2", String(p2.y));
     applyTrendLineStroke(els.trendLine, "#787b86", lineStyle.width);
 
-    els.trendHit.setAttribute("x1", String(cp1.x));
-    els.trendHit.setAttribute("y1", String(cp1.y));
-    els.trendHit.setAttribute("x2", String(cp2.x));
-    els.trendHit.setAttribute("y2", String(cp2.y));
+    els.trendHit.setAttribute("x1", String(p1.x));
+    els.trendHit.setAttribute("y1", String(p1.y));
+    els.trendHit.setAttribute("x2", String(p2.x));
+    els.trendHit.setAttribute("y2", String(p2.y));
 
     let p0 = fib.point2.price;
     let p100 = fib.point1.price;
     if (priceSource === "pixels") {
-      const anchors = anchorPricesFromPixels(series, cp1, cp2);
+      const anchors = anchorPricesFromPixels(series, p1, p2);
       if (anchors) {
         p0 = anchors.p0;
         p100 = anchors.p100;
       }
     }
-    renderFibLevels(els.levels, cp1, cp2, p0, p100, fib.showLabels !== false, lineStyle.width, lineStyle.style);
-    applyHandles(els.handle1, els.handle2, cp1, cp2, !fib.locked);
+    renderFibLevels(els.levels, p1, p2, p0, p100, fib.showLabels !== false, lineStyle.width, lineStyle.style);
+    applyHandles(els.handle1, els.handle2, p1, p2, !fib.locked);
     els.group.classList.toggle("selected", isSelected);
   }
 
@@ -620,26 +620,26 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
 
   function updateGhost(p1: PixelPoint, p2: PixelPoint) {
     ensureGhostElements();
-    const { p1: cp1, p2: cp2 } = clampPlotPair(p1, p2);
-    ghostTrendLine!.setAttribute("x1", String(cp1.x));
-    ghostTrendLine!.setAttribute("y1", String(cp1.y));
-    ghostTrendLine!.setAttribute("x2", String(cp2.x));
-    ghostTrendLine!.setAttribute("y2", String(cp2.y));
+    ghostTrendLine!.setAttribute("x1", String(p1.x));
+    ghostTrendLine!.setAttribute("y1", String(p1.y));
+    ghostTrendLine!.setAttribute("x2", String(p2.x));
+    ghostTrendLine!.setAttribute("y2", String(p2.y));
 
-    const anchors = anchorPricesFromPixels(series, cp1, cp2);
+    const anchors = anchorPricesFromPixels(series, p1, p2);
     if (!anchors) return;
     const { plotWidth } = getPlotLayout();
-    const { xLeft, xRight } = horizontalSpan(cp1, cp2, plotWidth);
+    const { xLeft, xRight } = horizontalSpan(p1, p2, plotWidth);
+    const labelAnchorX = retracementLabelAnchorX(p1, p2);
     const ghostStyle = DEFAULT_FIB_LINE;
     FIB_LEVELS.forEach((level, index) => {
       const price = levelPriceFromAnchors(anchors.p0, anchors.p100, level.ratio);
       const y = series.priceToCoordinate(price);
       if (y == null) return;
       applyLevelLine({ line: ghostLevelLines![index] }, xLeft, xRight, y, level.color, ghostStyle.width, ghostStyle.style);
-      applyLevelLabel(ghostLevelLabels![index], xRight, y, level.ratio, price, level.color, pricePrecision);
+      applyLevelLabel(ghostLevelLabels![index], labelAnchorX, y, level.ratio, price, level.color, pricePrecision);
     });
     applyTrendLineStroke(ghostTrendLine!, "#787b86", ghostStyle.width);
-    applyHandles(ghostHandle1!, ghostHandle2!, cp1, cp2, true);
+    applyHandles(ghostHandle1!, ghostHandle2!, p1, p2, true);
   }
 
   function flushGhostPreview() {
