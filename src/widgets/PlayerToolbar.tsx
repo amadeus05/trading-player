@@ -1,5 +1,5 @@
-import { Button, Select, Upload } from "antd";
-import { RectangleHorizontal, Ruler, TrendingUp, Upload as UploadIcon } from "lucide-react";
+import { Button, Select } from "antd";
+import { RectangleHorizontal, Ruler, TrendingUp } from "lucide-react";
 import type { DrawingMode } from "../drawing";
 import type { Dataset } from "../types";
 import { formatTimeframe } from "../shared/lib/market";
@@ -14,7 +14,6 @@ interface PlayerToolbarProps {
   onDatasetChange: (datasetId: string) => void;
   onTimeframeChange: (timeframe: number) => void;
   onDrawingModeChange: (mode: DrawingMode) => void;
-  onCsvImport: (file: File) => boolean;
 }
 
 export function PlayerToolbar({
@@ -25,7 +24,6 @@ export function PlayerToolbar({
   onDatasetChange,
   onTimeframeChange,
   onDrawingModeChange,
-  onCsvImport,
 }: PlayerToolbarProps) {
   const toggleDrawingMode = (mode: DrawingMode) => {
     onDrawingModeChange(drawingMode === mode ? "none" : mode);
@@ -87,10 +85,6 @@ export function PlayerToolbar({
           </svg>
         </Button>
       </div>
-      <div className="spacer" />
-      <Upload beforeUpload={onCsvImport} showUploadList={false} accept=".csv">
-        <Button icon={<UploadIcon size={15} />}>CSV</Button>
-      </Upload>
     </div>
   );
 }

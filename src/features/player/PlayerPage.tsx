@@ -8,7 +8,6 @@ import { ReplayControls } from "../replay/ReplayControls";
 import { AppHeader } from "../../widgets/AppHeader";
 import { PlayerToolbar } from "../../widgets/PlayerToolbar";
 import { TradingSidebar } from "../trading/TradingSidebar";
-import { parseCandleCsv } from "../datasets/parseCandleCsv";
 import { DEFAULT_SIMULATION_SETTINGS } from "../../shared/config/simulation";
 import { formatTimeframe, getMarketAssets, inferPricePrecision } from "../../shared/lib/market";
 import { usePersistedPlayerState } from "./usePersistedPlayerState";
@@ -138,25 +137,6 @@ export function PlayerPage() {
     currentCandle: cur,
     orderForm,
   });
-  function importCsv(file: File) {
-    void parseCandleCsv(file)
-      .then((parsedCandles) => {
-        if (!parsedCandles.length) {
-          message.error("Не найдены колонки time, open, high, low, close");
-          return;
-        }
-        const id = crypto.randomUUID();
-        setState((current) => ({
-          ...current,
-          datasets: [...current.datasets, { id, name: file.name, candles: parsedCandles }],
-        }));
-        setDataset(id);
-        setIdx(Math.min(120, parsedCandles.length - 1));
-        message.success(`Загружено ${parsedCandles.length} свечей`);
-      })
-      .catch(() => message.error("Не удалось прочитать CSV"));
-    return false;
-  }
   function updateSimulationSetting(key: Exclude<keyof SimulationSettings, "showClosedTradeOverlays">, value: number | null) {
     setState((current) => ({
       ...current,
@@ -188,7 +168,6 @@ export function PlayerPage() {
             }}
             onTimeframeChange={changeTimeframe}
             onDrawingModeChange={setDrawingMode}
-            onCsvImport={importCsv}
           />
           <div className="chartWrap">
             {candles.length ? (
