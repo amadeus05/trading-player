@@ -1,14 +1,14 @@
 import { Button, Popconfirm, Select } from "antd";
 import { DrawingToolIcon } from "../drawing/icons/DrawingToolIcon";
 import type { DrawingMode } from "../drawing";
-import type { Dataset } from "../types";
+import type { MarketDatasetOption } from "../features/datasets/useMarketCatalog";
 import { formatTimeframe } from "../shared/lib/market";
-
-const TIMEFRAMES = [5, 15, 30, 60, 180, 240, 1_440];
+import { TIMEFRAME_OPTIONS } from "../shared/config/simulation";
 
 interface PlayerToolbarProps {
-  datasets: Dataset[];
+  datasetOptions: MarketDatasetOption[];
   datasetId: string;
+  datasetsLoading?: boolean;
   timeframe: number;
   drawingMode: DrawingMode;
   drawingsVisible: boolean;
@@ -21,8 +21,9 @@ interface PlayerToolbarProps {
 }
 
 export function PlayerToolbar({
-  datasets,
+  datasetOptions,
   datasetId,
+  datasetsLoading = false,
   timeframe,
   drawingMode,
   drawingsVisible,
@@ -42,12 +43,13 @@ export function PlayerToolbar({
       <Select
         value={datasetId || undefined}
         placeholder="Выберите историю"
+        loading={datasetsLoading}
         onChange={onDatasetChange}
-        options={datasets.map((dataset) => ({ value: dataset.id, label: dataset.name }))}
-        style={{ width: 190 }}
+        options={datasetOptions.map((option) => ({ value: option.id, label: option.label }))}
+        style={{ width: 280 }}
       />
       <div className="tf">
-        {TIMEFRAMES.map((value) => (
+        {TIMEFRAME_OPTIONS.map((value) => (
           <Button
             key={value}
             type="text"

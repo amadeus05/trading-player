@@ -1,23 +1,30 @@
 import { useEffect, useMemo, useState, type RefObject } from "react";
 import type { Candle } from "../../types";
+import { DEFAULT_TIMEFRAME_MINUTES } from "../../shared/config/simulation";
 import { aggregateCandles } from "../../shared/lib/market";
 
 interface UseReplayControllerOptions {
   rawCandles: Candle[];
   interactionActiveRef: RefObject<boolean>;
+  initialTimeframe?: number;
 }
 
 export function useReplayController({
   rawCandles,
   interactionActiveRef,
+  initialTimeframe = DEFAULT_TIMEFRAME_MINUTES,
 }: UseReplayControllerOptions) {
-  const [timeframe, setTimeframe] = useState(15);
+  const [timeframe, setTimeframe] = useState(initialTimeframe);
   const [index, setIndex] = useState(120);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [selectingStart, setSelectingStart] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [focusRevision, setFocusRevision] = useState(0);
+
+  useEffect(() => {
+    setTimeframe(initialTimeframe);
+  }, [initialTimeframe]);
 
   const candles = useMemo(
     () => aggregateCandles(rawCandles, timeframe),

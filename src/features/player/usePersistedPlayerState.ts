@@ -1,24 +1,29 @@
 import { useEffect, useRef, useState } from "react";
 import type { Persisted } from "../../types";
 import { loadPlayerState, savePlayerState } from "../../shared/api/playerStateApi";
-import { DEFAULT_SIMULATION_SETTINGS, INITIAL_PLAYER_STATE } from "../../shared/config/simulation";
+import { DEFAULT_SIMULATION_SETTINGS, DEFAULT_TIMEFRAME_MINUTES, INITIAL_PLAYER_STATE, TIMEFRAME_OPTIONS } from "../../shared/config/simulation";
 
 export function usePersistedPlayerState() {
   const hydratedRef = useRef(false);
   const [hydrated, setHydrated] = useState(false);
   const [state, setState] = useState<Persisted>(INITIAL_PLAYER_STATE);
   const [initialDatasetId, setInitialDatasetId] = useState("");
+  const [initialTimeframe, setInitialTimeframe] = useState(DEFAULT_TIMEFRAME_MINUTES);
 
   useEffect(() => {
     loadPlayerState()
       .then((loadedState) => {
         const datasets = (loadedState.datasets ?? []).filter((dataset) => dataset.id !== "demo");
+        const savedTimeframe = loadedState.timeframeMinutes;
         setState({
           ...loadedState,
           datasets,
           settings: { ...DEFAULT_SIMULATION_SETTINGS, ...loadedState.settings },
         });
-        setInitialDatasetId(datasets[0]?.id ?? "");
+        setInitialDatasetId(loadedState.lastDatasetId ?? "");
+        setInitialTimeframe(TIMEFRAME_OPTIONS.includes(savedTimeframe as typeof TIMEFRAME_OPTIONS[number])
+          ? savedTimeframe!
+          : DEFAULT_TIMEFRAME_MINUTES);
       })
       .catch(() => undefined)
       .finally(() => {
@@ -35,5 +40,5 @@ export function usePersistedPlayerState() {
     return () => window.clearTimeout(timeoutId);
   }, [state]);
 
-  return { state, setState, initialDatasetId, hydrated };
+  return { state, setState, initialDatasetId, initialTimeframe, hydrated };
 }

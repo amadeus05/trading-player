@@ -13,6 +13,13 @@ export const formatDateTime = (timestamp: number) =>
     minute: "2-digit",
   });
 
+export const formatMarketDate = (timestampMs: number) =>
+  new Date(timestampMs).toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+
 export const formatMarketPair = (name?: string) => {
   if (!name) return "Нет данных";
   const symbol = name.split(/[·\s]/)[0].toUpperCase();

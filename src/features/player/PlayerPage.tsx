@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { App as AntApp, Empty } from "antd";
-import type { Dataset, SimulationSettings } from "../../types";
+import type { Candle, SimulationSettings } from "../../types";
 import type { DrawingMode } from "../../drawing";
 import { ReplayChart } from "../chart/ReplayChart";
 import { PlayerModals } from "./PlayerModals";
@@ -9,7 +9,7 @@ import { AppHeader } from "../../widgets/AppHeader";
 import { PlayerToolbar } from "../../widgets/PlayerToolbar";
 import { TradingSidebar } from "../trading/TradingSidebar";
 import { DEFAULT_SIMULATION_SETTINGS } from "../../shared/config/simulation";
-import { formatTimeframe, getMarketAssets, inferPricePrecision } from "../../shared/lib/market";
+import { formatMarketPair, formatTimeframe, getMarketAssets, inferPricePrecision } from "../../shared/lib/market";
 import { usePersistedPlayerState } from "./usePersistedPlayerState";
 import { useReplayController } from "../replay/useReplayController";
 import { selectDrawingCollections, useDrawingCollections, countDrawingsForDataset } from "../drawings/useDrawingCollections";
@@ -17,12 +17,16 @@ import { useTradeEditing } from "../trading/useTradeEditing";
 import { useTradingSimulation } from "../trading/useTradingSimulation";
 import { useOrderForm } from "../trading/useOrderForm";
 import { useChartDisplayState } from "../chart/useChartDisplayState";
+import { useMarketCatalog } from "../datasets/useMarketCatalog";
+import { useActiveMarketCandles } from "../datasets/useActiveMarketCandles";
 
 export function PlayerPage() {
   const { message } = AntApp.useApp();
   const chartInteractionActive = useRef(false);
   const deleteAllDrawingsRef = useRef<(() => void) | null>(null);
-  const { state, setState, initialDatasetId, hydrated } = usePersistedPlayerState();
+  const candleCacheRef = useRef<Map<string, Candle[]>>(new Map());
+  const { state, setState, initialDatasetId, initialTimeframe, hydrated } = usePersistedPlayerState();
+  const { catalog, datasetOptions, ready: catalogReady, refresh: refreshCatalog } = useMarketCatalog();
   const drawingActions = useDrawingCollections(setState);
   const drawings = useMemo(
     () => selectDrawingCollections(state),
@@ -37,7 +41,6 @@ export function PlayerPage() {
   const [dataset, setDataset] = useState(""),
     [journal, setJournal] = useState(false),
     [settingsOpen, setSettingsOpen] = useState(false),
-    [loadedMarket, setLoadedMarket] = useState<Dataset | null>(null),
     [drawingMode, setDrawingMode] = useState<DrawingMode>("none"),
     [drawingsVisible, setDrawingsVisible] = useState(true);
   const drawingCount = useMemo(
@@ -54,17 +57,24 @@ export function PlayerPage() {
     };
   }, []);
   useEffect(() => {
-    if (initialDatasetId) setDataset((current) => current || initialDatasetId);
-  }, [initialDatasetId]);
+    if (!hydrated || !catalogReady || dataset) return;
+    const preferred = initialDatasetId && datasetOptions.some((option) => option.id === initialDatasetId)
+      ? initialDatasetId
+      : datasetOptions[0]?.id ?? "";
+    if (preferred) setDataset(preferred);
+  }, [catalogReady, dataset, datasetOptions, hydrated, initialDatasetId]);
 
-  const availableDatasets = loadedMarket ? [loadedMarket, ...state.datasets.filter(d => d.id !== loadedMarket.id)] : state.datasets;
+  const activeDataset = datasetOptions.find((option) => option.id === dataset);
   const simulationSettings = useMemo(
     () => ({ ...DEFAULT_SIMULATION_SETTINGS, ...state.settings }),
     [state.settings],
   );
-  const activeDataset = availableDatasets.find((d) => d.id === dataset);
   const { baseAsset, quoteAsset } = getMarketAssets(activeDataset?.name);
-  const raw = availableDatasets.find((d) => d.id === dataset)?.candles || [];
+  const { candles: raw, loading: candlesLoading } = useActiveMarketCandles(
+    dataset,
+    catalog,
+    candleCacheRef,
+  );
   const pricePrecision = useMemo(() => inferPricePrecision(raw), [raw]);
   const {
     candles,
@@ -89,6 +99,7 @@ export function PlayerPage() {
   } = useReplayController({
     rawCandles: raw,
     interactionActiveRef: chartInteractionActive,
+    initialTimeframe,
   });
   const orderForm = useOrderForm({ currentCandle: cur, pricePrecision });
   const {
@@ -149,13 +160,19 @@ export function PlayerPage() {
       settings: { ...(current.settings ?? DEFAULT_SIMULATION_SETTINGS), [key]: Math.max(0, value ?? 0) },
     }));
   }
+  function handleTimeframeChange(nextTimeframe: number) {
+    changeTimeframe(nextTimeframe);
+    setState((current) => ({ ...current, timeframeMinutes: nextTimeframe }));
+  }
   return (
     <div className="app">
       <AppHeader
         tradeCount={state.trades.length}
         onMarketOpen={(market) => {
-          setLoadedMarket(market);
+          candleCacheRef.current.set(market.id, market.candles);
+          void refreshCatalog();
           setDataset(market.id);
+          setState((current) => ({ ...current, lastDatasetId: market.id }));
           setIdx(Math.min(120, market.candles.length - 1));
         }}
         onSettingsOpen={() => setSettingsOpen(true)}
@@ -164,17 +181,19 @@ export function PlayerPage() {
       <main>
         <section className="workspace">
           <PlayerToolbar
-            datasets={availableDatasets}
+            datasetOptions={datasetOptions}
             datasetId={dataset}
+            datasetsLoading={!catalogReady || candlesLoading}
             timeframe={tf}
             drawingMode={drawingMode}
             drawingsVisible={drawingsVisible}
             drawingCount={drawingCount}
             onDatasetChange={(nextDataset) => {
               setDataset(nextDataset);
+              setState((current) => ({ ...current, lastDatasetId: nextDataset }));
               setIdx(120);
             }}
-            onTimeframeChange={changeTimeframe}
+            onTimeframeChange={handleTimeframeChange}
             onDrawingModeChange={setDrawingMode}
             onDrawingsVisibleChange={setDrawingsVisible}
             onDeleteAllDrawings={() => deleteAllDrawingsRef.current?.()}
@@ -208,7 +227,7 @@ export function PlayerPage() {
               <Empty />
             )}
             <div className="symbol">
-              <b>{availableDatasets.find((d) => d.id === dataset)?.name}</b>
+              <b>{formatMarketPair(activeDataset?.name)}</b>
               <span>{formatTimeframe(tf)} · Historical</span>
             </div>
           </div>
