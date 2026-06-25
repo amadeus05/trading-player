@@ -5,10 +5,9 @@
 
 import type { FibonacciTrendExtension } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
-import { createDrawingToolbar, drawingStyleIcon, type DrawingLineStyle } from "../shared/DrawingToolbar";
-import { mountFloatingPanel } from "../shared/floatingPanel";
+import { DrawingToolbarController } from "../shared/DrawingToolbarController";
+import type { DrawingLineStyle } from "../shared/DrawingToolbar";
 import { createDrawingOverlay } from "../shared/overlay";
-import { mountAnchoredPopup } from "../shared/popup";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 
 export type FibonacciTrendExtensionCallbacks = DrawingCrudCallbacks<FibonacciTrendExtension>;
@@ -217,9 +216,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
   let wheelSyncTimer = 0;
   let latestDrawPointer: { x: number; y: number } | null = null;
 
-  let toolbar: HTMLDivElement | null = null;
-  let cleanupToolbarDrag: (() => void) | null = null;
-  let cleanupPalette: (() => void) | null = null;
+  let toolbarController: DrawingToolbarController<FibonacciTrendExtension>;
 
   interface LevelEls {
     line: SVGLineElement;
@@ -261,96 +258,11 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
   }
 
   function removeToolbar() {
-    cleanupPalette?.();
-    cleanupPalette = null;
-    cleanupToolbarDrag?.();
-    cleanupToolbarDrag = null;
-    toolbar?.remove();
-    toolbar = null;
+    toolbarController.hide();
   }
 
   function createToolbar(fib: FibonacciTrendExtension) {
-    removeToolbar();
-    const lineStyle = fibLineStyle(fib);
-    const div = createDrawingToolbar({
-      lineColor: "#787b86",
-      width: lineStyle.width,
-      style: lineStyle.style,
-      locked: Boolean(fib.locked),
-      showColor: false,
-      showFill: false,
-      showText: false,
-      showLock: true,
-    });
-    container.appendChild(div);
-    toolbar = div;
-    const grip = div.querySelector<HTMLElement>(".rect-tb-grip");
-    if (grip) {
-      cleanupToolbarDrag = mountFloatingPanel({
-        container,
-        panel: div,
-        grip,
-        persistenceKey: `fibtrendext:${fib.id}`,
-        onDragStart: () => { cleanupPalette?.(); cleanupPalette = null; },
-      });
-    }
-
-    const openCompactMenu = (kind: "width" | "style", anchor: Element) => {
-      cleanupPalette?.();
-      cleanupPalette = null;
-      const menu = document.createElement("div");
-      menu.className = "rect-line-menu";
-      const entries = kind === "width"
-        ? [1, 2, 3, 4].map((value) => ({ value: String(value), label: `${value}px`, icon: `<span class="rect-line-sample" style="height:${value}px"></span>` }))
-        : (["solid", "dashed", "dotted"] as const).map((value) => ({ value, label: value === "solid" ? "Line" : `${value[0].toUpperCase()}${value.slice(1)} line`, icon: drawingStyleIcon(value) }));
-      entries.forEach((entry) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "rect-line-menu-item";
-        button.innerHTML = `<span class="rect-line-menu-icon">${entry.icon}</span><span>${entry.label}</span>`;
-        button.addEventListener("click", () => {
-          const current = fibonacciTrendExtensions.find((item) => item.id === fib.id);
-          if (!current) return;
-          if (kind === "width") current.lineWidth = Number(entry.value);
-          else current.lineStyle = entry.value as DrawingLineStyle;
-          callbacks.onUpdate(current);
-          syncAll();
-          div.querySelector<HTMLElement>(".rect-tb-width-label")!.textContent = `${fibLineStyle(current).width}px`;
-          div.querySelector<HTMLElement>(".rect-tb-style-btn")!.innerHTML = drawingStyleIcon(fibLineStyle(current).style);
-          cleanupPalette?.();
-          cleanupPalette = null;
-        });
-        menu.appendChild(button);
-      });
-      cleanupPalette = mountAnchoredPopup({
-        container,
-        anchor,
-        popup: menu,
-        width: kind === "width" ? 104 : 168,
-        gap: 2,
-        onDismiss: () => { cleanupPalette = null; },
-      });
-    };
-
-    div.querySelector(".rect-tb-width-btn")!.addEventListener("click", (event) => {
-      event.stopPropagation();
-      openCompactMenu("width", event.currentTarget as Element);
-    });
-    div.querySelector(".rect-tb-style-btn")!.addEventListener("click", (event) => {
-      event.stopPropagation();
-      openCompactMenu("style", event.currentTarget as Element);
-    });
-    div.querySelector(".rect-tb-lock")!.addEventListener("click", (event) => {
-      event.stopPropagation();
-      updateFib(fib.id, { locked: !fib.locked });
-      const current = fibonacciTrendExtensions.find((item) => item.id === fib.id);
-      if (current) createToolbar(current);
-    });
-    div.querySelector(".rect-tb-del")!.addEventListener("click", (event) => {
-      event.stopPropagation();
-      deleteFib(fib.id);
-    });
-    div.addEventListener("pointerdown", (event) => event.stopPropagation());
+    toolbarController.show(fib);
   }
 
   function toPixel(pt: { time: number; price: number }): PixelPoint | null {
@@ -378,6 +290,30 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     }
     callbacks.onDelete(id);
   }
+
+  toolbarController = new DrawingToolbarController({
+    container,
+    preset: "line-only",
+    persistenceKey: (fib) => `fibtrendext:${fib.id}`,
+    getState: (fib) => {
+      const lineStyle = fibLineStyle(fib);
+      return {
+        lineColor: "#787b86",
+        width: lineStyle.width,
+        style: lineStyle.style,
+        locked: Boolean(fib.locked),
+      };
+    },
+    onPatch: (fib, patch) => {
+      updateFib(fib.id, {
+        ...(patch.width != null ? { lineWidth: patch.width } : {}),
+        ...(patch.style ? { lineStyle: patch.style } : {}),
+        ...(patch.locked != null ? { locked: patch.locked } : {}),
+      });
+    },
+    onDelete: (fib) => deleteFib(fib.id),
+    onSync: () => syncAll(),
+  });
 
   function selectFib(id: string | null) {
     if (!id) {
@@ -1159,6 +1095,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     container.removeEventListener("pointerdown", handleBackgroundClick);
     document.removeEventListener("keydown", handleKeyDown);
     overlay.remove();
+    toolbarController.destroy();
     removeToolbar();
     clearGhost();
   };

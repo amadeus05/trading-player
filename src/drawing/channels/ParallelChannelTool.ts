@@ -5,12 +5,9 @@
 
 import type { ParallelChannel } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
-import { mountFloatingPanel } from "../shared/floatingPanel";
-import { openColorPalette } from "../shared/colorPalette";
+import { DrawingToolbarController } from "../shared/DrawingToolbarController";
 import { createDrawingOverlay } from "../shared/overlay";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
-import { createDrawingToolbar, drawingStyleIcon } from "../shared/DrawingToolbar";
-import { mountAnchoredPopup } from "../shared/popup";
 
 export type ParallelChannelCallbacks = DrawingCrudCallbacks<ParallelChannel>;
 
@@ -219,9 +216,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   }
   const elMap = new Map<string, ChannelEls>();
 
-  let toolbar: HTMLDivElement | null = null;
-  let cleanupToolbarDrag: (() => void) | null = null;
-  let cleanupPalette: (() => void) | null = null;
+  let toolbarController: DrawingToolbarController<ParallelChannel>;
 
   function getPlotSize() {
     const rect = container.getBoundingClientRect();
@@ -246,12 +241,11 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   }
 
   function removeToolbar() {
-    cleanupPalette?.();
-    cleanupPalette = null;
-    cleanupToolbarDrag?.();
-    cleanupToolbarDrag = null;
-    toolbar?.remove();
-    toolbar = null;
+    toolbarController.hide();
+  }
+
+  function createToolbar(channel: ParallelChannel) {
+    toolbarController.show(channel);
   }
 
   function cancelDrawingPreview() {
@@ -320,6 +314,33 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     callbacks.onDelete(id);
   }
 
+  toolbarController = new DrawingToolbarController({
+    container,
+    preset: "channel",
+    className: "trend-toolbar",
+    persistenceKey: (channel) => `parallel-channel:${channel.id}`,
+    getState: (channel) => ({
+      lineColor: channel.color,
+      fillColor: channel.fillColor,
+      fillOpacity: channel.fillOpacity,
+      width: channel.width,
+      style: channel.lineStyle,
+      locked: Boolean(channel.locked),
+    }),
+    onPatch: (channel, patch) => {
+      updateLine(channel, {
+        ...(patch.lineColor != null ? { color: patch.lineColor } : {}),
+        ...(patch.fillColor != null ? { fillColor: patch.fillColor } : {}),
+        ...(patch.fillOpacity != null ? { fillOpacity: patch.fillOpacity } : {}),
+        ...(patch.width != null ? { width: patch.width } : {}),
+        ...(patch.style ? { lineStyle: patch.style } : {}),
+        ...(patch.locked != null ? { locked: patch.locked } : {}),
+      });
+    },
+    onDelete: (channel) => deleteChannel(channel.id),
+    onSync: () => syncAll(),
+  });
+
   function selectChannel(id: string | null) {
     if (!id) {
       if (selectedId !== null) {
@@ -335,116 +356,6 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     if (channel) createToolbar(channel);
     manager.activateSelection("parallelchannel", elMap.get(id)?.group ?? null);
     syncAll();
-  }
-
-  function createToolbar(channel: ParallelChannel) {
-    removeToolbar();
-    const div = createDrawingToolbar({
-      className: "trend-toolbar",
-      lineColor: channel.color,
-      fillColor: channel.fillColor,
-      fillOpacity: channel.fillOpacity,
-      width: channel.width,
-      style: channel.lineStyle,
-      locked: Boolean(channel.locked),
-      showFill: true,
-      showText: false,
-      showLock: true,
-    });
-    container.appendChild(div);
-    toolbar = div;
-
-    const grip = div.querySelector<HTMLElement>(".rect-tb-grip");
-    if (grip) {
-      cleanupToolbarDrag = mountFloatingPanel({
-        container,
-        panel: div,
-        grip,
-        persistenceKey: `parallel-channel:${channel.id}`,
-      });
-    }
-
-    const bindColor = (selector: string, target: "color" | "fillColor") => {
-      div.querySelector<HTMLElement>(selector)?.addEventListener("click", (event) => {
-        event.stopPropagation();
-        if (cleanupPalette) {
-          cleanupPalette();
-          cleanupPalette = null;
-          return;
-        }
-        const current = parallelChannels.find((item) => item.id === channel.id);
-        if (!current) return;
-        cleanupPalette = openColorPalette({
-          container,
-          anchor: event.currentTarget as HTMLElement,
-          color: target === "color" ? current.color : current.fillColor,
-          onColor: (color) => {
-            updateLine(current, target === "color" ? { color } : { fillColor: color });
-            div.querySelector<HTMLElement>(
-              target === "color" ? ".rect-tb-border-btn .rect-tb-color-bar" : ".rect-tb-fill-btn .rect-tb-color-bar",
-            )!.style.background = color;
-          },
-          onDismiss: () => { cleanupPalette = null; },
-        });
-      });
-    };
-    bindColor(".rect-tb-border-btn", "color");
-    bindColor(".rect-tb-fill-btn", "fillColor");
-
-    const openCompactMenu = (kind: "width" | "style", anchor: Element) => {
-      cleanupPalette?.();
-      const menu = document.createElement("div");
-      menu.className = "rect-line-menu";
-      const entries = kind === "width"
-        ? [1, 2, 3, 4].map((value) => ({ value: String(value), label: `${value}px`, icon: `<span class="rect-line-sample" style="height:${value}px"></span>` }))
-        : (["solid", "dashed", "dotted"] as const).map((value) => ({ value, label: value, icon: drawingStyleIcon(value) }));
-      entries.forEach((entry) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "rect-line-menu-item";
-        button.innerHTML = `<span class="rect-line-menu-icon">${entry.icon}</span><span>${entry.label}</span>`;
-        button.addEventListener("click", () => {
-          const current = parallelChannels.find((item) => item.id === channel.id);
-          if (!current) return;
-          if (kind === "width") updateLine(current, { width: Number(entry.value) });
-          else updateLine(current, { lineStyle: entry.value as ParallelChannel["lineStyle"] });
-          div.querySelector<HTMLElement>(".rect-tb-width-label")!.textContent = `${current.width}px`;
-          div.querySelector<HTMLElement>(".rect-tb-style-btn")!.innerHTML = drawingStyleIcon(current.lineStyle);
-          cleanupPalette?.();
-          cleanupPalette = null;
-        });
-        menu.appendChild(button);
-      });
-      cleanupPalette = mountAnchoredPopup({
-        container,
-        anchor,
-        popup: menu,
-        width: kind === "width" ? 104 : 168,
-        gap: 2,
-        onDismiss: () => { cleanupPalette = null; },
-      });
-    };
-
-    div.querySelector(".rect-tb-width-btn")!.addEventListener("click", (event) => {
-      event.stopPropagation();
-      openCompactMenu("width", event.currentTarget as Element);
-    });
-    div.querySelector(".rect-tb-style-btn")!.addEventListener("click", (event) => {
-      event.stopPropagation();
-      openCompactMenu("style", event.currentTarget as Element);
-    });
-    div.querySelector(".rect-tb-lock")!.addEventListener("click", (event) => {
-      event.stopPropagation();
-      const current = parallelChannels.find((item) => item.id === channel.id);
-      if (!current) return;
-      updateLine(current, { locked: !current.locked });
-      createToolbar({ ...current, locked: !current.locked });
-    });
-    div.querySelector(".trend-toolbar-delete")!.addEventListener("click", (event) => {
-      event.stopPropagation();
-      deleteChannel(channel.id);
-    });
-    div.addEventListener("pointerdown", (event) => event.stopPropagation());
   }
 
   function buildEls(channel: ParallelChannel): ChannelEls {
@@ -1051,6 +962,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     container.removeEventListener("pointerdown", handleBackgroundClick);
     document.removeEventListener("keydown", handleKeyDown);
     overlay.remove();
+    toolbarController.destroy();
     removeToolbar();
     removeGhost();
   };

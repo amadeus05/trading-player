@@ -1,0 +1,390 @@
+import { openColorPalette } from "./colorPalette";
+import { createDrawingToolbar, drawingStyleIcon, type DrawingLineStyle, type DrawingToolbarOptions } from "./DrawingToolbar";
+import { mountFloatingPanel } from "./floatingPanel";
+import { mountAnchoredPopup } from "./popup";
+import { hexToRgba } from "./colorUtils";
+
+export interface DrawingToolbarState {
+  lineColor: string;
+  fillColor?: string;
+  fillOpacity?: number;
+  textColor?: string;
+  width: number;
+  style: DrawingLineStyle;
+  locked?: boolean;
+}
+
+export interface DrawingToolbarPatch {
+  lineColor?: string;
+  fillColor?: string;
+  fillOpacity?: number;
+  textColor?: string;
+  width?: number;
+  style?: DrawingLineStyle;
+  locked?: boolean;
+}
+
+export type DrawingToolbarPreset = "full" | "line-only" | "channel" | "none";
+
+export type ToolbarSlotAnchor =
+  | "after-grip"
+  | "before-width"
+  | "after-style"
+  | "before-lock"
+  | "before-delete";
+
+export interface ToolbarSlotContext<T> {
+  drawing: T;
+  patch: (patch: DrawingToolbarPatch) => void;
+  sync: () => void;
+  closePopups: () => void;
+  container: HTMLElement;
+}
+
+export interface ToolbarSlot<T> {
+  id: string;
+  anchor: ToolbarSlotAnchor;
+  mount: (drawing: T) => HTMLElement;
+  bind?: (element: HTMLElement, ctx: ToolbarSlotContext<T>) => void;
+}
+
+export interface DrawingToolbarControllerOptions<T> {
+  container: HTMLElement;
+  enabled?: boolean;
+  preset?: DrawingToolbarPreset;
+  className?: string;
+  persistenceKey: (drawing: T) => string;
+  getState: (drawing: T) => DrawingToolbarState;
+  onPatch: (drawing: T, patch: DrawingToolbarPatch) => void;
+  onDelete: (drawing: T) => void;
+  onSync?: () => void;
+  slots?: ToolbarSlot<T>[];
+  onTextButtonClick?: (drawing: T, anchor: HTMLElement) => void;
+}
+
+const PRESET_OPTIONS: Record<Exclude<DrawingToolbarPreset, "none">, Partial<DrawingToolbarOptions>> = {
+  full: {
+    showColor: true,
+    showFill: true,
+    showText: true,
+    showLock: true,
+  },
+  "line-only": {
+    showColor: false,
+    showFill: false,
+    showText: false,
+    showLock: true,
+  },
+  channel: {
+    showColor: true,
+    showFill: true,
+    showText: false,
+    showLock: true,
+  },
+};
+
+function lockIcon(locked: boolean): string {
+  return locked
+    ? `<svg width="14" height="16" viewBox="0 0 14 16" fill="currentColor"><rect x="1" y="7" width="12" height="8" rx="1.5"/><path d="M3.5 7V5a3.5 3.5 0 1 1 7 0v2" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>`
+    : `<svg width="14" height="16" viewBox="0 0 14 16" fill="currentColor"><rect x="1" y="7" width="12" height="8" rx="1.5"/><path d="M10.5 7V5a3.5 3.5 0 0 0-7 0v2" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>`;
+}
+
+function createSeparator(): HTMLDivElement {
+  const sep = document.createElement("div");
+  sep.className = "rect-toolbar-sep";
+  return sep;
+}
+
+function findAnchorElement(row: HTMLElement, anchor: ToolbarSlotAnchor): HTMLElement | null {
+  switch (anchor) {
+    case "after-grip":
+      return row.querySelector<HTMLElement>(".rect-tb-grip");
+    case "before-width":
+      return row.querySelector<HTMLElement>(".rect-tb-width-btn");
+    case "after-style":
+      return row.querySelector<HTMLElement>(".rect-tb-style-btn");
+    case "before-lock":
+      return row.querySelector<HTMLElement>(".rect-tb-lock");
+    case "before-delete":
+      return row.querySelector<HTMLElement>(".rect-tb-del");
+    default:
+      return null;
+  }
+}
+
+function insertSlot(row: HTMLElement, anchor: ToolbarSlotAnchor, element: HTMLElement) {
+  const target = findAnchorElement(row, anchor);
+  if (!target) return;
+  const insertBefore = anchor === "before-width" || anchor === "before-lock" || anchor === "before-delete";
+  if (insertBefore) {
+    row.insertBefore(createSeparator(), target);
+    row.insertBefore(element, target);
+    return;
+  }
+  target.insertAdjacentElement("afterend", element);
+  element.insertAdjacentElement("afterend", createSeparator());
+}
+
+export class DrawingToolbarController<T> {
+  private panel: HTMLDivElement | null = null;
+  private currentDrawing: T | null = null;
+  private cleanupPopup: (() => void) | null = null;
+  private cleanupDrag: (() => void) | null = null;
+  private slotCleanups: Array<() => void> = [];
+
+  constructor(private readonly options: DrawingToolbarControllerOptions<T>) {}
+
+  get enabled(): boolean {
+    return this.options.enabled !== false && this.options.preset !== "none";
+  }
+
+  show(drawing: T): void {
+    if (!this.enabled) return;
+    this.hide();
+    this.currentDrawing = drawing;
+    this.mount(drawing);
+  }
+
+  hide(): void {
+    this.closePopups();
+    this.slotCleanups.forEach((cleanup) => cleanup());
+    this.slotCleanups = [];
+    this.cleanupDrag?.();
+    this.cleanupDrag = null;
+    this.panel?.remove();
+    this.panel = null;
+    this.currentDrawing = null;
+  }
+
+  refresh(): void {
+    if (!this.enabled || !this.currentDrawing || !this.panel) return;
+    this.applyState(this.options.getState(this.currentDrawing));
+  }
+
+  destroy(): void {
+    this.hide();
+  }
+
+  private mount(drawing: T): void {
+    const state = this.options.getState(drawing);
+    const preset = this.options.preset ?? "line-only";
+    const presetOptions = preset === "none" ? {} : PRESET_OPTIONS[preset];
+    const panel = createDrawingToolbar({
+      className: this.options.className,
+      lineColor: state.lineColor,
+      fillColor: state.fillColor,
+      fillOpacity: state.fillOpacity,
+      textColor: state.textColor ?? state.lineColor,
+      width: state.width,
+      style: state.style,
+      locked: Boolean(state.locked),
+      ...presetOptions,
+    });
+    this.options.container.appendChild(panel);
+    this.panel = panel;
+
+    const row = panel.querySelector<HTMLElement>(".rect-toolbar-row");
+    if (row && this.options.slots?.length) {
+      this.options.slots.forEach((slot) => {
+        const element = slot.mount(drawing);
+        element.dataset.toolbarSlot = slot.id;
+        insertSlot(row, slot.anchor, element);
+        if (slot.bind) {
+          slot.bind(element, this.createSlotContext());
+        }
+      });
+    }
+
+    const grip = panel.querySelector<HTMLElement>(".rect-tb-grip");
+    if (grip) {
+      this.cleanupDrag = mountFloatingPanel({
+        container: this.options.container,
+        panel,
+        grip,
+        persistenceKey: this.options.persistenceKey(drawing),
+        onDragStart: () => this.closePopups(),
+      });
+    }
+
+    this.bindStandardActions(drawing, presetOptions);
+    panel.addEventListener("pointerdown", (event) => event.stopPropagation());
+  }
+
+  private createSlotContext(): ToolbarSlotContext<T> {
+    const drawing = this.currentDrawing!;
+    return {
+      drawing,
+      container: this.options.container,
+      patch: (patch) => {
+        this.options.onPatch(drawing, patch);
+        this.refresh();
+        this.options.onSync?.();
+      },
+      sync: () => this.options.onSync?.(),
+      closePopups: () => this.closePopups(),
+    };
+  }
+
+  private bindStandardActions(
+    drawing: T,
+    preset: Partial<DrawingToolbarOptions>,
+  ) {
+    const panel = this.panel!;
+
+    panel.querySelector<HTMLElement>(".rect-tb-border-btn")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.toggleColorPalette("line", event.currentTarget as HTMLElement, drawing, false);
+    });
+    panel.querySelector<HTMLElement>(".rect-tb-fill-btn")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.toggleColorPalette("fill", event.currentTarget as HTMLElement, drawing, true);
+    });
+    panel.querySelector<HTMLElement>(".rect-tb-text-btn, .trend-toolbar-text")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (this.options.onTextButtonClick) {
+        this.closePopups();
+        this.options.onTextButtonClick(drawing, event.currentTarget as HTMLElement);
+        return;
+      }
+      this.toggleColorPalette("text", event.currentTarget as HTMLElement, drawing, false);
+    });
+
+    panel.querySelector<HTMLElement>(".rect-tb-width-btn")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.openCompactMenu("width", event.currentTarget as Element, drawing);
+    });
+    panel.querySelector<HTMLElement>(".rect-tb-style-btn")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.openCompactMenu("style", event.currentTarget as Element, drawing);
+    });
+    panel.querySelector<HTMLElement>(".rect-tb-lock")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const current = this.options.getState(drawing);
+      this.options.onPatch(drawing, { locked: !current.locked });
+      this.refresh();
+      this.options.onSync?.();
+    });
+    panel.querySelector<HTMLElement>(".rect-tb-del")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.options.onDelete(drawing);
+    });
+
+    this.applyState(this.options.getState(drawing));
+  }
+
+  private applyState(state: DrawingToolbarState) {
+    if (!this.panel) return;
+    const panel = this.panel;
+    panel.querySelector<HTMLElement>(".rect-tb-border-btn .rect-tb-color-bar, .trend-toolbar-color .rect-tb-color-bar")
+      ?.style.setProperty("background", state.lineColor);
+    const fillBar = panel.querySelector<HTMLElement>(".rect-tb-fill-btn .rect-tb-color-bar");
+    if (fillBar && state.fillColor != null) {
+      fillBar.style.setProperty("--fill-color", hexToRgba(state.fillColor, state.fillOpacity ?? 100));
+      fillBar.classList.toggle("is-checkered", (state.fillOpacity ?? 100) < 100);
+    }
+    panel.querySelector<HTMLElement>(".rect-tb-text-btn .rect-tb-color-bar")
+      ?.style.setProperty("background", state.textColor ?? state.lineColor);
+    const widthLabel = panel.querySelector<HTMLElement>(".rect-tb-width-label");
+    if (widthLabel) widthLabel.textContent = `${state.width}px`;
+    const styleBtn = panel.querySelector<HTMLElement>(".rect-tb-style-btn");
+    if (styleBtn) styleBtn.innerHTML = drawingStyleIcon(state.style);
+    const lockBtn = panel.querySelector<HTMLElement>(".rect-tb-lock");
+    if (lockBtn) {
+      lockBtn.dataset.active = state.locked ? "1" : "";
+      lockBtn.title = state.locked ? "Разблокировать" : "Заблокировать";
+      lockBtn.innerHTML = lockIcon(Boolean(state.locked));
+    }
+  }
+
+  private toggleColorPalette(
+    target: "line" | "fill" | "text",
+    anchor: HTMLElement,
+    drawing: T,
+    withOpacity: boolean,
+  ) {
+    if (this.cleanupPopup) {
+      this.closePopups();
+      return;
+    }
+    const state = this.options.getState(drawing);
+    const color = target === "line"
+      ? state.lineColor
+      : target === "fill"
+        ? state.fillColor ?? state.lineColor
+        : state.textColor ?? state.lineColor;
+    this.cleanupPopup = openColorPalette({
+      container: this.options.container,
+      anchor,
+      color,
+      opacity: withOpacity ? state.fillOpacity ?? 100 : undefined,
+      onColor: (nextColor) => {
+        const patch: DrawingToolbarPatch = target === "line"
+          ? { lineColor: nextColor }
+          : target === "fill"
+            ? { fillColor: nextColor }
+            : { textColor: nextColor };
+        this.options.onPatch(drawing, patch);
+        this.refresh();
+        this.options.onSync?.();
+      },
+      onOpacity: withOpacity
+        ? (opacity) => {
+            this.options.onPatch(drawing, { fillOpacity: opacity });
+            this.refresh();
+            this.options.onSync?.();
+          }
+        : undefined,
+      onDismiss: () => { this.cleanupPopup = null; },
+    });
+  }
+
+  private openCompactMenu(kind: "width" | "style", anchor: Element, drawing: T) {
+    this.closePopups();
+    const menu = document.createElement("div");
+    menu.className = "rect-line-menu";
+    const state = this.options.getState(drawing);
+    const entries = kind === "width"
+      ? [1, 2, 3, 4].map((value) => ({
+          value: String(value),
+          label: `${value}px`,
+          icon: `<span class="rect-line-sample" style="height:${value}px"></span>`,
+          active: state.width === value,
+        }))
+      : (["solid", "dashed", "dotted"] as const).map((value) => ({
+          value,
+          label: value === "solid" ? "Line" : `${value[0].toUpperCase()}${value.slice(1)} line`,
+          icon: drawingStyleIcon(value),
+          active: state.style === value,
+        }));
+
+    entries.forEach((entry) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `rect-line-menu-item${entry.active ? " is-active" : ""}`;
+      button.innerHTML = `<span class="rect-line-menu-icon">${entry.icon}</span><span>${entry.label}</span>`;
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (kind === "width") this.options.onPatch(drawing, { width: Number(entry.value) });
+        else this.options.onPatch(drawing, { style: entry.value as DrawingLineStyle });
+        this.refresh();
+        this.options.onSync?.();
+        this.closePopups();
+      });
+      menu.appendChild(button);
+    });
+
+    this.cleanupPopup = mountAnchoredPopup({
+      container: this.options.container,
+      anchor,
+      popup: menu,
+      width: kind === "width" ? 104 : 168,
+      gap: 2,
+      onDismiss: () => { this.cleanupPopup = null; },
+    });
+  }
+
+  private closePopups() {
+    this.cleanupPopup?.();
+    this.cleanupPopup = null;
+  }
+}
