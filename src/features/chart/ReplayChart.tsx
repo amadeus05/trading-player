@@ -110,7 +110,22 @@ export function ReplayChart({
     applyReplayIndex: (nextIndex: number, allCandles: Candle[]) => void;
     syncOverlays: () => void;
     setDrawingsVisible: (visible: boolean) => void;
+    rebuildTradeOverlays: () => void;
   } | null>(null);
+  const overlayPropsRef = useRef({
+    barriers,
+    trades,
+    entryMarker,
+    markersEditable,
+    showClosedTradeOverlays,
+  });
+  overlayPropsRef.current = {
+    barriers,
+    trades,
+    entryMarker,
+    markersEditable,
+    showClosedTradeOverlays,
+  };
   const prevReplayIndexRef = useRef(index);
   const previousDrawingModeRef = useRef(drawingMode);
   const callbacksRef = useRef({
@@ -248,30 +263,51 @@ export function ReplayChart({
     };
     chart.timeScale().subscribeVisibleLogicalRangeChange(onVisibleRangeChange);
     syncViewportState();
-    const closedTradeOverlay = attachClosedTradeOverlay({
-      container: ref.current,
-      chart,
-      series: cs,
-      candleStore,
-      trades,
-      visible: showClosedTradeOverlays,
-    });
-    const priceMarkers = attachPriceMarkers({
-      container: ref.current,
-      series: cs,
-      barriers,
-      trades,
-      entryMarker,
-      editable: markersEditable,
-      pricePrecision,
-      onBarrierChange: (id, kind, price) =>
-        callbacksRef.current.onBarrierChange(id, kind, price),
-      onEntryMarkerChange: (id, price) =>
-        callbacksRef.current.onEntryMarkerChange(id, price),
-      onFrame: closedTradeOverlay.sync,
-    });
-    const unregisterClosedTradeSync = drawingManager.registerOverlaySync(closedTradeOverlay.sync);
-    const unregisterPriceMarkerSync = drawingManager.registerOverlaySync(priceMarkers.sync);
+    let closedTradeOverlay: ReturnType<typeof attachClosedTradeOverlay> | null = null;
+    let priceMarkers: ReturnType<typeof attachPriceMarkers> | null = null;
+    let unregisterClosedTradeSync = () => {};
+    let unregisterPriceMarkerSync = () => {};
+    const destroyTradeOverlays = () => {
+      unregisterClosedTradeSync();
+      unregisterPriceMarkerSync();
+      priceMarkers?.cleanup();
+      closedTradeOverlay?.destroy();
+      priceMarkers = null;
+      closedTradeOverlay = null;
+      unregisterClosedTradeSync = () => {};
+      unregisterPriceMarkerSync = () => {};
+    };
+    const rebuildTradeOverlays = () => {
+      if (!ref.current) return;
+      destroyTradeOverlays();
+      const props = overlayPropsRef.current;
+      closedTradeOverlay = attachClosedTradeOverlay({
+        container: ref.current,
+        chart,
+        series: cs,
+        candleStore,
+        trades: props.trades,
+        visible: props.showClosedTradeOverlays,
+      });
+      priceMarkers = attachPriceMarkers({
+        container: ref.current,
+        series: cs,
+        barriers: props.barriers,
+        trades: props.trades,
+        entryMarker: props.entryMarker,
+        editable: props.markersEditable,
+        pricePrecision,
+        onBarrierChange: (id, kind, price) =>
+          callbacksRef.current.onBarrierChange(id, kind, price),
+        onEntryMarkerChange: (id, price) =>
+          callbacksRef.current.onEntryMarkerChange(id, price),
+        onFrame: closedTradeOverlay.sync,
+      });
+      unregisterClosedTradeSync = drawingManager.registerOverlaySync(closedTradeOverlay.sync);
+      unregisterPriceMarkerSync = drawingManager.registerOverlaySync(priceMarkers.sync);
+      drawingManager.scheduleOverlaySync();
+    };
+    rebuildTradeOverlays();
     const selectStart = (event: MouseEventParams<Time>) => {
       if (selectingStart && typeof event.time === "number") callbacksRef.current.onStartSelected(Number(event.time));
     };
@@ -329,6 +365,7 @@ export function ReplayChart({
       applyReplayIndex,
       syncOverlays: () => drawingManager.scheduleOverlaySync(),
       setDrawingsVisible: (visible) => drawingManager.setDrawingsVisible(visible),
+      rebuildTradeOverlays,
     };
     prevReplayIndexRef.current = index;
     const cleanupTrendLines = attachTrendLineTool({
@@ -440,10 +477,7 @@ export function ReplayChart({
       ref.current?.removeEventListener("pointerdown", markManualScale);
       ref.current?.removeEventListener("dblclick", resetManualScale);
       ref.current?.removeEventListener("wheel", zoomPriceScale, { capture: true });
-      closedTradeOverlay.destroy();
-      priceMarkers.cleanup();
-      unregisterClosedTradeSync();
-      unregisterPriceMarkerSync();
+      destroyTradeOverlays();
       cancelAnimationFrame(deferredTimeRangeFrame);
       if (selectingStart) chart.unsubscribeClick(selectStart);
       try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRangeChange); } catch { }
@@ -458,7 +492,11 @@ export function ReplayChart({
       chart.remove();
       chartRuntimeRef.current = null;
     };
-  }, [candles, barriers, trades, selectingStart, focusRevision, pricePrecision, entryMarker, showClosedTradeOverlays, markersEditable, drawingMode, datasetId]);
+  }, [candles, selectingStart, focusRevision, pricePrecision, drawingMode, datasetId]);
+
+  useLayoutEffect(() => {
+    chartRuntimeRef.current?.rebuildTradeOverlays();
+  }, [barriers, trades, entryMarker, markersEditable, showClosedTradeOverlays]);
 
   useLayoutEffect(() => {
     chartRuntimeRef.current?.setDrawingsVisible(drawingsVisible);
