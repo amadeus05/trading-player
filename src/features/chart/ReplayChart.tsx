@@ -169,6 +169,17 @@ export function ReplayChart({
       crosshair: {
         mode: drawingMode === "measure" ? CrosshairMode.Hidden : CrosshairMode.Normal,
       },
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: true,
+      },
+      handleScale: {
+        mouseWheel: false,
+        pinch: true,
+        axisPressedMouseMove: { time: true, price: true },
+      },
       rightPriceScale: { borderColor: "#232632" },
       timeScale: {
         borderColor: "#232632",
@@ -203,6 +214,12 @@ export function ReplayChart({
     vs.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     vs.setData(candleStore.candles.map(toVolumeData));
     let replayUpdateInProgress = false;
+    const primePriceScaleInteraction = () => {
+      const range = cs.priceScale().getVisibleRange();
+      if (!range) return;
+      cs.priceScale().applyOptions({ autoScale: false });
+      cs.priceScale().setVisibleRange(range);
+    };
     const applyReplayIndex = (
       nextIndex: number,
       allCandles: Candle[],
@@ -245,7 +262,13 @@ export function ReplayChart({
         savedLogicalRange.current = chart.timeScale().getVisibleLogicalRange() ?? preservedRange;
         followRealtime.current = shouldFollowRealtime;
         renderedIndex.current = nextIndex;
-        drawingManager.syncOverlays();
+        if (manualPriceScale.current && savedPriceRange.current) {
+          cs.priceScale().applyOptions({ autoScale: false });
+          cs.priceScale().setVisibleRange(savedPriceRange.current);
+        } else if (!canAppendOneBar) {
+          primePriceScaleInteraction();
+        }
+        drawingManager.scheduleOverlaySync();
       } finally {
         replayUpdateInProgress = false;
       }
@@ -328,6 +351,7 @@ export function ReplayChart({
     appliedFocusRevision.current = focusRevision;
     previousDrawingModeRef.current = drawingMode;
     const priceScaleWidth = Math.max(70, chart.priceScale("right").width());
+    const timeScaleHeight = Math.max(28, chart.timeScale().height());
     let chartAlive = true;
     const markManualScale = (event: PointerEvent) => {
       const element = ref.current; if (!element) return;
@@ -344,7 +368,12 @@ export function ReplayChart({
       const element = ref.current;
       if (!element) return;
       const bounds = element.getBoundingClientRect();
-      if (event.clientX - bounds.left < bounds.width - priceScaleWidth - 4) return;
+      const x = event.clientX - bounds.left;
+      const y = event.clientY - bounds.top;
+      const plotRight = bounds.width - priceScaleWidth - 4;
+      const timeAxisTop = bounds.height - timeScaleHeight - 4;
+      if (y >= timeAxisTop && x < plotRight) return;
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
       const range = cs.priceScale().getVisibleRange();
       if (!range) return;
       event.preventDefault();
@@ -356,7 +385,9 @@ export function ReplayChart({
       const nextRange = { from: center - half, to: center + half };
       manualPriceScale.current = true;
       savedPriceRange.current = nextRange;
+      cs.priceScale().applyOptions({ autoScale: false });
       cs.priceScale().setVisibleRange(nextRange);
+      drawingManager.scheduleOverlaySync();
     };
     ref.current.addEventListener("pointerdown", markManualScale);
     ref.current.addEventListener("dblclick", resetManualScale);
@@ -462,7 +493,7 @@ export function ReplayChart({
         onDrawingComplete: () => callbacksRef.current.onDrawingComplete(),
       },
     });
-    drawingManager.syncOverlays();
+    drawingManager.scheduleOverlaySync();
     if (deleteAllDrawingsRef) {
       deleteAllDrawingsRef.current = () => { drawingManager.deleteAllDrawings(); };
     }
