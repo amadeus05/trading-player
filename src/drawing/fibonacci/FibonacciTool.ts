@@ -254,6 +254,21 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     callbacks.onDelete(id);
   }
 
+  function purgeAllFib() {
+    for (const els of elMap.values()) {
+      els.group.remove();
+      els.labelGroup.remove();
+    }
+    elMap.clear();
+    fibonacciRetracements = [];
+    if (selectedId !== null) {
+      selectedId = null;
+      removeToolbar();
+    }
+    manager.clearSelection("fibonacci");
+    syncAll();
+  }
+
   toolbarController = new DrawingToolbarController({
     container,
     preset: "line-only",
@@ -309,6 +324,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
       removeToolbar();
       syncAll();
     },
+    purgeAll: purgeAllFib,
   });
 
   function selectFib(id: string | null) {

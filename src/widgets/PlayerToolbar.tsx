@@ -1,4 +1,4 @@
-import { Button, Select } from "antd";
+import { Button, Popconfirm, Select } from "antd";
 import { DrawingToolIcon } from "../drawing/icons/DrawingToolIcon";
 import type { DrawingMode } from "../drawing";
 import type { Dataset } from "../types";
@@ -12,10 +12,12 @@ interface PlayerToolbarProps {
   timeframe: number;
   drawingMode: DrawingMode;
   drawingsVisible: boolean;
+  drawingCount: number;
   onDatasetChange: (datasetId: string) => void;
   onTimeframeChange: (timeframe: number) => void;
   onDrawingModeChange: (mode: DrawingMode) => void;
   onDrawingsVisibleChange: (visible: boolean) => void;
+  onDeleteAllDrawings: () => void;
 }
 
 export function PlayerToolbar({
@@ -24,10 +26,12 @@ export function PlayerToolbar({
   timeframe,
   drawingMode,
   drawingsVisible,
+  drawingCount,
   onDatasetChange,
   onTimeframeChange,
   onDrawingModeChange,
   onDrawingsVisibleChange,
+  onDeleteAllDrawings,
 }: PlayerToolbarProps) {
   const toggleDrawingMode = (mode: DrawingMode) => {
     onDrawingModeChange(drawingMode === mode ? "none" : mode);
@@ -93,6 +97,25 @@ export function PlayerToolbar({
             )}
           </svg>
         </Button>
+        <Popconfirm
+          title="Удалить все рисунки на графике?"
+          okText="Удалить"
+          cancelText="Отмена"
+          okButtonProps={{ danger: true }}
+          disabled={drawingCount === 0}
+          onConfirm={onDeleteAllDrawings}
+        >
+          <Button
+            type="text"
+            className="drawing-tool-btn"
+            disabled={drawingCount === 0}
+            title={`Удалить все рисунки (${drawingCount}) · Ctrl+Shift+Delete`}
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+              <path d="M4.5 5.5h9M7 5.5V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1M6.5 5.5l.5 9a1 1 0 0 0 1 .9h2a1 1 0 0 0 1-.9l.5-9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </Button>
+        </Popconfirm>
       </div>
     </div>
   );

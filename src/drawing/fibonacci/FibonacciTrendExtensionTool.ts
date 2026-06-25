@@ -288,6 +288,21 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     callbacks.onDelete(id);
   }
 
+  function purgeAllFib() {
+    for (const els of elMap.values()) {
+      els.group.remove();
+      els.labelGroup.remove();
+    }
+    elMap.clear();
+    fibonacciTrendExtensions = [];
+    if (selectedId !== null) {
+      selectedId = null;
+      removeToolbar();
+    }
+    manager.clearSelection("fibtrendext");
+    syncAll();
+  }
+
   toolbarController = new DrawingToolbarController({
     container,
     preset: "line-only",
@@ -344,6 +359,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       removeToolbar();
       syncAll();
     },
+    purgeAll: purgeAllFib,
   });
 
   function selectFib(id: string | null) {

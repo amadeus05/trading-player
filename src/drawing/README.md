@@ -2,7 +2,7 @@
 
 Each drawing tool owns only its geometry and domain-specific interactions.
 
-- `DrawingManager.ts` is the single owner of the active mode and interaction priority. It disables hit-testing for every existing drawing while any creation tool is active.
+- `DrawingManager.ts` is the single owner of the active mode and interaction priority. It disables hit-testing for every existing drawing while any creation tool is active. Global hotkeys: copy/paste/delete selection, delete all (`Ctrl+Shift+Delete`), escape.
 - `shared/coordinates.ts` is the single conversion layer between timestamps, prices and pixels.
 - `shared/overlay.ts` owns SVG creation and clipping to the candle plot so drawings never cover chart scales or adjacent panels.
 - `shared/floatingPanel.ts` owns toolbar placement, dragging and per-drawing position persistence.

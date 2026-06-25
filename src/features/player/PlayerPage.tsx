@@ -12,7 +12,7 @@ import { DEFAULT_SIMULATION_SETTINGS } from "../../shared/config/simulation";
 import { formatTimeframe, getMarketAssets, inferPricePrecision } from "../../shared/lib/market";
 import { usePersistedPlayerState } from "./usePersistedPlayerState";
 import { useReplayController } from "../replay/useReplayController";
-import { selectDrawingCollections, useDrawingCollections } from "../drawings/useDrawingCollections";
+import { selectDrawingCollections, useDrawingCollections, countDrawingsForDataset } from "../drawings/useDrawingCollections";
 import { useTradeEditing } from "../trading/useTradeEditing";
 import { useTradingSimulation } from "../trading/useTradingSimulation";
 import { useOrderForm } from "../trading/useOrderForm";
@@ -21,6 +21,7 @@ import { useChartDisplayState } from "../chart/useChartDisplayState";
 export function PlayerPage() {
   const { message } = AntApp.useApp();
   const chartInteractionActive = useRef(false);
+  const deleteAllDrawingsRef = useRef<(() => void) | null>(null);
   const { state, setState, initialDatasetId, hydrated } = usePersistedPlayerState();
   const drawingActions = useDrawingCollections(setState);
   const drawings = useMemo(
@@ -39,6 +40,10 @@ export function PlayerPage() {
     [loadedMarket, setLoadedMarket] = useState<Dataset | null>(null),
     [drawingMode, setDrawingMode] = useState<DrawingMode>("none"),
     [drawingsVisible, setDrawingsVisible] = useState(true);
+  const drawingCount = useMemo(
+    () => (dataset ? countDrawingsForDataset(drawings, dataset) : 0),
+    [drawings, dataset],
+  );
   useEffect(() => {
     const release = () => { chartInteractionActive.current = false; };
     window.addEventListener("pointerup", release);
@@ -164,6 +169,7 @@ export function PlayerPage() {
             timeframe={tf}
             drawingMode={drawingMode}
             drawingsVisible={drawingsVisible}
+            drawingCount={drawingCount}
             onDatasetChange={(nextDataset) => {
               setDataset(nextDataset);
               setIdx(120);
@@ -171,6 +177,7 @@ export function PlayerPage() {
             onTimeframeChange={changeTimeframe}
             onDrawingModeChange={setDrawingMode}
             onDrawingsVisibleChange={setDrawingsVisible}
+            onDeleteAllDrawings={() => deleteAllDrawingsRef.current?.()}
           />
           <div className="chartWrap">
             {candles.length ? (
@@ -193,6 +200,7 @@ export function PlayerPage() {
                 drawingMode={drawingMode}
                 datasetId={dataset}
                 drawingsVisible={drawingsVisible}
+                deleteAllDrawingsRef={deleteAllDrawingsRef}
                 onDrawingComplete={() => setDrawingMode("none")}
                 onInteractionChange={(active) => { chartInteractionActive.current = active; }}
               />

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, type MutableRefObject } from "react";
 import {
   CandlestickSeries,
   CrosshairMode,
@@ -71,6 +71,7 @@ interface ReplayChartProps {
   datasetId: string;
   drawingsVisible: boolean;
   onDrawingComplete: () => void;
+  deleteAllDrawingsRef?: MutableRefObject<(() => void) | null>;
 }
 
 export function ReplayChart({
@@ -94,6 +95,7 @@ export function ReplayChart({
   datasetId,
   drawingsVisible,
   onDrawingComplete,
+  deleteAllDrawingsRef,
 }: ReplayChartProps) {
   const ref = useRef<HTMLDivElement>(null);
   const selectedTrendLineId = useRef<string | null>(null);
@@ -162,7 +164,9 @@ export function ReplayChart({
         allowShiftVisibleRangeOnWhitespaceReplacement: false,
       },
     });
-    const drawingManager = new DrawingManager(ref.current);
+    const drawingManager = new DrawingManager(ref.current, {
+      onDeleteAll: () => callbacksRef.current.drawingActions.deleteAllForDataset(datasetId),
+    });
     drawingManager.setMode(drawingMode);
     drawingManager.setDrawingsVisible(drawingsVisible);
     const cs = chart.addSeries(CandlestickSeries, {
@@ -422,7 +426,11 @@ export function ReplayChart({
       },
     });
     drawingManager.syncOverlays();
+    if (deleteAllDrawingsRef) {
+      deleteAllDrawingsRef.current = () => { drawingManager.deleteAllDrawings(); };
+    }
     return () => {
+      if (deleteAllDrawingsRef) deleteAllDrawingsRef.current = null;
       chartAlive = false;
       const range = chart.timeScale().getVisibleLogicalRange();
       savedLogicalRange.current = range;

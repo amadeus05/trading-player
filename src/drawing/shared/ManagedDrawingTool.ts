@@ -66,12 +66,16 @@ export interface ManagedDrawingLifecycleOptions {
   syncAll: () => void;
   isDragActive: () => boolean;
   onDeselect: () => void;
+  purgeAll?: () => void;
 }
 
 /** Registers selection bridge, deselect handler and overlay sync with DrawingManager. */
 export function attachManagedDrawingLifecycle(options: ManagedDrawingLifecycleOptions): () => void {
   const unregisterBridge = options.manager.registerSelectionBridge(options.kind, options.bridge);
   const unregisterDeselect = options.manager.registerDeselect(options.kind, options.onDeselect);
+  const unregisterPurge = options.purgeAll
+    ? options.manager.registerPurge(options.kind, options.purgeAll)
+    : () => {};
   const unregisterOverlaySync = options.manager.registerOverlaySync(() => {
     if (!options.isDragActive()) options.syncAll();
   });
@@ -79,6 +83,7 @@ export function attachManagedDrawingLifecycle(options: ManagedDrawingLifecycleOp
   return () => {
     unregisterBridge();
     unregisterDeselect();
+    unregisterPurge();
     unregisterOverlaySync();
   };
 }

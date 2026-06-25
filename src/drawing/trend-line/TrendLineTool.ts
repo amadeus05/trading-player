@@ -211,6 +211,21 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     callbacks.onDelete(id);
   }
 
+  function purgeAllLines() {
+    for (const els of lineElements.values()) {
+      els.group.remove();
+    }
+    lineElements.clear();
+    trendLines = [];
+    if (selectedId !== null) {
+      selectedId = null;
+      onSelect?.(null);
+      removeToolbar();
+    }
+    manager.clearSelection("trendline");
+    syncAll();
+  }
+
   toolbarController = new DrawingToolbarController({
     container,
     preset: "full",
@@ -273,6 +288,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       removeToolbar();
       syncAll();
     },
+    purgeAll: purgeAllLines,
   });
 
   function selectLine(id: string | null) {

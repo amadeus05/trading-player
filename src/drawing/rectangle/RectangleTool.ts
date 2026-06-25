@@ -307,6 +307,21 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     callbacks.onDelete(id);
   }
 
+  function purgeAllRects() {
+    for (const [id, els] of elMap) {
+      forgetFloatingPanelPosition(`rectangle:${id}`);
+      els.group.remove();
+    }
+    elMap.clear();
+    rectangles = [];
+    if (selectedId !== null) {
+      selectedId = null;
+      removeToolbar();
+    }
+    manager.clearSelection("rectangle");
+    syncAll();
+  }
+
   toolbarController = new DrawingToolbarController({
     container,
     preset: "full",
@@ -368,6 +383,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       removeToolbar();
       syncAll();
     },
+    purgeAll: purgeAllRects,
   });
 
   function selectRect(id: string | null) {

@@ -18,6 +18,10 @@ const MODE_TO_KIND: Partial<Record<DrawingMode, DrawingSelectionKind>> = {
   parallelchannel: "parallelchannel",
 };
 
+export interface DrawingManagerOptions {
+  onDeleteAll?: () => void;
+}
+
 /**
  * Owns interaction priority for every drawing tool attached to one chart.
  * Renderers describe geometry; the manager decides whether existing drawings
@@ -30,6 +34,7 @@ export class DrawingManager {
   private activeId: string | null = null;
   private deselectByKind = new Map<DrawingSelectionKind, () => void>();
   private bridgesByKind = new Map<DrawingSelectionKind, DrawingSelectionBridge>();
+  private purgeByKind = new Map<DrawingSelectionKind, () => void>();
   private overlaySyncById = new Map<symbol, () => void>();
   private overlayLoopId = 0;
   private pendingOverlaySyncFrame = 0;
@@ -37,7 +42,10 @@ export class DrawingManager {
   private drawingsVisible = true;
   private readonly onKeyDown: (event: KeyboardEvent) => void;
 
-  constructor(private readonly container: HTMLElement) {
+  constructor(
+    private readonly container: HTMLElement,
+    private readonly options: DrawingManagerOptions = {},
+  ) {
     this.onKeyDown = (event) => this.handleKeyDown(event);
     document.addEventListener("keydown", this.onKeyDown);
     this.applyMode();
@@ -82,6 +90,25 @@ export class DrawingManager {
         this.bridgesByKind.delete(kind);
       }
     };
+  }
+
+  registerPurge(kind: DrawingSelectionKind, purge: () => void): () => void {
+    this.purgeByKind.set(kind, purge);
+    return () => {
+      if (this.purgeByKind.get(kind) === purge) {
+        this.purgeByKind.delete(kind);
+      }
+    };
+  }
+
+  /** Removes every drawing on the chart (local overlay state + persisted collections). */
+  deleteAllDrawings(): boolean {
+    if (this.isDrawing()) return false;
+    this.clearSelection();
+    this.purgeByKind.forEach((purge) => purge());
+    this.options.onDeleteAll?.();
+    this.clipboard = null;
+    return true;
   }
 
   registerOverlaySync(sync: () => void): () => void {
@@ -167,6 +194,7 @@ export class DrawingManager {
     this.pendingOverlaySyncFrame = 0;
     this.overlaySyncById.clear();
     this.bridgesByKind.clear();
+    this.purgeByKind.clear();
     delete this.container.dataset.drawingMode;
     delete this.container.dataset.drawingActive;
     delete this.container.dataset.drawingsVisible;
@@ -195,6 +223,13 @@ export class DrawingManager {
       if (this.isDrawing() || !this.clipboard) return;
       event.preventDefault();
       this.bridgesByKind.get(this.clipboard.kind)?.paste(this.clipboard);
+      return;
+    }
+
+    if (mod && event.shiftKey && (event.key === "Delete" || event.key === "Backspace")) {
+      if (this.isDrawing()) return;
+      event.preventDefault();
+      this.deleteAllDrawings();
       return;
     }
 

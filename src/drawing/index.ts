@@ -13,5 +13,5 @@ export {
   runManagedDragSession,
   startPointerDragSession,
 } from "./shared/ManagedDrawingTool";
-export { DrawingManager, type DrawingSelectionBridge, type DrawingSelectionKind } from "./DrawingManager";
+export { DrawingManager, type DrawingManagerOptions, type DrawingSelectionBridge, type DrawingSelectionKind } from "./DrawingManager";
 export type { DrawingClipboardItem } from "./shared/clipboard";

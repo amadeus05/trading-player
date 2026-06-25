@@ -314,6 +314,20 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     callbacks.onDelete(id);
   }
 
+  function purgeAllChannels() {
+    for (const els of elMap.values()) {
+      els.group.remove();
+    }
+    elMap.clear();
+    parallelChannels = [];
+    if (selectedId !== null) {
+      selectedId = null;
+      removeToolbar();
+    }
+    manager.clearSelection("parallelchannel");
+    syncAll();
+  }
+
   toolbarController = new DrawingToolbarController({
     container,
     preset: "channel",
@@ -372,6 +386,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       removeToolbar();
       syncAll();
     },
+    purgeAll: purgeAllChannels,
   });
 
   function selectChannel(id: string | null) {
