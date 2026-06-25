@@ -3,7 +3,7 @@
  */
 
 import type { Rectangle } from "../../types";
-import { snapXToNearestCandle, timeToX, xToSnappedTime } from "../shared/coordinates";
+import { pointToPixel, snapXToNearestCandle, timeToX, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
 import { attachManagedDrawingLifecycle, createClipboardBridge, getPlotWidth, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import { createDrawingOverlay } from "../shared/overlay";
@@ -147,9 +147,15 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
   let textEditor: HTMLInputElement | null = null;
   let dragActive = false;
 
-  let isDrawing = false;
-  let drawStart: { x: number; y: number } | null = null;
-  let ghostRect: SVGRectElement | null = null;
+  let drawPoint1: { time: number; price: number } | null = null;
+  interface GhostEls {
+    group: SVGGElement;
+    fill: SVGRectElement;
+    border: SVGRectElement;
+    handles: SVGCircleElement[];
+  }
+  let ghostEls: GhostEls | null = null;
+  let lastGhostPointer: { x: number; y: number } | null = null;
 
   interface RectEls {
     group: SVGGElement;
@@ -366,11 +372,9 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       deleteSelected: () => { if (selectedId) deleteRect(selectedId); },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
       cancelDrawing: () => {
-        if (!isDrawing) return false;
-        isDrawing = false;
-        drawStart = null;
-        ghostRect?.remove();
-        ghostRect = null;
+        if (!drawPoint1) return false;
+        drawPoint1 = null;
+        clearGhost();
         callbacks.onDrawingComplete();
         return true;
       },
@@ -551,77 +555,153 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     });
   }
 
-  let drawOverlay: HTMLDivElement | null = null;
+  function clearGhost() {
+    ghostEls?.group.remove();
+    ghostEls = null;
+    lastGhostPointer = null;
+  }
 
-  if (drawingMode === "rectangle") {
-    drawOverlay = document.createElement("div");
-    drawOverlay.className = "rect-draw-overlay";
-    container.appendChild(drawOverlay);
-
-    drawOverlay.addEventListener("pointerdown", (e) => {
-      e.preventDefault(); e.stopPropagation();
-      const cb = container.getBoundingClientRect();
-      drawStart = { x: snapXToNearestCandle(chart, Math.max(0, Math.min(e.clientX - cb.left, getPlotWidthLocal()))), y: e.clientY - cb.top };
-      isDrawing = true;
-      ghostRect = document.createElementNS(SVG_NS, "rect");
-      ghostRect.setAttribute("class", "rect-ghost-el");
-      svg.appendChild(ghostRect);
-      try { (drawOverlay as any).setPointerCapture?.(e.pointerId); } catch { }
+  function createGhostEls(): GhostEls {
+    const group = document.createElementNS(SVG_NS, "g");
+    group.setAttribute("class", "rect-ghost");
+    const fill = document.createElementNS(SVG_NS, "rect");
+    fill.setAttribute("pointer-events", "none");
+    fill.setAttribute("fill", hexToRgba("#2962ff", 20));
+    const border = document.createElementNS(SVG_NS, "rect");
+    border.setAttribute("fill", "none");
+    border.setAttribute("stroke", "#ff2727");
+    border.setAttribute("stroke-width", "2");
+    border.setAttribute("pointer-events", "none");
+    const handles = HANDLE_POSITIONS.map((pos) => {
+      const handle = document.createElementNS(SVG_NS, "circle");
+      handle.setAttribute("class", "rect-handle-el");
+      handle.setAttribute("r", "5");
+      handle.dataset.pos = pos;
+      handle.style.pointerEvents = "none";
+      return handle;
     });
+    group.append(fill, border, ...handles);
+    svg.appendChild(group);
+    return { group, fill, border, handles };
+  }
 
-    drawOverlay.addEventListener("pointermove", (e) => {
-      if (!isDrawing || !drawStart || !ghostRect) return;
-      const cb = container.getBoundingClientRect();
-      const mx = snapXToNearestCandle(chart, Math.max(0, Math.min(e.clientX - cb.left, getPlotWidthLocal()))), my = e.clientY - cb.top;
-      ghostRect.setAttribute("x", String(Math.min(mx, drawStart.x)));
-      ghostRect.setAttribute("y", String(Math.min(my, drawStart.y)));
-      ghostRect.setAttribute("width", String(Math.abs(mx - drawStart.x)));
-      ghostRect.setAttribute("height", String(Math.abs(my - drawStart.y)));
+  function applyGhostBounds(bounds: PixelBounds) {
+    if (!ghostEls) return;
+    const safe = {
+      x: bounds.x,
+      y: bounds.y,
+      w: Math.max(0, bounds.w),
+      h: Math.max(0, bounds.h),
+    };
+    [ghostEls.fill, ghostEls.border].forEach((el) => {
+      el.setAttribute("x", String(safe.x));
+      el.setAttribute("y", String(safe.y));
+      el.setAttribute("width", String(safe.w));
+      el.setAttribute("height", String(safe.h));
     });
-
-    drawOverlay.addEventListener("pointerup", (e) => {
-      if (!isDrawing || !drawStart) return;
-      isDrawing = false;
-      ghostRect?.remove(); ghostRect = null;
-
-      const cb = container.getBoundingClientRect();
-      const ex = snapXToNearestCandle(chart, Math.max(0, Math.min(e.clientX - cb.left, getPlotWidthLocal()))), ey = e.clientY - cb.top;
-
-      if (Math.abs(ex - drawStart.x) > 5 && Math.abs(ey - drawStart.y) > 5) {
-        const xMin = Math.min(ex, drawStart.x), xMax = Math.max(ex, drawStart.x);
-        const yMin = Math.min(ey, drawStart.y), yMax = Math.max(ey, drawStart.y);
-        const tL = xToSnappedTime(chart, xMin, candleStore.candles);
-        const tR = xToSnappedTime(chart, xMax, candleStore.candles);
-        const pT = series.coordinateToPrice(yMin);
-        const pB = series.coordinateToPrice(yMax);
-
-        if (tL != null && tR != null && pT != null && pB != null) {
-          const newRect: Rectangle = {
-            id: crypto.randomUUID(),
-            datasetId,
-            timeLeft: tL, timeRight: tR,
-            priceTop: Math.max(pT, pB),
-            priceBottom: Math.min(pT, pB),
-            borderColor: "#ff2727",
-            fillColor: "#2962ff",
-            fillOpacity: 20,
-            textColor: "#2962ff",
-            text: "",
-            borderWidth: 2,
-            borderStyle: "solid",
-            locked: false,
-          };
-          rectangles.push(newRect);
-          callbacks.onCreate(newRect);
-          selectRect(newRect.id);
-          syncAll();
-        }
-      }
-
-      drawStart = null;
-      callbacks.onDrawingComplete();
+    const coords = getHandleCoords(safe);
+    ghostEls.handles.forEach((handle, index) => {
+      handle.setAttribute("cx", String(coords[index][0]));
+      handle.setAttribute("cy", String(coords[index][1]));
     });
   }
+
+  function updateGhostRect(mx: number, my: number) {
+    if (!ghostEls || !drawPoint1) return;
+    const p1 = pointToPixel(chart, series, drawPoint1, candleStore.candles);
+    if (!p1) return;
+    applyGhostBounds({
+      x: Math.min(mx, p1.x),
+      y: Math.min(my, p1.y),
+      w: Math.abs(mx - p1.x),
+      h: Math.abs(my - p1.y),
+    });
+  }
+
+  function handleDrawClick(event: { time?: unknown; sourceEvent?: PointerEvent; seriesData?: Map<unknown, { close?: number }> }) {
+    if (drawingMode !== "rectangle") return;
+    const bounds = container.getBoundingClientRect();
+    const sourceEvent = event.sourceEvent;
+    const rawX = sourceEvent ? sourceEvent.clientX - bounds.left : null;
+    const rawY = sourceEvent ? sourceEvent.clientY - bounds.top : null;
+    const x = rawX != null
+      ? snapXToNearestCandle(chart, Math.max(0, Math.min(rawX, getPlotWidthLocal())))
+      : null;
+    const y = rawY;
+    const time = x != null
+      ? xToSnappedTime(chart, x, candleStore.candles)
+      : (typeof event.time === "number" ? event.time : null);
+    const price = y != null
+      ? series.coordinateToPrice(y)
+      : event.seriesData?.get(series)?.close;
+    if (time == null || price == null || price <= 0) return;
+
+    if (!drawPoint1) {
+      drawPoint1 = { time, price };
+      ghostEls = createGhostEls();
+      if (x != null && y != null) {
+        lastGhostPointer = { x, y };
+        updateGhostRect(x, y);
+      }
+      return;
+    }
+
+    const p1 = pointToPixel(chart, series, drawPoint1, candleStore.candles);
+    const p2 = pointToPixel(chart, series, { time, price }, candleStore.candles);
+    if (p1 && p2 && Math.abs(p2.x - p1.x) <= 5 && Math.abs(p2.y - p1.y) <= 5) {
+      drawPoint1 = null;
+      clearGhost();
+      return;
+    }
+
+    const tL = Math.min(drawPoint1.time, time);
+    const tR = Math.max(drawPoint1.time, time);
+    const pT = Math.max(drawPoint1.price, price);
+    const pB = Math.min(drawPoint1.price, price);
+    const newRect: Rectangle = {
+      id: crypto.randomUUID(),
+      datasetId,
+      timeLeft: tL,
+      timeRight: tR,
+      priceTop: pT,
+      priceBottom: pB,
+      borderColor: "#ff2727",
+      fillColor: "#2962ff",
+      fillOpacity: 20,
+      textColor: "#2962ff",
+      text: "",
+      borderWidth: 2,
+      borderStyle: "solid",
+      locked: false,
+    };
+    rectangles.push(newRect);
+    callbacks.onCreate(newRect);
+    drawPoint1 = null;
+    clearGhost();
+    selectRect(newRect.id);
+    syncAll();
+    callbacks.onDrawingComplete();
+  }
+
+  function handleMouseMove(event: MouseEvent) {
+    if (!drawPoint1 || !ghostEls) return;
+    const bounds = container.getBoundingClientRect();
+    const mx = snapXToNearestCandle(chart, Math.max(0, Math.min(event.clientX - bounds.left, getPlotWidthLocal())));
+    const my = event.clientY - bounds.top;
+    lastGhostPointer = { x: mx, y: my };
+    updateGhostRect(mx, my);
+  }
+
+  const refreshGhostAfterViewportChange = () => {
+    if (!drawPoint1 || !ghostEls || !lastGhostPointer) return;
+    updateGhostRect(lastGhostPointer.x, lastGhostPointer.y);
+  };
+
+  if (drawingMode === "rectangle") {
+    chart.subscribeClick(handleDrawClick);
+    chart.timeScale().subscribeVisibleLogicalRangeChange(refreshGhostAfterViewportChange);
+  }
+  container.addEventListener("mousemove", handleMouseMove);
 
   const onBgPointerDown = (e: PointerEvent) => {
     if (drawingMode !== "none") return;
@@ -638,11 +718,13 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
 
   return () => {
     unregisterLifecycle();
+    try { chart.unsubscribeClick(handleDrawClick); } catch { }
+    try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(refreshGhostAfterViewportChange); } catch { }
+    container.removeEventListener("mousemove", handleMouseMove);
     container.removeEventListener("pointerdown", onBgPointerDown);
-    drawOverlay?.remove();
     overlay.remove();
     toolbarController.destroy();
     removeToolbar();
-    ghostRect?.remove();
+    clearGhost();
   };
 }
