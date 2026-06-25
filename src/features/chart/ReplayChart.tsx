@@ -26,7 +26,6 @@ import {
   DrawingManager,
   type DrawingMode,
 } from "../../drawing";
-import { logicalToTime } from "../../drawing/shared/coordinates";
 import { attachClosedTradeOverlay } from "./closedTradeOverlay";
 import { attachPriceMarkers } from "./priceMarkers";
 import type { DrawingActions, DrawingCollections } from "../drawings/useDrawingCollections";
@@ -44,6 +43,12 @@ const toVolumeData = (candle: Candle): HistogramData<UTCTimestamp> => ({
   value: candle.volume,
   color: candle.close >= candle.open ? "#2bd9a855" : "#ff5c7355",
 });
+
+/** Stable bar width with whitespace — avoids stretching a single replay bar across the chart. */
+const defaultFocusRange = (barIndex: number) => ({
+  from: barIndex - 80,
+  to: barIndex + 20,
+} as LogicalRange);
 
 interface ReplayChartProps {
   candles: Candle[];
@@ -91,7 +96,6 @@ export function ReplayChart({
   const ref = useRef<HTMLDivElement>(null);
   const selectedTrendLineId = useRef<string | null>(null);
   const savedLogicalRange = useRef<LogicalRange | null>(null);
-  const savedTimeRange = useRef<{ from: number; to: number } | null>(null);
   const savedCandleInterval = useRef<number | null>(null);
   const renderedIndex = useRef<number | null>(null);
   const followRealtime = useRef(true);
@@ -209,8 +213,10 @@ export function ReplayChart({
 
         if (preservedRange) {
           chart.timeScale().setVisibleLogicalRange(preservedRange);
-        } else if (shouldFollowRealtime) {
+        } else if (shouldFollowRealtime && nextVisible.length > 1) {
           chart.timeScale().scrollToRealTime();
+        } else {
+          chart.timeScale().setVisibleLogicalRange(defaultFocusRange(nextSafeIndex));
         }
 
         savedLogicalRange.current = chart.timeScale().getVisibleLogicalRange() ?? preservedRange;
@@ -263,33 +269,20 @@ export function ReplayChart({
     };
     if (selectingStart) chart.subscribeClick(selectStart);
     let deferredTimeRangeFrame = 0;
-    if (timeframeChanged) {
-      // Keep a stable bar density across timeframes. The replay candle stays
-      // near the right side while sparse higher timeframes receive whitespace
-      // instead of stretching a handful of candles across the whole chart.
-      const nextRange = { from: safeIndex - 80, to: safeIndex + 20 };
-      chart.timeScale().setVisibleLogicalRange(nextRange);
+    let initialRange: LogicalRange | null = null;
+    if (timeframeChanged || forceFocus) {
+      // Keep a stable bar density when jumping to a bar or switching timeframe.
+      initialRange = defaultFocusRange(safeIndex);
+      if (forceFocus) followRealtime.current = false;
+    }
+    applyReplayIndex(safeIndex, candles, initialRange ?? viewportBeforeModeChange);
+    if (timeframeChanged && initialRange) {
       deferredTimeRangeFrame = requestAnimationFrame(() => {
-        chart.timeScale().setVisibleLogicalRange(nextRange);
+        chart.timeScale().setVisibleLogicalRange(initialRange!);
       });
-    } else if (forceFocus) {
-      const timeSpan = savedTimeRange.current
-        ? Math.max(60, savedTimeRange.current.to - savedTimeRange.current.from)
-        : Math.max(60, candleStore.candles[Math.max(0, safeIndex - 100)]
-          ? candleStore.candles[safeIndex].time - candleStore.candles[Math.max(0, safeIndex - 100)].time
-          : 100 * 60);
-      const centerTime = candleStore.candles[safeIndex].time;
-      chart.timeScale().setVisibleRange({
-        from: (centerTime - timeSpan / 2) as UTCTimestamp,
-        to: (centerTime + timeSpan / 2) as UTCTimestamp,
-      });
-      renderedIndex.current = index;
-    } else {
-      applyReplayIndex(index, candles, viewportBeforeModeChange);
     }
     appliedFocusRevision.current = focusRevision;
     previousDrawingModeRef.current = drawingMode;
-    if (timeframeChanged) renderedIndex.current = index;
     const priceScaleWidth = Math.max(70, chart.priceScale("right").width());
     let chartAlive = true;
     const markManualScale = (event: PointerEvent) => {
@@ -428,11 +421,6 @@ export function ReplayChart({
       chartAlive = false;
       const range = chart.timeScale().getVisibleLogicalRange();
       savedLogicalRange.current = range;
-      if (range) {
-        const from = logicalToTime(range.from, candleStore.candles);
-        const to = logicalToTime(range.to, candleStore.candles);
-        if (from != null && to != null) savedTimeRange.current = { from, to };
-      }
       savedCandleInterval.current = candleInterval;
       if (range) followRealtime.current = Math.abs(range.to - (candleStore.candles.length - 1)) < 0.75;
       if (manualPriceScale.current) savedPriceRange.current = cs.priceScale().getVisibleRange();
