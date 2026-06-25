@@ -177,30 +177,48 @@ main {
 
 .drawing-tools {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 2px;
   border-left: 1px solid #282b35;
-  padding-left: 16px;
+  padding-left: 12px;
 }
 
 .drawing-tool-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
   padding: 0;
-  border-radius: 6px;
-  color: #7f8494;
+  border-radius: 4px;
+  color: #d1d4dc;
 }
 
 .drawing-tool-btn:hover {
-  background: #1c1f28 !important;
-  color: #d7d9e2 !important;
+  background: #2a2e39 !important;
+  color: #f0f3fa !important;
 }
 
 .drawing-tool-btn.is-active {
-  background: #25213f !important;
-  color: #9b8cff !important;
+  background: #363a45 !important;
+  color: #ffffff !important;
+}
+
+.drawing-tool-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  line-height: 0;
+  pointer-events: none;
+}
+
+.drawing-tool-icon svg,
+.drawing-tool-icon__svg {
+  width: 28px;
+  height: 28px;
+  display: block;
 }
 
 /* Trend Line SVG Overlay */
