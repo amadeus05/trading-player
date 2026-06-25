@@ -37,7 +37,8 @@ export function PlayerPage() {
     [journal, setJournal] = useState(false),
     [settingsOpen, setSettingsOpen] = useState(false),
     [loadedMarket, setLoadedMarket] = useState<Dataset | null>(null),
-    [drawingMode, setDrawingMode] = useState<DrawingMode>("none");
+    [drawingMode, setDrawingMode] = useState<DrawingMode>("none"),
+    [drawingsVisible, setDrawingsVisible] = useState(true);
   useEffect(() => {
     const release = () => { chartInteractionActive.current = false; };
     window.addEventListener("pointerup", release);
@@ -162,12 +163,14 @@ export function PlayerPage() {
             datasetId={dataset}
             timeframe={tf}
             drawingMode={drawingMode}
+            drawingsVisible={drawingsVisible}
             onDatasetChange={(nextDataset) => {
               setDataset(nextDataset);
               setIdx(120);
             }}
             onTimeframeChange={changeTimeframe}
             onDrawingModeChange={setDrawingMode}
+            onDrawingsVisibleChange={setDrawingsVisible}
           />
           <div className="chartWrap">
             {candles.length ? (
@@ -189,6 +192,7 @@ export function PlayerPage() {
                 drawingActions={drawingActions}
                 drawingMode={drawingMode}
                 datasetId={dataset}
+                drawingsVisible={drawingsVisible}
                 onDrawingComplete={() => setDrawingMode("none")}
                 onInteractionChange={(active) => { chartInteractionActive.current = active; }}
               />

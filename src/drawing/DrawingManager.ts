@@ -1,6 +1,22 @@
 import type { DrawingMode } from "./shared/types";
+import { cloneClipboardItem, type DrawingClipboardItem } from "./shared/clipboard";
 
 export type DrawingSelectionKind = "trendline" | "rectangle" | "fibonacci" | "fibtrendext" | "parallelchannel";
+
+export interface DrawingSelectionBridge {
+  getSelected: () => DrawingClipboardItem | null;
+  deleteSelected: () => void;
+  paste: (item: DrawingClipboardItem) => void;
+  cancelDrawing?: () => boolean;
+}
+
+const MODE_TO_KIND: Partial<Record<DrawingMode, DrawingSelectionKind>> = {
+  trendline: "trendline",
+  rectangle: "rectangle",
+  fibonacci: "fibonacci",
+  fibtrendext: "fibtrendext",
+  parallelchannel: "parallelchannel",
+};
 
 /**
  * Owns interaction priority for every drawing tool attached to one chart.
@@ -11,13 +27,21 @@ export class DrawingManager {
   private mode: DrawingMode = "none";
   private selectedOverlay: SVGSVGElement | null = null;
   private activeKind: DrawingSelectionKind | null = null;
+  private activeId: string | null = null;
   private deselectByKind = new Map<DrawingSelectionKind, () => void>();
+  private bridgesByKind = new Map<DrawingSelectionKind, DrawingSelectionBridge>();
   private overlaySyncById = new Map<symbol, () => void>();
   private overlayLoopId = 0;
   private pendingOverlaySyncFrame = 0;
+  private clipboard: DrawingClipboardItem | null = null;
+  private drawingsVisible = true;
+  private readonly onKeyDown: (event: KeyboardEvent) => void;
 
   constructor(private readonly container: HTMLElement) {
+    this.onKeyDown = (event) => this.handleKeyDown(event);
+    document.addEventListener("keydown", this.onKeyDown);
     this.applyMode();
+    this.setDrawingsVisible(true);
   }
 
   setMode(mode: DrawingMode): void {
@@ -37,11 +61,25 @@ export class DrawingManager {
     return !this.isDrawing();
   }
 
+  getActiveSelection(): { kind: DrawingSelectionKind; id: string } | null {
+    if (!this.activeKind || !this.activeId) return null;
+    return { kind: this.activeKind, id: this.activeId };
+  }
+
   registerDeselect(kind: DrawingSelectionKind, deselect: () => void): () => void {
     this.deselectByKind.set(kind, deselect);
     return () => {
       if (this.deselectByKind.get(kind) === deselect) {
         this.deselectByKind.delete(kind);
+      }
+    };
+  }
+
+  registerSelectionBridge(kind: DrawingSelectionKind, bridge: DrawingSelectionBridge): () => void {
+    this.bridgesByKind.set(kind, bridge);
+    return () => {
+      if (this.bridgesByKind.get(kind) === bridge) {
+        this.bridgesByKind.delete(kind);
       }
     };
   }
@@ -81,11 +119,17 @@ export class DrawingManager {
     });
   }
 
-  activateSelection(kind: DrawingSelectionKind, element: SVGElement | null): void {
+  activateSelection(kind: DrawingSelectionKind, element: SVGElement | null, id?: string | null): void {
     if (this.activeKind && this.activeKind !== kind) {
       this.deselectByKind.get(this.activeKind)?.();
     }
-    this.activeKind = kind;
+    if (id) {
+      this.activeKind = kind;
+      this.activeId = id;
+    } else {
+      this.activeKind = null;
+      this.activeId = null;
+    }
     this.selectDrawing(element);
   }
 
@@ -94,6 +138,7 @@ export class DrawingManager {
     if (this.activeKind) {
       this.deselectByKind.get(this.activeKind)?.();
       this.activeKind = null;
+      this.activeId = null;
     }
     this.selectDrawing(null);
   }
@@ -104,15 +149,75 @@ export class DrawingManager {
     this.selectedOverlay?.classList.add("drawing-overlay--selected");
   }
 
+  setDrawingsVisible(visible: boolean): void {
+    this.drawingsVisible = visible;
+    this.container.dataset.drawingsVisible = visible ? "true" : "false";
+  }
+
+  getDrawingsVisible(): boolean {
+    return this.drawingsVisible;
+  }
+
   destroy(): void {
+    document.removeEventListener("keydown", this.onKeyDown);
     this.clearSelection();
     cancelAnimationFrame(this.overlayLoopId);
     cancelAnimationFrame(this.pendingOverlaySyncFrame);
     this.overlayLoopId = 0;
     this.pendingOverlaySyncFrame = 0;
     this.overlaySyncById.clear();
+    this.bridgesByKind.clear();
     delete this.container.dataset.drawingMode;
     delete this.container.dataset.drawingActive;
+    delete this.container.dataset.drawingsVisible;
+  }
+
+  private handleKeyDown(event: KeyboardEvent): void {
+    const target = event.target;
+    if (target instanceof Element) {
+      const tag = target.tagName;
+      const editable = target instanceof HTMLElement && target.isContentEditable;
+      if (tag === "INPUT" || tag === "TEXTAREA" || editable) return;
+    }
+
+    const mod = event.ctrlKey || event.metaKey;
+
+    if (mod && event.key.toLowerCase() === "c") {
+      if (!this.activeKind) return;
+      const item = this.bridgesByKind.get(this.activeKind)?.getSelected();
+      if (!item) return;
+      event.preventDefault();
+      this.clipboard = cloneClipboardItem(item);
+      return;
+    }
+
+    if (mod && event.key.toLowerCase() === "v") {
+      if (this.isDrawing() || !this.clipboard) return;
+      event.preventDefault();
+      this.bridgesByKind.get(this.clipboard.kind)?.paste(this.clipboard);
+      return;
+    }
+
+    if (event.key === "Delete" || event.key === "Backspace") {
+      if (this.isDrawing() || !this.activeKind) return;
+      event.preventDefault();
+      this.bridgesByKind.get(this.activeKind)?.deleteSelected();
+      return;
+    }
+
+    if (event.key === "Escape") {
+      if (this.isDrawing()) {
+        const kind = MODE_TO_KIND[this.mode];
+        if (kind && this.bridgesByKind.get(kind)?.cancelDrawing?.()) {
+          event.preventDefault();
+          return;
+        }
+      }
+      if (this.activeKind) {
+        event.preventDefault();
+        this.clearSelection();
+      }
+    }
   }
 
   private applyMode(): void {

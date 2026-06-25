@@ -5,6 +5,7 @@
 import type { FibonacciRetracement } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
+import { getDefaultPasteOffset, offsetClipboardItem } from "../shared/clipboard";
 import type { DrawingLineStyle } from "../shared/DrawingToolbar";
 import { createDrawingOverlay } from "../shared/overlay";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
@@ -281,6 +282,39 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     onSync: () => syncAll(),
   });
 
+  const unregisterSelectionBridge = manager.registerSelectionBridge("fibonacci", {
+    getSelected: () => {
+      if (!selectedId) return null;
+      const fib = fibonacciRetracements.find((item) => item.id === selectedId);
+      if (!fib) return null;
+      const { id: _id, datasetId: _datasetId, ...data } = fib;
+      return { kind: "fibonacci", data };
+    },
+    deleteSelected: () => {
+      if (selectedId) deleteFib(selectedId);
+    },
+    paste: (item) => {
+      if (item.kind !== "fibonacci") return;
+      const offset = getDefaultPasteOffset(candleStore.candles);
+      const fib: FibonacciRetracement = {
+        ...offsetClipboardItem(item, offset).data,
+        id: crypto.randomUUID(),
+        datasetId,
+      };
+      fibonacciRetracements.push(fib);
+      callbacks.onCreate(fib);
+      selectFib(fib.id);
+    },
+    cancelDrawing: () => {
+      if (!drawPoint1) return false;
+      drawPoint1 = null;
+      window.removeEventListener("pointermove", handleDrawPointerMove);
+      clearGhost();
+      callbacks.onDrawingComplete();
+      return true;
+    },
+  });
+
   function selectFib(id: string | null) {
     if (!id) {
       if (selectedId !== null) {
@@ -294,7 +328,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     selectedId = id;
     const fib = fibonacciRetracements.find((item) => item.id === id);
     if (fib) createToolbar(fib);
-    manager.activateSelection("fibonacci", elMap.get(id)?.group ?? null);
+    manager.activateSelection("fibonacci", elMap.get(id)?.group ?? null, id);
     syncAll();
   }
 
@@ -784,37 +818,6 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     if (selectedId) selectFib(null);
   }
 
-  function handleKeyDown(event: KeyboardEvent) {
-    if (event.key === "Delete" || event.key === "Backspace") {
-      if ((event.target as Element)?.tagName === "INPUT" || (event.target as Element)?.tagName === "TEXTAREA") return;
-      if (selectedId) {
-        event.preventDefault();
-        deleteFib(selectedId);
-      }
-    }
-    if (event.key === "Escape") {
-      if (drawPoint1) {
-        drawPoint1 = null;
-        window.removeEventListener("pointermove", handleDrawPointerMove);
-        clearGhost();
-        callbacks.onDrawingComplete();
-      }
-      if (selectedId) selectFib(null);
-    }
-  }
-
-  syncAll();
-  manager.ensureOverlayLoop();
-
-  const onVisibleRangeChange = () => {
-    if (!dragActive) manager.scheduleOverlaySync();
-  };
-  chart.timeScale().subscribeVisibleLogicalRangeChange(onVisibleRangeChange);
-  container.addEventListener("wheel", handleScaleWheel, { capture: true, passive: true });
-  container.addEventListener("pointerdown", handlePointerDown, { capture: true });
-  window.addEventListener("pointerup", handlePointerUp);
-  window.addEventListener("pointercancel", handlePointerUp);
-
   const unregisterDeselect = manager.registerDeselect("fibonacci", () => {
     if (selectedId === null) return;
     selectedId = null;
@@ -827,11 +830,21 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   });
   manager.ensureOverlayLoop();
 
+  syncAll();
+
+  const onVisibleRangeChange = () => {
+    if (!dragActive) manager.scheduleOverlaySync();
+  };
+  chart.timeScale().subscribeVisibleLogicalRangeChange(onVisibleRangeChange);
+  container.addEventListener("wheel", handleScaleWheel, { capture: true, passive: true });
+  container.addEventListener("pointerdown", handlePointerDown, { capture: true });
+  window.addEventListener("pointerup", handlePointerUp);
+  window.addEventListener("pointercancel", handlePointerUp);
+
   if (drawingMode === "fibonacci") {
     chart.subscribeClick(handleDrawClick);
   }
   container.addEventListener("pointerdown", handleBackgroundClick);
-  document.addEventListener("keydown", handleKeyDown);
 
   return () => {
     cancelAnimationFrame(dragRaf);
@@ -839,6 +852,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     cancelAnimationFrame(interactionSyncRaf);
     cancelAnimationFrame(finalSyncRaf);
     window.clearTimeout(wheelSyncTimer);
+    unregisterSelectionBridge();
     unregisterDeselect();
     unregisterOverlaySync();
     try { chart.unsubscribeClick(handleDrawClick); } catch { }
@@ -849,7 +863,6 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     window.removeEventListener("pointercancel", handlePointerUp);
     window.removeEventListener("pointermove", handleDrawPointerMove);
     container.removeEventListener("pointerdown", handleBackgroundClick);
-    document.removeEventListener("keydown", handleKeyDown);
     overlay.remove();
     toolbarController.destroy();
     removeToolbar();

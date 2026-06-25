@@ -6,6 +6,7 @@
 import type { ParallelChannel } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
+import { getDefaultPasteOffset, offsetClipboardItem } from "../shared/clipboard";
 import { createDrawingOverlay } from "../shared/overlay";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 
@@ -341,6 +342,39 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     onSync: () => syncAll(),
   });
 
+  const unregisterSelectionBridge = manager.registerSelectionBridge("parallelchannel", {
+    getSelected: () => {
+      if (!selectedId) return null;
+      const channel = parallelChannels.find((item) => item.id === selectedId);
+      if (!channel) return null;
+      const { id: _id, datasetId: _datasetId, ...data } = channel;
+      return { kind: "parallelchannel", data };
+    },
+    deleteSelected: () => {
+      if (selectedId) deleteChannel(selectedId);
+    },
+    paste: (item) => {
+      if (item.kind !== "parallelchannel") return;
+      const offset = getDefaultPasteOffset(candleStore.candles);
+      const channel: ParallelChannel = {
+        ...offsetClipboardItem(item, offset).data,
+        id: crypto.randomUUID(),
+        datasetId,
+      };
+      parallelChannels.push(channel);
+      callbacks.onCreate(channel);
+      selectChannel(channel.id);
+    },
+    cancelDrawing: () => {
+      if (!drawPoint1) return false;
+      drawPoint1 = null;
+      drawPoint2 = null;
+      removeGhost();
+      callbacks.onDrawingComplete();
+      return true;
+    },
+  });
+
   function selectChannel(id: string | null) {
     if (!id) {
       if (selectedId !== null) {
@@ -354,7 +388,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     selectedId = id;
     const channel = parallelChannels.find((item) => item.id === id);
     if (channel) createToolbar(channel);
-    manager.activateSelection("parallelchannel", elMap.get(id)?.group ?? null);
+    manager.activateSelection("parallelchannel", elMap.get(id)?.group ?? null, id);
     syncAll();
   }
 
@@ -916,25 +950,6 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     if (selectedId) selectChannel(null);
   }
 
-  function handleKeyDown(event: KeyboardEvent) {
-    if ((event.target as Element)?.tagName === "INPUT" || (event.target as Element)?.tagName === "TEXTAREA") return;
-    if (event.key === "Delete" || event.key === "Backspace") {
-      if (selectedId) {
-        event.preventDefault();
-        deleteChannel(selectedId);
-      }
-    }
-    if (event.key === "Escape") {
-      if (drawPoint1) {
-        drawPoint1 = null;
-        drawPoint2 = null;
-        removeGhost();
-        callbacks.onDrawingComplete();
-      }
-      if (selectedId) selectChannel(null);
-    }
-  }
-
   const unregisterDeselect = manager.registerDeselect("parallelchannel", () => {
     if (selectedId === null) return;
     selectedId = null;
@@ -951,16 +966,15 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   }
   container.addEventListener("mousemove", handleMouseMove);
   container.addEventListener("pointerdown", handleBackgroundClick);
-  document.addEventListener("keydown", handleKeyDown);
 
   return () => {
     cancelAnimationFrame(dragRaf);
+    unregisterSelectionBridge();
     unregisterDeselect();
     unregisterOverlaySync();
     try { chart.unsubscribeClick(handleDrawClick); } catch { /* noop */ }
     container.removeEventListener("mousemove", handleMouseMove);
     container.removeEventListener("pointerdown", handleBackgroundClick);
-    document.removeEventListener("keydown", handleKeyDown);
     overlay.remove();
     toolbarController.destroy();
     removeToolbar();

@@ -6,6 +6,7 @@
 import type { FibonacciTrendExtension } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
+import { getDefaultPasteOffset, offsetClipboardItem } from "../shared/clipboard";
 import type { DrawingLineStyle } from "../shared/DrawingToolbar";
 import { createDrawingOverlay } from "../shared/overlay";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
@@ -315,6 +316,40 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     onSync: () => syncAll(),
   });
 
+  const unregisterSelectionBridge = manager.registerSelectionBridge("fibtrendext", {
+    getSelected: () => {
+      if (!selectedId) return null;
+      const fib = fibonacciTrendExtensions.find((item) => item.id === selectedId);
+      if (!fib) return null;
+      const { id: _id, datasetId: _datasetId, ...data } = fib;
+      return { kind: "fibtrendext", data };
+    },
+    deleteSelected: () => {
+      if (selectedId) deleteFib(selectedId);
+    },
+    paste: (item) => {
+      if (item.kind !== "fibtrendext") return;
+      const offset = getDefaultPasteOffset(candleStore.candles);
+      const fib: FibonacciTrendExtension = {
+        ...offsetClipboardItem(item, offset).data,
+        id: crypto.randomUUID(),
+        datasetId,
+      };
+      fibonacciTrendExtensions.push(fib);
+      callbacks.onCreate(fib);
+      selectFib(fib.id);
+    },
+    cancelDrawing: () => {
+      if (!drawPoint1 && !drawPoint2) return false;
+      drawPoint1 = null;
+      drawPoint2 = null;
+      window.removeEventListener("pointermove", handleDrawPointerMove);
+      clearGhost();
+      callbacks.onDrawingComplete();
+      return true;
+    },
+  });
+
   function selectFib(id: string | null) {
     if (!id) {
       if (selectedId !== null) {
@@ -328,7 +363,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     selectedId = id;
     const fib = fibonacciTrendExtensions.find((item) => item.id === id);
     if (fib) createToolbar(fib);
-    manager.activateSelection("fibtrendext", elMap.get(id)?.group ?? null);
+    manager.activateSelection("fibtrendext", elMap.get(id)?.group ?? null, id);
     syncAll();
   }
 
@@ -1027,26 +1062,6 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     if (selectedId) selectFib(null);
   }
 
-  function handleKeyDown(event: KeyboardEvent) {
-    if (event.key === "Delete" || event.key === "Backspace") {
-      if ((event.target as Element)?.tagName === "INPUT" || (event.target as Element)?.tagName === "TEXTAREA") return;
-      if (selectedId) {
-        event.preventDefault();
-        deleteFib(selectedId);
-      }
-    }
-    if (event.key === "Escape") {
-      if (drawPoint1 || drawPoint2) {
-        drawPoint1 = null;
-        drawPoint2 = null;
-        window.removeEventListener("pointermove", handleDrawPointerMove);
-        clearGhost();
-        callbacks.onDrawingComplete();
-      }
-      if (selectedId) selectFib(null);
-    }
-  }
-
   syncAll();
   manager.ensureOverlayLoop();
 
@@ -1075,7 +1090,6 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     chart.subscribeClick(handleDrawClick);
   }
   container.addEventListener("pointerdown", handleBackgroundClick);
-  document.addEventListener("keydown", handleKeyDown);
 
   return () => {
     cancelAnimationFrame(dragRaf);
@@ -1083,6 +1097,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     cancelAnimationFrame(interactionSyncRaf);
     cancelAnimationFrame(finalSyncRaf);
     window.clearTimeout(wheelSyncTimer);
+    unregisterSelectionBridge();
     unregisterDeselect();
     unregisterOverlaySync();
     try { chart.unsubscribeClick(handleDrawClick); } catch { }
@@ -1093,7 +1108,6 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     window.removeEventListener("pointercancel", handlePointerUp);
     window.removeEventListener("pointermove", handleDrawPointerMove);
     container.removeEventListener("pointerdown", handleBackgroundClick);
-    document.removeEventListener("keydown", handleKeyDown);
     overlay.remove();
     toolbarController.destroy();
     removeToolbar();

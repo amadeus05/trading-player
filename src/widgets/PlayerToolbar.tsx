@@ -11,9 +11,11 @@ interface PlayerToolbarProps {
   datasetId: string;
   timeframe: number;
   drawingMode: DrawingMode;
+  drawingsVisible: boolean;
   onDatasetChange: (datasetId: string) => void;
   onTimeframeChange: (timeframe: number) => void;
   onDrawingModeChange: (mode: DrawingMode) => void;
+  onDrawingsVisibleChange: (visible: boolean) => void;
 }
 
 export function PlayerToolbar({
@@ -21,9 +23,11 @@ export function PlayerToolbar({
   datasetId,
   timeframe,
   drawingMode,
+  drawingsVisible,
   onDatasetChange,
   onTimeframeChange,
   onDrawingModeChange,
+  onDrawingsVisibleChange,
 }: PlayerToolbarProps) {
   const toggleDrawingMode = (mode: DrawingMode) => {
     onDrawingModeChange(drawingMode === mode ? "none" : mode);
@@ -68,6 +72,26 @@ export function PlayerToolbar({
         </Button>
         <Button type="text" className={`drawing-tool-btn ${drawingMode === "measure" ? "is-active" : ""}`} onClick={() => toggleDrawingMode("measure")} title="Линейка">
           <DrawingToolIcon mode="measure" />
+        </Button>
+        <Button
+          type="text"
+          className={`drawing-tool-btn ${drawingsVisible ? "" : "is-active"}`}
+          onClick={() => onDrawingsVisibleChange(!drawingsVisible)}
+          title={drawingsVisible ? "Скрыть рисунки" : "Показать рисунки"}
+        >
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+            {drawingsVisible ? (
+              <>
+                <path d="M1.5 9s2.8-5 7.5-5 7.5 5 7.5 5-2.8 5-7.5 5S1.5 9 1.5 9z" stroke="currentColor" strokeWidth="1.4"/>
+                <circle cx="9" cy="9" r="2.2" stroke="currentColor" strokeWidth="1.4"/>
+              </>
+            ) : (
+              <>
+                <path d="M3 3l12 12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                <path d="M1.5 9s2.8-5 7.5-5c1.6 0 3 .5 4.1 1.2M16.5 9s-2.8 5-7.5 5c-1.6 0-3-.5-4.1-1.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+              </>
+            )}
+          </svg>
         </Button>
       </div>
     </div>

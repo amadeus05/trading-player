@@ -512,6 +512,18 @@ g[data-channel-id].selected .pc-edge-line {
   overflow: hidden;
 }
 
+.chart[data-drawings-visible="false"] svg[data-drawing-overlay] {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+.chart[data-drawings-visible="false"] .rect-toolbar,
+.chart[data-drawings-visible="false"] .trend-toolbar,
+.chart[data-drawings-visible="false"] .trend-text-editor,
+.chart[data-drawings-visible="false"] .rect-inline-text-editor {
+  display: none !important;
+}
+
 .closed-trades-overlay {
   position: absolute;
   inset: 0;

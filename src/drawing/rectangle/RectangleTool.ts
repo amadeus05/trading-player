@@ -5,6 +5,7 @@
 import type { Rectangle } from "../../types";
 import { snapXToNearestCandle, timeToX, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
+import { getDefaultPasteOffset, offsetClipboardItem } from "../shared/clipboard";
 import { createDrawingOverlay } from "../shared/overlay";
 import { forgetFloatingPanelPosition } from "../shared/floatingPanel";
 import type { DrawingCrudCallbacks, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
@@ -336,6 +337,40 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     onSync: () => syncAll(),
   });
 
+  const unregisterSelectionBridge = manager.registerSelectionBridge("rectangle", {
+    getSelected: () => {
+      if (!selectedId) return null;
+      const rect = rectangles.find((item) => item.id === selectedId);
+      if (!rect) return null;
+      const { id: _id, datasetId: _datasetId, ...data } = rect;
+      return { kind: "rectangle", data };
+    },
+    deleteSelected: () => {
+      if (selectedId) deleteRect(selectedId);
+    },
+    paste: (item) => {
+      if (item.kind !== "rectangle") return;
+      const offset = getDefaultPasteOffset(candleStore.candles);
+      const rect: Rectangle = {
+        ...offsetClipboardItem(item, offset).data,
+        id: crypto.randomUUID(),
+        datasetId,
+      };
+      rectangles.push(rect);
+      callbacks.onCreate(rect);
+      selectRect(rect.id);
+    },
+    cancelDrawing: () => {
+      if (!isDrawing) return false;
+      isDrawing = false;
+      drawStart = null;
+      ghostRect?.remove();
+      ghostRect = null;
+      callbacks.onDrawingComplete();
+      return true;
+    },
+  });
+
   function selectRect(id: string | null) {
     if (!id) {
       if (selectedId !== null) {
@@ -349,7 +384,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     selectedId = id;
     const r = rectangles.find((item) => item.id === id);
     if (r) createToolbar(r);
-    manager.activateSelection("rectangle", elMap.get(id)?.group ?? null);
+    manager.activateSelection("rectangle", elMap.get(id)?.group ?? null, id);
     syncAll();
   }
 
@@ -599,25 +634,6 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
   };
   container.addEventListener("pointerdown", onBgPointerDown);
 
-  const onKey = (e: KeyboardEvent) => {
-    const tag = (e.target as Element)?.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA") return;
-    if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
-      e.preventDefault();
-      deleteRect(selectedId);
-    }
-    if (e.key === "Escape") {
-      if (isDrawing) {
-        isDrawing = false;
-        drawStart = null;
-        ghostRect?.remove(); ghostRect = null;
-        callbacks.onDrawingComplete();
-      }
-      if (selectedId) selectRect(null);
-    }
-  };
-  document.addEventListener("keydown", onKey);
-
   const unregisterDeselect = manager.registerDeselect("rectangle", () => {
     if (selectedId === null) return;
     selectedId = null;
@@ -632,10 +648,10 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
 
   return () => {
     cancelAnimationFrame(dragRaf);
+    unregisterSelectionBridge();
     unregisterDeselect();
     unregisterOverlaySync();
     container.removeEventListener("pointerdown", onBgPointerDown);
-    document.removeEventListener("keydown", onKey);
     drawOverlay?.remove();
     overlay.remove();
     toolbarController.destroy();

@@ -9,6 +9,7 @@ import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/co
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
 import { createTrendLineExtendSlots } from "./trendLineToolbarSlots";
 import { createDrawingOverlay } from "../shared/overlay";
+import { getDefaultPasteOffset, offsetClipboardItem } from "../shared/clipboard";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 export type { DrawingMode } from "../shared/types";
 
@@ -242,6 +243,38 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     onTextButtonClick: (tl, anchor) => openTrendLineTextEditor(tl, anchor),
   });
 
+  const unregisterSelectionBridge = manager.registerSelectionBridge("trendline", {
+    getSelected: () => {
+      if (!selectedId) return null;
+      const line = trendLines.find((item) => item.id === selectedId);
+      if (!line) return null;
+      const { id: _id, datasetId: _datasetId, ...data } = line;
+      return { kind: "trendline", data };
+    },
+    deleteSelected: () => {
+      if (selectedId) deleteLine(selectedId);
+    },
+    paste: (item) => {
+      if (item.kind !== "trendline") return;
+      const offset = getDefaultPasteOffset(candleStore.candles);
+      const line: TrendLine = {
+        ...offsetClipboardItem(item, offset).data,
+        id: crypto.randomUUID(),
+        datasetId,
+      };
+      trendLines.push(line);
+      callbacks.onCreate(line);
+      selectLine(line.id);
+    },
+    cancelDrawing: () => {
+      if (!drawPoint1) return false;
+      drawPoint1 = null;
+      if (ghostLine) { ghostLine.remove(); ghostLine = null; }
+      callbacks.onDrawingComplete();
+      return true;
+    },
+  });
+
   function selectLine(id: string | null) {
     if (!id) {
       if (selectedId !== null) {
@@ -257,7 +290,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     onSelect?.(id);
     const tl = trendLines.find((l) => l.id === id);
     if (tl) createToolbar(tl);
-    manager.activateSelection("trendline", lineElements.get(id)?.group ?? null);
+    manager.activateSelection("trendline", lineElements.get(id)?.group ?? null, id);
     syncAll();
   }
 
@@ -630,26 +663,6 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     }
   }
 
-  /* ---- Delete key ---- */
-  function handleKeyDown(event: KeyboardEvent) {
-    if (event.key === "Delete" || event.key === "Backspace") {
-      // Don't delete if user is typing in an input
-      if ((event.target as Element)?.tagName === "INPUT" || (event.target as Element)?.tagName === "TEXTAREA") return;
-      if (selectedId) {
-        event.preventDefault();
-        deleteLine(selectedId);
-      }
-    }
-    if (event.key === "Escape") {
-      if (drawPoint1) {
-        drawPoint1 = null;
-        if (ghostLine) { ghostLine.remove(); ghostLine = null; }
-        callbacks.onDrawingComplete();
-      }
-      if (selectedId) selectLine(null);
-    }
-  }
-
   const unregisterDeselect = manager.registerDeselect("trendline", () => {
     if (selectedId === null) return;
     selectedId = null;
@@ -668,17 +681,16 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
   }
   container.addEventListener("mousemove", handleMouseMove);
   container.addEventListener("pointerdown", handleBackgroundClick);
-  document.addEventListener("keydown", handleKeyDown);
 
   /* ---- Cleanup ---- */
   return () => {
     cancelAnimationFrame(dragRaf);
+    unregisterSelectionBridge();
     unregisterDeselect();
     unregisterOverlaySync();
     try { chart.unsubscribeClick(handleDrawClick); } catch { }
     container.removeEventListener("mousemove", handleMouseMove);
     container.removeEventListener("pointerdown", handleBackgroundClick);
-    document.removeEventListener("keydown", handleKeyDown);
     overlay.remove();
     toolbarController.destroy();
     removeToolbar();

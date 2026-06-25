@@ -69,6 +69,7 @@ interface ReplayChartProps {
   drawingActions: DrawingActions;
   drawingMode: DrawingMode;
   datasetId: string;
+  drawingsVisible: boolean;
   onDrawingComplete: () => void;
 }
 
@@ -91,6 +92,7 @@ export function ReplayChart({
   drawingActions,
   drawingMode,
   datasetId,
+  drawingsVisible,
   onDrawingComplete,
 }: ReplayChartProps) {
   const ref = useRef<HTMLDivElement>(null);
@@ -105,6 +107,7 @@ export function ReplayChart({
   const chartRuntimeRef = useRef<{
     applyReplayIndex: (nextIndex: number, allCandles: Candle[]) => void;
     syncOverlays: () => void;
+    setDrawingsVisible: (visible: boolean) => void;
   } | null>(null);
   const prevReplayIndexRef = useRef(index);
   const previousDrawingModeRef = useRef(drawingMode);
@@ -161,6 +164,7 @@ export function ReplayChart({
     });
     const drawingManager = new DrawingManager(ref.current);
     drawingManager.setMode(drawingMode);
+    drawingManager.setDrawingsVisible(drawingsVisible);
     const cs = chart.addSeries(CandlestickSeries, {
       upColor: "#2bd9a8",
       downColor: "#ff5c73",
@@ -320,6 +324,7 @@ export function ReplayChart({
     chartRuntimeRef.current = {
       applyReplayIndex,
       syncOverlays: () => drawingManager.scheduleOverlaySync(),
+      setDrawingsVisible: (visible) => drawingManager.setDrawingsVisible(visible),
     };
     prevReplayIndexRef.current = index;
     const cleanupTrendLines = attachTrendLineTool({
@@ -446,6 +451,10 @@ export function ReplayChart({
       chartRuntimeRef.current = null;
     };
   }, [candles, barriers, trades, selectingStart, focusRevision, pricePrecision, entryMarker, showClosedTradeOverlays, markersEditable, drawingMode, datasetId]);
+
+  useLayoutEffect(() => {
+    chartRuntimeRef.current?.setDrawingsVisible(drawingsVisible);
+  }, [drawingsVisible]);
 
   useLayoutEffect(() => {
     if (prevReplayIndexRef.current === index) return;
