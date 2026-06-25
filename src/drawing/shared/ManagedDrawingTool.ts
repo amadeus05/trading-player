@@ -149,3 +149,88 @@ export function startPointerDragSession(
     if (dragRaf) cancelAnimationFrame(dragRaf);
   };
 }
+
+export function runManagedDragSession(
+  startEvent: PointerEvent,
+  onDragActiveChange: (active: boolean) => void,
+  options: PointerDragSessionOptions,
+): () => void {
+  onDragActiveChange(true);
+  return startPointerDragSession(startEvent, {
+    ...options,
+    onEnd: (event, moved) => {
+      onDragActiveChange(false);
+      options.onEnd(event, moved);
+    },
+  });
+}
+
+export interface ScaleInteractionSyncOptions {
+  isDragActive: () => boolean;
+  syncAll: () => void;
+  shouldIgnorePointerDown?: (target: Element) => boolean;
+  wheelDebounceMs?: number;
+}
+
+export interface ScaleInteractionSyncHandle {
+  handleScaleWheel: () => void;
+  handlePointerDown: (event: PointerEvent) => void;
+  handlePointerUp: () => void;
+  destroy: () => void;
+}
+
+/** Keeps fibonacci-style overlays in sync while the price/time scale animates. */
+export function attachScaleInteractionSync(options: ScaleInteractionSyncOptions): ScaleInteractionSyncHandle {
+  let interactionSyncRaf = 0;
+  let finalSyncRaf = 0;
+  let wheelSyncTimer = 0;
+
+  const runInteractionSync = () => {
+    if (options.isDragActive()) {
+      interactionSyncRaf = 0;
+      return;
+    }
+    options.syncAll();
+    interactionSyncRaf = requestAnimationFrame(runInteractionSync);
+  };
+
+  const startInteractionSync = () => {
+    if (!interactionSyncRaf) interactionSyncRaf = requestAnimationFrame(runInteractionSync);
+  };
+
+  const stopInteractionSync = () => {
+    if (interactionSyncRaf) cancelAnimationFrame(interactionSyncRaf);
+    interactionSyncRaf = 0;
+    if (finalSyncRaf) cancelAnimationFrame(finalSyncRaf);
+    finalSyncRaf = requestAnimationFrame(() => {
+      finalSyncRaf = 0;
+      if (!options.isDragActive()) options.syncAll();
+    });
+  };
+
+  return {
+    handleScaleWheel: () => {
+      options.syncAll();
+      startInteractionSync();
+      window.clearTimeout(wheelSyncTimer);
+      wheelSyncTimer = window.setTimeout(stopInteractionSync, options.wheelDebounceMs ?? 150);
+    },
+    handlePointerDown: (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (options.shouldIgnorePointerDown?.(target)) return;
+      startInteractionSync();
+    },
+    handlePointerUp: () => {
+      if (options.isDragActive()) return;
+      stopInteractionSync();
+    },
+    destroy: () => {
+      window.clearTimeout(wheelSyncTimer);
+      if (interactionSyncRaf) cancelAnimationFrame(interactionSyncRaf);
+      if (finalSyncRaf) cancelAnimationFrame(finalSyncRaf);
+      interactionSyncRaf = 0;
+      finalSyncRaf = 0;
+    },
+  };
+}

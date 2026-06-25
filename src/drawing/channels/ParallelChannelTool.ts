@@ -6,7 +6,7 @@
 import type { ParallelChannel } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
-import { attachManagedDrawingLifecycle, createClipboardBridge } from "../shared/ManagedDrawingTool";
+import { attachManagedDrawingLifecycle, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import { createDrawingOverlay } from "../shared/overlay";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 
@@ -194,7 +194,6 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   let drawPoint1: { time: number; price: number } | null = null;
   let drawPoint2: { time: number; price: number } | null = null;
   let dragActive = false;
-  let dragRaf = 0;
 
   let ghostBaseLine: SVGLineElement | null = null;
   let ghostFill: SVGPolygonElement | null = null;
@@ -622,73 +621,51 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   function startDragWidth(id: string, startEvent: PointerEvent, rail: WidthDragRail) {
     const channel = parallelChannels.find((item) => item.id === id);
     if (!channel) return;
-    dragActive = true;
     const rect = container.getBoundingClientRect();
     const originalP1 = toPixel(channel.point1);
     const originalP2 = toPixel(channel.point2);
     const originalWp = toPixel(channel.widthPoint);
-    if (!originalP1 || !originalP2 || !originalWp) {
-      dragActive = false;
-      return;
-    }
+    if (!originalP1 || !originalP2 || !originalWp) return;
     const startOffset = originalWp.y - originalP2.y;
     const startCursor = {
       x: startEvent.clientX - rect.left,
       y: startEvent.clientY - rect.top,
     };
-    let moved = false;
-    const target = startEvent.target as Element;
-    target.setPointerCapture?.(startEvent.pointerId);
-
     let latestEvent: PointerEvent | null = null;
-    const renderMove = () => {
-      dragRaf = 0;
-      const event = latestEvent;
-      if (!event) return;
-      moved = true;
-      const cursor = {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
-      };
-      previewWidthDrag(channel, originalP1, originalP2, startOffset, startCursor, cursor, rail);
-    };
-    const onMove = (event: PointerEvent) => {
-      latestEvent = event;
-      if (!dragRaf) dragRaf = requestAnimationFrame(renderMove);
-    };
-    const onUp = (event: PointerEvent) => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      if (dragRaf) {
-        cancelAnimationFrame(dragRaf);
-        dragRaf = 0;
-        renderMove();
-      }
-      dragActive = false;
-      target.releasePointerCapture?.(event.pointerId);
-      const current = parallelChannels.find((item) => item.id === id);
-      if (current && moved && latestEvent) {
+    runManagedDragSession(startEvent, (active) => { dragActive = active; }, {
+      target: startEvent.target as Element,
+      onMove: (event) => {
+        latestEvent = event;
         const cursor = {
-          x: latestEvent.clientX - rect.left,
-          y: latestEvent.clientY - rect.top,
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top,
         };
-        const next = widthDragGeometry(originalP1, originalP2, startOffset, startCursor, cursor, rail);
-        if (!next) return;
-        const wp = pointOnParallel(next.p1, next.p2, next.offset, 1);
-        const p1Data = pixelToDataPoint(next.p1);
-        const p2Data = pixelToDataPoint(next.p2);
-        const wpData = wp ? pixelToDataPoint(wp) : null;
-        if (p1Data && p2Data && wpData) {
-          current.point1 = p1Data;
-          current.point2 = p2Data;
-          current.widthPoint = wpData;
-          callbacks.onUpdate(current);
+        previewWidthDrag(channel, originalP1, originalP2, startOffset, startCursor, cursor, rail);
+      },
+      onEnd: (_event, moved) => {
+        const current = parallelChannels.find((item) => item.id === id);
+        if (current && moved && latestEvent) {
+          const cursor = {
+            x: latestEvent.clientX - rect.left,
+            y: latestEvent.clientY - rect.top,
+          };
+          const next = widthDragGeometry(originalP1, originalP2, startOffset, startCursor, cursor, rail);
+          if (next) {
+            const wp = pointOnParallel(next.p1, next.p2, next.offset, 1);
+            const p1Data = pixelToDataPoint(next.p1);
+            const p2Data = pixelToDataPoint(next.p2);
+            const wpData = wp ? pixelToDataPoint(wp) : null;
+            if (p1Data && p2Data && wpData) {
+              current.point1 = p1Data;
+              current.point2 = p2Data;
+              current.widthPoint = wpData;
+              callbacks.onUpdate(current);
+            }
+          }
         }
-      }
-      syncAll();
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp, { once: true });
+        syncAll();
+      },
+    });
   }
 
   function startDragCorner(
@@ -698,56 +675,19 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   ) {
     const channel = parallelChannels.find((item) => item.id === id);
     if (!channel) return;
-    dragActive = true;
     const rect = container.getBoundingClientRect();
     const originalP1 = toPixel(channel.point1);
     const originalP2 = toPixel(channel.point2);
     const originalWp = toPixel(channel.widthPoint);
-    if (!originalP1 || !originalP2 || !originalWp) {
-      dragActive = false;
-      return;
-    }
+    if (!originalP1 || !originalP2 || !originalWp) return;
     const offset = originalWp.y - originalP2.y;
-    let moved = false;
-    const target = startEvent.currentTarget as Element;
-    target.setPointerCapture?.(startEvent.pointerId);
-
     let latestEvent: PointerEvent | null = null;
-    const renderMove = () => {
-      dragRaf = 0;
-      const event = latestEvent;
-      if (!event) return;
-      moved = true;
-      const x = snapXToNearestCandle(chart, event.clientX - rect.left);
-      const y = event.clientY - rect.top;
-      const cursor = { x, y };
-      const baseCursor = corner.startsWith("edge2")
-        ? { x: cursor.x, y: cursor.y - offset }
-        : cursor;
-      const movesPoint1 = corner.endsWith("Start");
-      const nextP1 = movesPoint1 ? baseCursor : originalP1;
-      const nextP2 = movesPoint1 ? originalP2 : baseCursor;
-      const nextWp = pointOnParallel(nextP1, nextP2, offset, 1) ?? originalWp;
-      previewAtPixels(channel, nextP1, nextP2, nextWp);
-    };
-    const onMove = (event: PointerEvent) => {
-      latestEvent = event;
-      if (!dragRaf) dragRaf = requestAnimationFrame(renderMove);
-    };
-    const onUp = (event: PointerEvent) => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      if (dragRaf) {
-        cancelAnimationFrame(dragRaf);
-        dragRaf = 0;
-        renderMove();
-      }
-      dragActive = false;
-      target.releasePointerCapture?.(event.pointerId);
-      const current = parallelChannels.find((item) => item.id === id);
-      if (current && moved && latestEvent) {
-        const x = snapXToNearestCandle(chart, latestEvent.clientX - rect.left);
-        const y = latestEvent.clientY - rect.top;
+    runManagedDragSession(startEvent, (active) => { dragActive = active; }, {
+      target: startEvent.currentTarget as Element,
+      onMove: (event) => {
+        latestEvent = event;
+        const x = snapXToNearestCandle(chart, event.clientX - rect.left);
+        const y = event.clientY - rect.top;
         const cursor = { x, y };
         const baseCursor = corner.startsWith("edge2")
           ? { x: cursor.x, y: cursor.y - offset }
@@ -755,27 +695,40 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
         const movesPoint1 = corner.endsWith("Start");
         const nextP1 = movesPoint1 ? baseCursor : originalP1;
         const nextP2 = movesPoint1 ? originalP2 : baseCursor;
-        const p1Data = movesPoint1 ? pixelToDataPoint(baseCursor) : current.point1;
-        const p2Data = movesPoint1 ? current.point2 : pixelToDataPoint(baseCursor);
-        const nextWp = pointOnParallel(nextP1, nextP2, offset, 1);
-        const wpData = nextWp ? pixelToDataPoint(nextWp) : null;
-        if (p1Data && p2Data && wpData) {
-          current.point1 = p1Data;
-          current.point2 = p2Data;
-          current.widthPoint = wpData;
-          callbacks.onUpdate(current);
+        const nextWp = pointOnParallel(nextP1, nextP2, offset, 1) ?? originalWp;
+        previewAtPixels(channel, nextP1, nextP2, nextWp);
+      },
+      onEnd: (_event, moved) => {
+        const current = parallelChannels.find((item) => item.id === id);
+        if (current && moved && latestEvent) {
+          const x = snapXToNearestCandle(chart, latestEvent.clientX - rect.left);
+          const y = latestEvent.clientY - rect.top;
+          const cursor = { x, y };
+          const baseCursor = corner.startsWith("edge2")
+            ? { x: cursor.x, y: cursor.y - offset }
+            : cursor;
+          const movesPoint1 = corner.endsWith("Start");
+          const nextP1 = movesPoint1 ? baseCursor : originalP1;
+          const nextP2 = movesPoint1 ? originalP2 : baseCursor;
+          const p1Data = movesPoint1 ? pixelToDataPoint(baseCursor) : current.point1;
+          const p2Data = movesPoint1 ? current.point2 : pixelToDataPoint(baseCursor);
+          const nextWp = pointOnParallel(nextP1, nextP2, offset, 1);
+          const wpData = nextWp ? pixelToDataPoint(nextWp) : null;
+          if (p1Data && p2Data && wpData) {
+            current.point1 = p1Data;
+            current.point2 = p2Data;
+            current.widthPoint = wpData;
+            callbacks.onUpdate(current);
+          }
         }
-      }
-      syncAll();
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp, { once: true });
+        syncAll();
+      },
+    });
   }
 
   function startDragBody(id: string, startEvent: PointerEvent) {
     const channel = parallelChannels.find((item) => item.id === id);
     if (!channel) return;
-    dragActive = true;
     const rect = container.getBoundingClientRect();
     const startX = startEvent.clientX - rect.left;
     const startY = startEvent.clientY - rect.top;
@@ -784,73 +737,47 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     const p1Px = toPixel(origP1);
     const p2Px = toPixel(origP2);
     const wpPx = toPixel(channel.widthPoint);
-    if (!p1Px || !p2Px || !wpPx) {
-      dragActive = false;
-      return;
-    }
+    if (!p1Px || !p2Px || !wpPx) return;
     const offset = wpPx.y - p2Px.y;
-    let moved = false;
-    const target = startEvent.target as Element;
-    target.setPointerCapture?.(startEvent.pointerId);
-
-    let latestEvent: PointerEvent | null = null;
     let finalDx = 0;
     let finalDy = 0;
-    const renderMove = () => {
-      dragRaf = 0;
-      const event = latestEvent;
-      if (!event) return;
-      const dx = snapXToNearestCandle(chart, p1Px.x + (event.clientX - rect.left) - startX) - p1Px.x;
-      const dy = (event.clientY - rect.top) - startY;
-      if (!moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
-      moved = true;
-      finalDx = dx;
-      finalDy = dy;
-      previewAtPixels(
-        channel,
-        { x: p1Px.x + dx, y: p1Px.y + dy },
-        { x: p2Px.x + dx, y: p2Px.y + dy },
-        pointOnParallel(
-          { x: p1Px.x + dx, y: p1Px.y + dy },
-          { x: p2Px.x + dx, y: p2Px.y + dy },
-          offset,
-          1,
-        ) ?? { x: wpPx.x + dx, y: wpPx.y + dy },
-      );
-    };
-    const onMove = (event: PointerEvent) => {
-      latestEvent = event;
-      if (!dragRaf) dragRaf = requestAnimationFrame(renderMove);
-    };
-    const onUp = () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      if (dragRaf) {
-        cancelAnimationFrame(dragRaf);
-        dragRaf = 0;
-        renderMove();
-      }
-      dragActive = false;
-      target.releasePointerCapture?.(startEvent.pointerId);
-      const current = parallelChannels.find((item) => item.id === id);
-      if (current && moved) {
-        const nextP1 = { x: p1Px.x + finalDx, y: p1Px.y + finalDy };
-        const nextP2 = { x: p2Px.x + finalDx, y: p2Px.y + finalDy };
-        const p1Data = pixelToDataPoint(nextP1);
-        const p2Data = pixelToDataPoint(nextP2);
-        const nextWp = pointOnParallel(nextP1, nextP2, offset, 1);
-        const wpData = nextWp ? pixelToDataPoint(nextWp) : null;
-        if (p1Data && p2Data && wpData) {
-          current.point1 = p1Data;
-          current.point2 = p2Data;
-          current.widthPoint = wpData;
-          callbacks.onUpdate(current);
+    runManagedDragSession(startEvent, (active) => { dragActive = active; }, {
+      target: startEvent.target as Element,
+      moveThreshold: 3,
+      onMove: (event) => {
+        finalDx = snapXToNearestCandle(chart, p1Px.x + (event.clientX - rect.left) - startX) - p1Px.x;
+        finalDy = (event.clientY - rect.top) - startY;
+        previewAtPixels(
+          channel,
+          { x: p1Px.x + finalDx, y: p1Px.y + finalDy },
+          { x: p2Px.x + finalDx, y: p2Px.y + finalDy },
+          pointOnParallel(
+            { x: p1Px.x + finalDx, y: p1Px.y + finalDy },
+            { x: p2Px.x + finalDx, y: p2Px.y + finalDy },
+            offset,
+            1,
+          ) ?? { x: wpPx.x + finalDx, y: wpPx.y + finalDy },
+        );
+      },
+      onEnd: (_event, moved) => {
+        const current = parallelChannels.find((item) => item.id === id);
+        if (current && moved) {
+          const nextP1 = { x: p1Px.x + finalDx, y: p1Px.y + finalDy };
+          const nextP2 = { x: p2Px.x + finalDx, y: p2Px.y + finalDy };
+          const p1Data = pixelToDataPoint(nextP1);
+          const p2Data = pixelToDataPoint(nextP2);
+          const nextWp = pointOnParallel(nextP1, nextP2, offset, 1);
+          const wpData = nextWp ? pixelToDataPoint(nextWp) : null;
+          if (p1Data && p2Data && wpData) {
+            current.point1 = p1Data;
+            current.point2 = p2Data;
+            current.widthPoint = wpData;
+            callbacks.onUpdate(current);
+          }
         }
-      }
-      syncAll();
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp, { once: true });
+        syncAll();
+      },
+    });
   }
 
   function clickToPoint(event: any): { time: number; price: number } | null {
@@ -957,7 +884,6 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   container.addEventListener("pointerdown", handleBackgroundClick);
 
   return () => {
-    cancelAnimationFrame(dragRaf);
     unregisterLifecycle();
     try { chart.unsubscribeClick(handleDrawClick); } catch { /* noop */ }
     container.removeEventListener("mousemove", handleMouseMove);

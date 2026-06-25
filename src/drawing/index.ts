@@ -6,9 +6,11 @@ export { attachRectangleTool, type RectangleCallbacks } from "./rectangle/Rectan
 export { attachTrendLineTool, type DrawingMode, type TrendLineCallbacks } from "./trend-line/TrendLineTool";
 export {
   attachManagedDrawingLifecycle,
+  attachScaleInteractionSync,
   createClipboardBridge,
   getPlotWidth,
   clampPlotX,
+  runManagedDragSession,
   startPointerDragSession,
 } from "./shared/ManagedDrawingTool";
 export { DrawingManager, type DrawingSelectionBridge, type DrawingSelectionKind } from "./DrawingManager";

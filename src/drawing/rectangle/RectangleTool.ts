@@ -5,7 +5,7 @@
 import type { Rectangle } from "../../types";
 import { snapXToNearestCandle, timeToX, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
-import { attachManagedDrawingLifecycle, createClipboardBridge, getPlotWidth } from "../shared/ManagedDrawingTool";
+import { attachManagedDrawingLifecycle, createClipboardBridge, getPlotWidth, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import { createDrawingOverlay } from "../shared/overlay";
 import { forgetFloatingPanelPosition } from "../shared/floatingPanel";
 import type { DrawingCrudCallbacks, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
@@ -146,7 +146,6 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
   let toolbarController: DrawingToolbarController<Rectangle>;
   let textEditor: HTMLInputElement | null = null;
   let dragActive = false;
-  let dragRaf = 0;
 
   let isDrawing = false;
   let drawStart: { x: number; y: number } | null = null;
@@ -457,29 +456,21 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     const sy = startEv.clientY - cb.top;
     const origB = getBounds(rect, chart, series, candleStore.candles);
     if (!origB) return;
-    const target = startEv.target as Element;
-    try { (target as any).setPointerCapture(startEv.pointerId); } catch { }
+
     let latestEv: PointerEvent | null = null;
-    let moved = false;
-
-    const render = () => {
-      dragRaf = 0;
-      const e = latestEv; if (!e) return;
-      const dx = snapXToNearestCandle(chart, origB.x + (e.clientX - cb.left) - sx) - origB.x;
-      const dy = (e.clientY - cb.top) - sy;
-      if (!moved && Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
-      moved = true;
-      const els = elMap.get(id); if (!els) return;
-      applyPixelBounds(els, { x: origB.x + dx, y: origB.y + dy, w: origB.w, h: origB.h }, rect, true);
-    };
-
-    const onMove = (e: PointerEvent) => { latestEv = e; if (!dragRaf) dragRaf = requestAnimationFrame(render); };
-    const onUp = (e: PointerEvent) => {
-      window.removeEventListener("pointermove", onMove);
-      if (dragRaf) { cancelAnimationFrame(dragRaf); dragRaf = 0; render(); }
-      dragActive = false;
-      try { (target as any).releasePointerCapture(e.pointerId); } catch { }
-      if (moved && latestEv) {
+    runManagedDragSession(startEv, (active) => { dragActive = active; }, {
+      target: startEv.target as Element,
+      moveThreshold: 2,
+      onMove: (event) => {
+        latestEv = event;
+        const dx = snapXToNearestCandle(chart, origB.x + (event.clientX - cb.left) - sx) - origB.x;
+        const dy = (event.clientY - cb.top) - sy;
+        const els = elMap.get(id);
+        if (!els) return;
+        applyPixelBounds(els, { x: origB.x + dx, y: origB.y + dy, w: origB.w, h: origB.h }, rect, true);
+      },
+      onEnd: (_event, moved) => {
+        if (!moved || !latestEv) return;
         const dx = snapXToNearestCandle(chart, origB.x + (latestEv.clientX - cb.left) - sx) - origB.x;
         const dy = (latestEv.clientY - cb.top) - sy;
         const nb = { x: origB.x + dx, y: origB.y + dy, w: origB.w, h: origB.h };
@@ -489,16 +480,17 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
         const pB = series.coordinateToPrice(nb.y + nb.h);
         const r = rectangles.find((item) => item.id === id);
         if (r && tL != null && tR != null && pT != null && pB != null) {
-          r.timeLeft = Math.min(tL, tR); r.timeRight = Math.max(tL, tR);
-          r.priceTop = Math.max(pT, pB); r.priceBottom = Math.min(pT, pB);
-          syncAll(); callbacks.onUpdate(r);
-        } else { syncAll(); }
-      }
-    };
-
-    dragActive = true;
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp, { once: true });
+          r.timeLeft = Math.min(tL, tR);
+          r.timeRight = Math.max(tL, tR);
+          r.priceTop = Math.max(pT, pB);
+          r.priceBottom = Math.min(pT, pB);
+          syncAll();
+          callbacks.onUpdate(r);
+        } else {
+          syncAll();
+        }
+      },
+    });
   }
 
   function startHandleDrag(id: string, pos: HandlePos, startEv: PointerEvent) {
@@ -507,46 +499,40 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     const cb = container.getBoundingClientRect();
     const origB = getBounds(rect, chart, series, candleStore.candles);
     if (!origB) return;
-    const target = startEv.target as Element;
-    try { (target as any).setPointerCapture(startEv.pointerId); } catch { }
+
     let latestEv: PointerEvent | null = null;
-
-    const render = () => {
-      dragRaf = 0;
-      const e = latestEv; if (!e) return;
-      const mx = snapXToNearestCandle(chart, e.clientX - cb.left), my = e.clientY - cb.top;
-      const nb = calcResizedBounds(origB, pos, mx, my);
-      const els = elMap.get(id); if (!els) return;
-      applyPixelBounds(els, nb, rect, true);
-    };
-
-    const onMove = (e: PointerEvent) => { latestEv = e; if (!dragRaf) dragRaf = requestAnimationFrame(render); };
-    const onUp = (e: PointerEvent) => {
-      window.removeEventListener("pointermove", onMove);
-      if (dragRaf) { cancelAnimationFrame(dragRaf); dragRaf = 0; render(); }
-      dragActive = false;
-      try { (target as any).releasePointerCapture(e.pointerId); } catch { }
-      if (latestEv) {
-        const mx = snapXToNearestCandle(chart, latestEv.clientX - cb.left), my = latestEv.clientY - cb.top;
+    runManagedDragSession(startEv, (active) => { dragActive = active; }, {
+      target: startEv.target as Element,
+      onMove: (event) => {
+        latestEv = event;
+        const mx = snapXToNearestCandle(chart, event.clientX - cb.left);
+        const my = event.clientY - cb.top;
+        const nb = calcResizedBounds(origB, pos, mx, my);
+        const els = elMap.get(id);
+        if (!els) return;
+        applyPixelBounds(els, nb, rect, true);
+      },
+      onEnd: (_event, moved) => {
+        if (!moved || !latestEv) return;
+        const mx = snapXToNearestCandle(chart, latestEv.clientX - cb.left);
+        const my = latestEv.clientY - cb.top;
         const nb = calcResizedBounds(origB, pos, mx, my);
         const r = rectangles.find((item) => item.id === id);
-        if (r) {
-          const tL = xToSnappedTime(chart, nb.x, candleStore.candles);
-          const tR = xToSnappedTime(chart, nb.x + nb.w, candleStore.candles);
-          const pT = series.coordinateToPrice(nb.y);
-          const pB = series.coordinateToPrice(nb.y + nb.h);
-          if (tL != null && tR != null && pT != null && pB != null) {
-            r.timeLeft = Math.min(tL, tR); r.timeRight = Math.max(tL, tR);
-            r.priceTop = Math.max(pT, pB); r.priceBottom = Math.min(pT, pB);
-          }
-          syncAll(); callbacks.onUpdate(r);
+        if (!r) return;
+        const tL = xToSnappedTime(chart, nb.x, candleStore.candles);
+        const tR = xToSnappedTime(chart, nb.x + nb.w, candleStore.candles);
+        const pT = series.coordinateToPrice(nb.y);
+        const pB = series.coordinateToPrice(nb.y + nb.h);
+        if (tL != null && tR != null && pT != null && pB != null) {
+          r.timeLeft = Math.min(tL, tR);
+          r.timeRight = Math.max(tL, tR);
+          r.priceTop = Math.max(pT, pB);
+          r.priceBottom = Math.min(pT, pB);
         }
-      }
-    };
-
-    dragActive = true;
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp, { once: true });
+        syncAll();
+        callbacks.onUpdate(r);
+      },
+    });
   }
 
   let drawOverlay: HTMLDivElement | null = null;
@@ -635,7 +621,6 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
   container.addEventListener("pointerdown", onBgPointerDown);
 
   return () => {
-    cancelAnimationFrame(dragRaf);
     unregisterLifecycle();
     container.removeEventListener("pointerdown", onBgPointerDown);
     drawOverlay?.remove();

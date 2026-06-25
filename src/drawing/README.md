@@ -9,6 +9,6 @@ Each drawing tool owns only its geometry and domain-specific interactions.
 - `shared/popup.ts` owns anchored popup positioning, outside-click handling and cleanup.
 - `shared/colorPalette.ts` provides the common palette used by drawing toolbars.
 - `shared/types.ts` contains lifecycle contracts shared by persistent drawing tools.
-- `shared/ManagedDrawingTool.ts` provides clipboard bridge, DrawingManager lifecycle wiring, plot clamp helpers and pointer-drag sessions.
+- `shared/ManagedDrawingTool.ts` provides clipboard bridge, DrawingManager lifecycle wiring, plot clamp helpers, pointer-drag sessions and scale-interaction sync for fibonacci overlays.
 
 New tools receive the same `DrawingManager` through `ManagedDrawingToolOptions` and should compose these primitives instead of implementing active-mode guards, pointer-event switching, overlay creation, coordinate interpolation, floating panels or popup lifecycle.

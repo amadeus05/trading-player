@@ -9,7 +9,7 @@ import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/co
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
 import { createTrendLineExtendSlots } from "./trendLineToolbarSlots";
 import { createDrawingOverlay } from "../shared/overlay";
-import { attachManagedDrawingLifecycle, createClipboardBridge } from "../shared/ManagedDrawingTool";
+import { attachManagedDrawingLifecycle, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 export type { DrawingMode } from "../shared/types";
 
@@ -84,7 +84,6 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
   let ghostLine: SVGLineElement | null = null;
   let drawPoint1: { time: number; price: number } | null = null;
   let dragActive = false;
-  let dragRaf = 0;
 
   /* ---- Elements per line ---- */
   interface LineEls {
@@ -479,35 +478,19 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     const originalP1 = toPixel(tl.point1);
     const originalP2 = toPixel(tl.point2);
     if (!originalP1 || !originalP2) return;
-    let moved = false;
-
-    // Attempt pointer capture
-    const target = startEvent.target as Element;
-    if (target.setPointerCapture) target.setPointerCapture(startEvent.pointerId);
 
     let latestEvent: PointerEvent | null = null;
-    const renderMove = () => {
-      dragRaf = 0;
-      const e = latestEvent;
-      if (!e) return;
-      moved = true;
-      const x = snapXToNearestCandle(chart, e.clientX - rect.left);
-      const y = e.clientY - rect.top;
-      previewAtPixels(tl, which === "point1" ? { x, y } : originalP1, which === "point2" ? { x, y } : originalP2);
-    };
-    const onMove = (e: PointerEvent) => {
-      latestEvent = e;
-      if (!dragRaf) dragRaf = requestAnimationFrame(renderMove);
-    };
-
-    const onUp = (e: PointerEvent) => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      if (dragRaf) { cancelAnimationFrame(dragRaf); dragRaf = 0; renderMove(); }
-      dragActive = false;
-      if (target.releasePointerCapture) target.releasePointerCapture(e.pointerId);
-      const lineObj = trendLines.find((l) => l.id === id);
-      if (lineObj && moved && latestEvent) {
+    runManagedDragSession(startEvent, (active) => { dragActive = active; }, {
+      target: startEvent.target as Element,
+      onMove: (event) => {
+        latestEvent = event;
+        const x = snapXToNearestCandle(chart, event.clientX - rect.left);
+        const y = event.clientY - rect.top;
+        previewAtPixels(tl, which === "point1" ? { x, y } : originalP1, which === "point2" ? { x, y } : originalP2);
+      },
+      onEnd: (_event, moved) => {
+        const lineObj = trendLines.find((l) => l.id === id);
+        if (!lineObj || !moved || !latestEvent) return;
         const x = latestEvent.clientX - rect.left;
         const y = latestEvent.clientY - rect.top;
         const time = xToSnappedTime(chart, x, candleStore.candles);
@@ -515,12 +498,8 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
         if (time != null && price != null && price > 0) lineObj[which] = { time, price };
         syncAll();
         callbacks.onUpdate(lineObj);
-      }
-    };
-
-    dragActive = true;
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp, { once: true });
+      },
+    });
   }
 
   function startDragBody(id: string, startEvent: PointerEvent) {
@@ -536,39 +515,23 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     const p2Px = toPixel(origP2);
     if (!p1Px || !p2Px) return;
 
-    let moved = false;
-
-    // Attempt pointer capture
-    const target = startEvent.target as Element;
-    if (target.setPointerCapture) target.setPointerCapture(startEvent.pointerId);
-
-    let latestEvent: PointerEvent | null = null;
-    let finalDx = 0, finalDy = 0;
-    const renderMove = () => {
-      dragRaf = 0;
-      const e = latestEvent;
-      if (!e) return;
-      const dx = snapXToNearestCandle(chart, p1Px.x + (e.clientX - rect.left) - startX) - p1Px.x;
-      const dy = (e.clientY - rect.top) - startY;
-
-      if (!moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
-      moved = true;
-      finalDx = dx; finalDy = dy;
-      previewAtPixels(tl, { x: p1Px.x + dx, y: p1Px.y + dy }, { x: p2Px.x + dx, y: p2Px.y + dy });
-    };
-    const onMove = (e: PointerEvent) => {
-      latestEvent = e;
-      if (!dragRaf) dragRaf = requestAnimationFrame(renderMove);
-    };
-
-    const onUp = (e: PointerEvent) => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      if (dragRaf) { cancelAnimationFrame(dragRaf); dragRaf = 0; renderMove(); }
-      dragActive = false;
-      if (target.releasePointerCapture) target.releasePointerCapture(e.pointerId);
-      const lineObj = trendLines.find((l) => l.id === id);
-      if (lineObj && moved) {
+    let finalDx = 0;
+    let finalDy = 0;
+    runManagedDragSession(startEvent, (active) => { dragActive = active; }, {
+      target: startEvent.target as Element,
+      moveThreshold: 3,
+      onMove: (event) => {
+        finalDx = snapXToNearestCandle(chart, p1Px.x + (event.clientX - rect.left) - startX) - p1Px.x;
+        finalDy = (event.clientY - rect.top) - startY;
+        previewAtPixels(
+          tl,
+          { x: p1Px.x + finalDx, y: p1Px.y + finalDy },
+          { x: p2Px.x + finalDx, y: p2Px.y + finalDy },
+        );
+      },
+      onEnd: (_event, moved) => {
+        const lineObj = trendLines.find((l) => l.id === id);
+        if (!lineObj || !moved) return;
         const newP1Time = xToSnappedTime(chart, p1Px.x + finalDx, candleStore.candles);
         const newP1Price = pxToPrice(series, p1Px.y + finalDy);
         const newP2Time = xToSnappedTime(chart, p2Px.x + finalDx, candleStore.candles);
@@ -579,12 +542,8 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
         }
         syncAll();
         callbacks.onUpdate(lineObj);
-      }
-    };
-
-    dragActive = true;
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp, { once: true });
+      },
+    });
   }
 
   /* ---- Drawing mode ---- */
@@ -673,7 +632,6 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
 
   /* ---- Cleanup ---- */
   return () => {
-    cancelAnimationFrame(dragRaf);
     unregisterLifecycle();
     try { chart.unsubscribeClick(handleDrawClick); } catch { }
     container.removeEventListener("mousemove", handleMouseMove);

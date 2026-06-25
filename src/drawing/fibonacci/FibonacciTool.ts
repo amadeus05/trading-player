@@ -5,7 +5,7 @@
 import type { FibonacciRetracement } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
-import { attachManagedDrawingLifecycle, createClipboardBridge } from "../shared/ManagedDrawingTool";
+import { attachManagedDrawingLifecycle, attachScaleInteractionSync, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import type { DrawingLineStyle } from "../shared/DrawingToolbar";
 import { createDrawingOverlay } from "../shared/overlay";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
@@ -180,11 +180,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   let ghostHandle1: SVGCircleElement | null = null;
   let ghostHandle2: SVGCircleElement | null = null;
   let dragActive = false;
-  let dragRaf = 0;
   let ghostRaf = 0;
-  let interactionSyncRaf = 0;
-  let finalSyncRaf = 0;
-  let wheelSyncTimer = 0;
   let latestDrawPointer: { x: number; y: number } | null = null;
 
   let toolbarController: DrawingToolbarController<FibonacciRetracement>;
@@ -488,46 +484,13 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     fibonacciRetracements.forEach(syncOne);
   }
 
-  function runInteractionSync() {
-    if (dragActive) {
-      interactionSyncRaf = 0;
-      return;
-    }
-    syncAll();
-    interactionSyncRaf = requestAnimationFrame(runInteractionSync);
-  }
-
-  function startInteractionSync() {
-    if (!interactionSyncRaf) interactionSyncRaf = requestAnimationFrame(runInteractionSync);
-  }
-
-  function stopInteractionSync() {
-    if (interactionSyncRaf) cancelAnimationFrame(interactionSyncRaf);
-    interactionSyncRaf = 0;
-    if (finalSyncRaf) cancelAnimationFrame(finalSyncRaf);
-    finalSyncRaf = requestAnimationFrame(() => {
-      finalSyncRaf = 0;
-      if (!dragActive) syncAll();
-    });
-  }
-
-  function handleScaleWheel() {
-    syncAll();
-    startInteractionSync();
-    window.clearTimeout(wheelSyncTimer);
-    wheelSyncTimer = window.setTimeout(stopInteractionSync, 150);
-  }
-
-  function handlePointerDown(event: PointerEvent) {
-    const target = event.target as Element;
-    if (target.closest(".fib-toolbar, .fib-trend-hit, .fib-level-hit, .fib-handle")) return;
-    startInteractionSync();
-  }
-
-  function handlePointerUp() {
-    if (dragActive) return;
-    stopInteractionSync();
-  }
+  const scaleInteractionSync = attachScaleInteractionSync({
+    isDragActive: () => dragActive,
+    syncAll,
+    shouldIgnorePointerDown: (target) => Boolean(
+      target.closest(".fib-toolbar, .fib-trend-hit, .fib-level-hit, .fib-handle"),
+    ),
+  });
 
   function previewAtPixels(fib: FibonacciRetracement, p1: PixelPoint, p2: PixelPoint) {
     const els = elMap.get(fib.id);
@@ -633,46 +596,27 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   function startDragHandle(id: string, which: "point1" | "point2", startEvent: PointerEvent) {
     const fib = fibonacciRetracements.find((item) => item.id === id);
     if (!fib) return;
-    dragActive = true;
     const rect = container.getBoundingClientRect();
     const originalP1 = toPixel(fib.point1);
     const originalP2 = toPixel(fib.point2);
-    if (!originalP1 || !originalP2) {
-      dragActive = false;
-      return;
-    }
-    let moved = false;
-    const target = startEvent.target as Element;
-    target.setPointerCapture?.(startEvent.pointerId);
+    if (!originalP1 || !originalP2) return;
+
     let latestEvent: PointerEvent | null = null;
-
-    const renderMove = () => {
-      dragRaf = 0;
-      const event = latestEvent;
-      if (!event) return;
-      moved = true;
-      const dragged = clampPlotPoint({
-        x: snapXToNearestCandle(chart, event.clientX - rect.left),
-        y: event.clientY - rect.top,
-      });
-      const p1 = which === "point1" ? dragged : (toPixel(fib.point1) ?? originalP1);
-      const p2 = which === "point2" ? dragged : (toPixel(fib.point2) ?? originalP2);
-      previewAtPixels(fib, p1, p2);
-    };
-
-    const onMove = (event: PointerEvent) => {
-      latestEvent = event;
-      if (!dragRaf) dragRaf = requestAnimationFrame(renderMove);
-    };
-
-    const onUp = (event: PointerEvent) => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      if (dragRaf) { cancelAnimationFrame(dragRaf); dragRaf = 0; renderMove(); }
-      dragActive = false;
-      target.releasePointerCapture?.(event.pointerId);
-      const current = fibonacciRetracements.find((item) => item.id === id);
-      if (current && moved && latestEvent) {
+    runManagedDragSession(startEvent, (active) => { dragActive = active; }, {
+      target: startEvent.target as Element,
+      onMove: (event) => {
+        latestEvent = event;
+        const dragged = clampPlotPoint({
+          x: snapXToNearestCandle(chart, event.clientX - rect.left),
+          y: event.clientY - rect.top,
+        });
+        const p1 = which === "point1" ? dragged : (toPixel(fib.point1) ?? originalP1);
+        const p2 = which === "point2" ? dragged : (toPixel(fib.point2) ?? originalP2);
+        previewAtPixels(fib, p1, p2);
+      },
+      onEnd: (_event, moved) => {
+        const current = fibonacciRetracements.find((item) => item.id === id);
+        if (!current || !moved || !latestEvent) return;
         const clamped = clampPlotPoint({
           x: latestEvent.clientX - rect.left,
           y: latestEvent.clientY - rect.top,
@@ -680,22 +624,15 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
         const time = xToSnappedTime(chart, clamped.x, candleStore.candles);
         const price = pxToPrice(series, clamped.y);
         if (time != null && price != null && price > 0) current[which] = { time, price };
-        dragActive = false;
         syncAll();
         callbacks.onUpdate(current);
-      } else {
-        dragActive = false;
-      }
-    };
-
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp, { once: true });
+      },
+    });
   }
 
   function startDragBody(id: string, startEvent: PointerEvent) {
     const fib = fibonacciRetracements.find((item) => item.id === id);
     if (!fib) return;
-    dragActive = true;
     const rect = container.getBoundingClientRect();
     const startX = startEvent.clientX - rect.left;
     const startY = startEvent.clientY - rect.top;
@@ -703,47 +640,25 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     const origP2 = { ...fib.point2 };
     const p1Px = toPixel(origP1);
     const p2Px = toPixel(origP2);
-    if (!p1Px || !p2Px) {
-      dragActive = false;
-      return;
-    }
-    let moved = false;
-    const target = startEvent.target as Element;
-    target.setPointerCapture?.(startEvent.pointerId);
-    let latestEvent: PointerEvent | null = null;
+    if (!p1Px || !p2Px) return;
+
     let finalDx = 0;
     let finalDy = 0;
-
-    const renderMove = () => {
-      dragRaf = 0;
-      const event = latestEvent;
-      if (!event) return;
-      const dx = snapXToNearestCandle(chart, p1Px.x + (event.clientX - rect.left) - startX) - p1Px.x;
-      const dy = (event.clientY - rect.top) - startY;
-      if (!moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
-      moved = true;
-      finalDx = dx;
-      finalDy = dy;
-      previewAtPixels(
-        fib,
-        clampPlotPoint({ x: p1Px.x + dx, y: p1Px.y + dy }),
-        clampPlotPoint({ x: p2Px.x + dx, y: p2Px.y + dy }),
-      );
-    };
-
-    const onMove = (event: PointerEvent) => {
-      latestEvent = event;
-      if (!dragRaf) dragRaf = requestAnimationFrame(renderMove);
-    };
-
-    const onUp = (event: PointerEvent) => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      if (dragRaf) { cancelAnimationFrame(dragRaf); dragRaf = 0; renderMove(); }
-      dragActive = false;
-      target.releasePointerCapture?.(event.pointerId);
-      const current = fibonacciRetracements.find((item) => item.id === id);
-      if (current && moved) {
+    runManagedDragSession(startEvent, (active) => { dragActive = active; }, {
+      target: startEvent.target as Element,
+      moveThreshold: 3,
+      onMove: (event) => {
+        finalDx = snapXToNearestCandle(chart, p1Px.x + (event.clientX - rect.left) - startX) - p1Px.x;
+        finalDy = (event.clientY - rect.top) - startY;
+        previewAtPixels(
+          fib,
+          clampPlotPoint({ x: p1Px.x + finalDx, y: p1Px.y + finalDy }),
+          clampPlotPoint({ x: p2Px.x + finalDx, y: p2Px.y + finalDy }),
+        );
+      },
+      onEnd: (_event, moved) => {
+        const current = fibonacciRetracements.find((item) => item.id === id);
+        if (!current || !moved) return;
         const fp1 = clampPlotPoint({ x: p1Px.x + finalDx, y: p1Px.y + finalDy });
         const fp2 = clampPlotPoint({ x: p2Px.x + finalDx, y: p2Px.y + finalDy });
         const newP1Time = xToSnappedTime(chart, fp1.x, candleStore.candles);
@@ -759,11 +674,8 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
         }
         syncAll();
         callbacks.onUpdate(current);
-      }
-    };
-
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp, { once: true });
+      },
+    });
   }
 
   function handleDrawClick(event: any) {
@@ -824,10 +736,10 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     if (!dragActive) manager.scheduleOverlaySync();
   };
   chart.timeScale().subscribeVisibleLogicalRangeChange(onVisibleRangeChange);
-  container.addEventListener("wheel", handleScaleWheel, { capture: true, passive: true });
-  container.addEventListener("pointerdown", handlePointerDown, { capture: true });
-  window.addEventListener("pointerup", handlePointerUp);
-  window.addEventListener("pointercancel", handlePointerUp);
+  container.addEventListener("wheel", scaleInteractionSync.handleScaleWheel, { capture: true, passive: true });
+  container.addEventListener("pointerdown", scaleInteractionSync.handlePointerDown, { capture: true });
+  window.addEventListener("pointerup", scaleInteractionSync.handlePointerUp);
+  window.addEventListener("pointercancel", scaleInteractionSync.handlePointerUp);
 
   if (drawingMode === "fibonacci") {
     chart.subscribeClick(handleDrawClick);
@@ -835,18 +747,15 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   container.addEventListener("pointerdown", handleBackgroundClick);
 
   return () => {
-    cancelAnimationFrame(dragRaf);
     cancelAnimationFrame(ghostRaf);
-    cancelAnimationFrame(interactionSyncRaf);
-    cancelAnimationFrame(finalSyncRaf);
-    window.clearTimeout(wheelSyncTimer);
+    scaleInteractionSync.destroy();
     unregisterLifecycle();
     try { chart.unsubscribeClick(handleDrawClick); } catch { }
     try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRangeChange); } catch { }
-    container.removeEventListener("wheel", handleScaleWheel, { capture: true });
-    container.removeEventListener("pointerdown", handlePointerDown, { capture: true });
-    window.removeEventListener("pointerup", handlePointerUp);
-    window.removeEventListener("pointercancel", handlePointerUp);
+    container.removeEventListener("wheel", scaleInteractionSync.handleScaleWheel, { capture: true });
+    container.removeEventListener("pointerdown", scaleInteractionSync.handlePointerDown, { capture: true });
+    window.removeEventListener("pointerup", scaleInteractionSync.handlePointerUp);
+    window.removeEventListener("pointercancel", scaleInteractionSync.handlePointerUp);
     window.removeEventListener("pointermove", handleDrawPointerMove);
     container.removeEventListener("pointerdown", handleBackgroundClick);
     overlay.remove();
