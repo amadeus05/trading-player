@@ -5,7 +5,7 @@
 import type { Rectangle } from "../../types";
 import { snapXToNearestCandle, timeToX, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
-import { getDefaultPasteOffset, offsetClipboardItem } from "../shared/clipboard";
+import { attachManagedDrawingLifecycle, createClipboardBridge, getPlotWidth } from "../shared/ManagedDrawingTool";
 import { createDrawingOverlay } from "../shared/overlay";
 import { forgetFloatingPanelPosition } from "../shared/floatingPanel";
 import type { DrawingCrudCallbacks, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
@@ -132,9 +132,9 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
   const { container, chart, series, candleStore, drawingMode, datasetId, callbacks, manager } = opts;
   let rectangles = [...opts.rectangles];
 
-  const getPlotWidth = () => Math.max(0, Number(chart.timeScale().width()) || 0);
+  const getPlotWidthLocal = () => getPlotWidth(chart);
   const clampHorizontalBounds = (bounds: PixelBounds): PixelBounds => {
-    const plotWidth = getPlotWidth();
+    const plotWidth = getPlotWidthLocal();
     const left = Math.max(0, Math.min(bounds.x, plotWidth));
     const right = Math.max(left, Math.min(bounds.x + bounds.w, plotWidth));
     return { ...bounds, x: left, w: right - left };
@@ -337,37 +337,37 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     onSync: () => syncAll(),
   });
 
-  const unregisterSelectionBridge = manager.registerSelectionBridge("rectangle", {
-    getSelected: () => {
-      if (!selectedId) return null;
-      const rect = rectangles.find((item) => item.id === selectedId);
-      if (!rect) return null;
-      const { id: _id, datasetId: _datasetId, ...data } = rect;
-      return { kind: "rectangle", data };
-    },
-    deleteSelected: () => {
-      if (selectedId) deleteRect(selectedId);
-    },
-    paste: (item) => {
-      if (item.kind !== "rectangle") return;
-      const offset = getDefaultPasteOffset(candleStore.candles);
-      const rect: Rectangle = {
-        ...offsetClipboardItem(item, offset).data,
-        id: crypto.randomUUID(),
-        datasetId,
-      };
-      rectangles.push(rect);
-      callbacks.onCreate(rect);
-      selectRect(rect.id);
-    },
-    cancelDrawing: () => {
-      if (!isDrawing) return false;
-      isDrawing = false;
-      drawStart = null;
-      ghostRect?.remove();
-      ghostRect = null;
-      callbacks.onDrawingComplete();
-      return true;
+  const unregisterLifecycle = attachManagedDrawingLifecycle({
+    manager,
+    kind: "rectangle",
+    bridge: createClipboardBridge({
+      kind: "rectangle",
+      datasetId,
+      candleStore,
+      getSelectedId: () => selectedId,
+      findById: (id) => rectangles.find((item) => item.id === id),
+      append: (rect) => { rectangles.push(rect); },
+      onCreate: callbacks.onCreate,
+      select: (id) => selectRect(id),
+      deleteSelected: () => { if (selectedId) deleteRect(selectedId); },
+      createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
+      cancelDrawing: () => {
+        if (!isDrawing) return false;
+        isDrawing = false;
+        drawStart = null;
+        ghostRect?.remove();
+        ghostRect = null;
+        callbacks.onDrawingComplete();
+        return true;
+      },
+    }),
+    syncAll,
+    isDragActive: () => dragActive,
+    onDeselect: () => {
+      if (selectedId === null) return;
+      selectedId = null;
+      removeToolbar();
+      syncAll();
     },
   });
 
@@ -559,7 +559,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     drawOverlay.addEventListener("pointerdown", (e) => {
       e.preventDefault(); e.stopPropagation();
       const cb = container.getBoundingClientRect();
-      drawStart = { x: snapXToNearestCandle(chart, Math.max(0, Math.min(e.clientX - cb.left, getPlotWidth()))), y: e.clientY - cb.top };
+      drawStart = { x: snapXToNearestCandle(chart, Math.max(0, Math.min(e.clientX - cb.left, getPlotWidthLocal()))), y: e.clientY - cb.top };
       isDrawing = true;
       ghostRect = document.createElementNS(SVG_NS, "rect");
       ghostRect.setAttribute("class", "rect-ghost-el");
@@ -570,7 +570,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     drawOverlay.addEventListener("pointermove", (e) => {
       if (!isDrawing || !drawStart || !ghostRect) return;
       const cb = container.getBoundingClientRect();
-      const mx = snapXToNearestCandle(chart, Math.max(0, Math.min(e.clientX - cb.left, getPlotWidth()))), my = e.clientY - cb.top;
+      const mx = snapXToNearestCandle(chart, Math.max(0, Math.min(e.clientX - cb.left, getPlotWidthLocal()))), my = e.clientY - cb.top;
       ghostRect.setAttribute("x", String(Math.min(mx, drawStart.x)));
       ghostRect.setAttribute("y", String(Math.min(my, drawStart.y)));
       ghostRect.setAttribute("width", String(Math.abs(mx - drawStart.x)));
@@ -583,7 +583,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       ghostRect?.remove(); ghostRect = null;
 
       const cb = container.getBoundingClientRect();
-      const ex = snapXToNearestCandle(chart, Math.max(0, Math.min(e.clientX - cb.left, getPlotWidth()))), ey = e.clientY - cb.top;
+      const ex = snapXToNearestCandle(chart, Math.max(0, Math.min(e.clientX - cb.left, getPlotWidthLocal()))), ey = e.clientY - cb.top;
 
       if (Math.abs(ex - drawStart.x) > 5 && Math.abs(ey - drawStart.y) > 5) {
         const xMin = Math.min(ex, drawStart.x), xMax = Math.max(ex, drawStart.x);
@@ -634,23 +634,9 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
   };
   container.addEventListener("pointerdown", onBgPointerDown);
 
-  const unregisterDeselect = manager.registerDeselect("rectangle", () => {
-    if (selectedId === null) return;
-    selectedId = null;
-    removeToolbar();
-    syncAll();
-  });
-
-  const unregisterOverlaySync = manager.registerOverlaySync(() => {
-    if (!dragActive) syncAll();
-  });
-  manager.ensureOverlayLoop();
-
   return () => {
     cancelAnimationFrame(dragRaf);
-    unregisterSelectionBridge();
-    unregisterDeselect();
-    unregisterOverlaySync();
+    unregisterLifecycle();
     container.removeEventListener("pointerdown", onBgPointerDown);
     drawOverlay?.remove();
     overlay.remove();

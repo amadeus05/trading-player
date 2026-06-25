@@ -9,7 +9,7 @@ import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/co
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
 import { createTrendLineExtendSlots } from "./trendLineToolbarSlots";
 import { createDrawingOverlay } from "../shared/overlay";
-import { getDefaultPasteOffset, offsetClipboardItem } from "../shared/clipboard";
+import { attachManagedDrawingLifecycle, createClipboardBridge } from "../shared/ManagedDrawingTool";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 export type { DrawingMode } from "../shared/types";
 
@@ -243,35 +243,36 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     onTextButtonClick: (tl, anchor) => openTrendLineTextEditor(tl, anchor),
   });
 
-  const unregisterSelectionBridge = manager.registerSelectionBridge("trendline", {
-    getSelected: () => {
-      if (!selectedId) return null;
-      const line = trendLines.find((item) => item.id === selectedId);
-      if (!line) return null;
-      const { id: _id, datasetId: _datasetId, ...data } = line;
-      return { kind: "trendline", data };
-    },
-    deleteSelected: () => {
-      if (selectedId) deleteLine(selectedId);
-    },
-    paste: (item) => {
-      if (item.kind !== "trendline") return;
-      const offset = getDefaultPasteOffset(candleStore.candles);
-      const line: TrendLine = {
-        ...offsetClipboardItem(item, offset).data,
-        id: crypto.randomUUID(),
-        datasetId,
-      };
-      trendLines.push(line);
-      callbacks.onCreate(line);
-      selectLine(line.id);
-    },
-    cancelDrawing: () => {
-      if (!drawPoint1) return false;
-      drawPoint1 = null;
-      if (ghostLine) { ghostLine.remove(); ghostLine = null; }
-      callbacks.onDrawingComplete();
-      return true;
+  const unregisterLifecycle = attachManagedDrawingLifecycle({
+    manager,
+    kind: "trendline",
+    bridge: createClipboardBridge({
+      kind: "trendline",
+      datasetId,
+      candleStore,
+      getSelectedId: () => selectedId,
+      findById: (id) => trendLines.find((item) => item.id === id),
+      append: (line) => { trendLines.push(line); },
+      onCreate: callbacks.onCreate,
+      select: (id) => selectLine(id),
+      deleteSelected: () => { if (selectedId) deleteLine(selectedId); },
+      createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
+      cancelDrawing: () => {
+        if (!drawPoint1) return false;
+        drawPoint1 = null;
+        if (ghostLine) { ghostLine.remove(); ghostLine = null; }
+        callbacks.onDrawingComplete();
+        return true;
+      },
+    }),
+    syncAll,
+    isDragActive: () => dragActive,
+    onDeselect: () => {
+      if (selectedId === null) return;
+      selectedId = null;
+      onSelect?.(null);
+      removeToolbar();
+      syncAll();
     },
   });
 
@@ -663,18 +664,6 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     }
   }
 
-  const unregisterDeselect = manager.registerDeselect("trendline", () => {
-    if (selectedId === null) return;
-    selectedId = null;
-    onSelect?.(null);
-    removeToolbar();
-    syncAll();
-  });
-  const unregisterOverlaySync = manager.registerOverlaySync(() => {
-    if (!dragActive) syncAll();
-  });
-  manager.ensureOverlayLoop();
-
   /* ---- Attach events ---- */
   if (drawingMode === "trendline") {
     chart.subscribeClick(handleDrawClick);
@@ -685,9 +674,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
   /* ---- Cleanup ---- */
   return () => {
     cancelAnimationFrame(dragRaf);
-    unregisterSelectionBridge();
-    unregisterDeselect();
-    unregisterOverlaySync();
+    unregisterLifecycle();
     try { chart.unsubscribeClick(handleDrawClick); } catch { }
     container.removeEventListener("mousemove", handleMouseMove);
     container.removeEventListener("pointerdown", handleBackgroundClick);

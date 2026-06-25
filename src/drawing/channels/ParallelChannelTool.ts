@@ -6,7 +6,7 @@
 import type { ParallelChannel } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
-import { getDefaultPasteOffset, offsetClipboardItem } from "../shared/clipboard";
+import { attachManagedDrawingLifecycle, createClipboardBridge } from "../shared/ManagedDrawingTool";
 import { createDrawingOverlay } from "../shared/overlay";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 
@@ -342,36 +342,36 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     onSync: () => syncAll(),
   });
 
-  const unregisterSelectionBridge = manager.registerSelectionBridge("parallelchannel", {
-    getSelected: () => {
-      if (!selectedId) return null;
-      const channel = parallelChannels.find((item) => item.id === selectedId);
-      if (!channel) return null;
-      const { id: _id, datasetId: _datasetId, ...data } = channel;
-      return { kind: "parallelchannel", data };
-    },
-    deleteSelected: () => {
-      if (selectedId) deleteChannel(selectedId);
-    },
-    paste: (item) => {
-      if (item.kind !== "parallelchannel") return;
-      const offset = getDefaultPasteOffset(candleStore.candles);
-      const channel: ParallelChannel = {
-        ...offsetClipboardItem(item, offset).data,
-        id: crypto.randomUUID(),
-        datasetId,
-      };
-      parallelChannels.push(channel);
-      callbacks.onCreate(channel);
-      selectChannel(channel.id);
-    },
-    cancelDrawing: () => {
-      if (!drawPoint1) return false;
-      drawPoint1 = null;
-      drawPoint2 = null;
-      removeGhost();
-      callbacks.onDrawingComplete();
-      return true;
+  const unregisterLifecycle = attachManagedDrawingLifecycle({
+    manager,
+    kind: "parallelchannel",
+    bridge: createClipboardBridge({
+      kind: "parallelchannel",
+      datasetId,
+      candleStore,
+      getSelectedId: () => selectedId,
+      findById: (id) => parallelChannels.find((item) => item.id === id),
+      append: (channel) => { parallelChannels.push(channel); },
+      onCreate: callbacks.onCreate,
+      select: (id) => selectChannel(id),
+      deleteSelected: () => { if (selectedId) deleteChannel(selectedId); },
+      createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
+      cancelDrawing: () => {
+        if (!drawPoint1) return false;
+        drawPoint1 = null;
+        drawPoint2 = null;
+        removeGhost();
+        callbacks.onDrawingComplete();
+        return true;
+      },
+    }),
+    syncAll,
+    isDragActive: () => dragActive,
+    onDeselect: () => {
+      if (selectedId === null) return;
+      selectedId = null;
+      removeToolbar();
+      syncAll();
     },
   });
 
@@ -950,17 +950,6 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     if (selectedId) selectChannel(null);
   }
 
-  const unregisterDeselect = manager.registerDeselect("parallelchannel", () => {
-    if (selectedId === null) return;
-    selectedId = null;
-    removeToolbar();
-    syncAll();
-  });
-  const unregisterOverlaySync = manager.registerOverlaySync(() => {
-    if (!dragActive) syncAll();
-  });
-  manager.ensureOverlayLoop();
-
   if (drawingMode === "parallelchannel") {
     chart.subscribeClick(handleDrawClick);
   }
@@ -969,9 +958,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
 
   return () => {
     cancelAnimationFrame(dragRaf);
-    unregisterSelectionBridge();
-    unregisterDeselect();
-    unregisterOverlaySync();
+    unregisterLifecycle();
     try { chart.unsubscribeClick(handleDrawClick); } catch { /* noop */ }
     container.removeEventListener("mousemove", handleMouseMove);
     container.removeEventListener("pointerdown", handleBackgroundClick);

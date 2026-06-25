@@ -6,7 +6,7 @@
 import type { FibonacciTrendExtension } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
-import { getDefaultPasteOffset, offsetClipboardItem } from "../shared/clipboard";
+import { attachManagedDrawingLifecycle, createClipboardBridge } from "../shared/ManagedDrawingTool";
 import type { DrawingLineStyle } from "../shared/DrawingToolbar";
 import { createDrawingOverlay } from "../shared/overlay";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
@@ -316,37 +316,37 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     onSync: () => syncAll(),
   });
 
-  const unregisterSelectionBridge = manager.registerSelectionBridge("fibtrendext", {
-    getSelected: () => {
-      if (!selectedId) return null;
-      const fib = fibonacciTrendExtensions.find((item) => item.id === selectedId);
-      if (!fib) return null;
-      const { id: _id, datasetId: _datasetId, ...data } = fib;
-      return { kind: "fibtrendext", data };
-    },
-    deleteSelected: () => {
-      if (selectedId) deleteFib(selectedId);
-    },
-    paste: (item) => {
-      if (item.kind !== "fibtrendext") return;
-      const offset = getDefaultPasteOffset(candleStore.candles);
-      const fib: FibonacciTrendExtension = {
-        ...offsetClipboardItem(item, offset).data,
-        id: crypto.randomUUID(),
-        datasetId,
-      };
-      fibonacciTrendExtensions.push(fib);
-      callbacks.onCreate(fib);
-      selectFib(fib.id);
-    },
-    cancelDrawing: () => {
-      if (!drawPoint1 && !drawPoint2) return false;
-      drawPoint1 = null;
-      drawPoint2 = null;
-      window.removeEventListener("pointermove", handleDrawPointerMove);
-      clearGhost();
-      callbacks.onDrawingComplete();
-      return true;
+  const unregisterLifecycle = attachManagedDrawingLifecycle({
+    manager,
+    kind: "fibtrendext",
+    bridge: createClipboardBridge({
+      kind: "fibtrendext",
+      datasetId,
+      candleStore,
+      getSelectedId: () => selectedId,
+      findById: (id) => fibonacciTrendExtensions.find((item) => item.id === id),
+      append: (fib) => { fibonacciTrendExtensions.push(fib); },
+      onCreate: callbacks.onCreate,
+      select: (id) => selectFib(id),
+      deleteSelected: () => { if (selectedId) deleteFib(selectedId); },
+      createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
+      cancelDrawing: () => {
+        if (!drawPoint1 && !drawPoint2) return false;
+        drawPoint1 = null;
+        drawPoint2 = null;
+        window.removeEventListener("pointermove", handleDrawPointerMove);
+        clearGhost();
+        callbacks.onDrawingComplete();
+        return true;
+      },
+    }),
+    syncAll,
+    isDragActive: () => dragActive,
+    onDeselect: () => {
+      if (selectedId === null) return;
+      selectedId = null;
+      removeToolbar();
+      syncAll();
     },
   });
 
@@ -1074,18 +1074,6 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
   window.addEventListener("pointerup", handlePointerUp);
   window.addEventListener("pointercancel", handlePointerUp);
 
-  const unregisterDeselect = manager.registerDeselect("fibtrendext", () => {
-    if (selectedId === null) return;
-    selectedId = null;
-    removeToolbar();
-    syncAll();
-  });
-
-  const unregisterOverlaySync = manager.registerOverlaySync(() => {
-    if (!dragActive) syncAll();
-  });
-  manager.ensureOverlayLoop();
-
   if (drawingMode === "fibtrendext") {
     chart.subscribeClick(handleDrawClick);
   }
@@ -1097,9 +1085,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     cancelAnimationFrame(interactionSyncRaf);
     cancelAnimationFrame(finalSyncRaf);
     window.clearTimeout(wheelSyncTimer);
-    unregisterSelectionBridge();
-    unregisterDeselect();
-    unregisterOverlaySync();
+    unregisterLifecycle();
     try { chart.unsubscribeClick(handleDrawClick); } catch { }
     try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRangeChange); } catch { }
     container.removeEventListener("wheel", handleScaleWheel, { capture: true });

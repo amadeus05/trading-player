@@ -5,7 +5,7 @@
 import type { FibonacciRetracement } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
-import { getDefaultPasteOffset, offsetClipboardItem } from "../shared/clipboard";
+import { attachManagedDrawingLifecycle, createClipboardBridge } from "../shared/ManagedDrawingTool";
 import type { DrawingLineStyle } from "../shared/DrawingToolbar";
 import { createDrawingOverlay } from "../shared/overlay";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
@@ -282,36 +282,36 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     onSync: () => syncAll(),
   });
 
-  const unregisterSelectionBridge = manager.registerSelectionBridge("fibonacci", {
-    getSelected: () => {
-      if (!selectedId) return null;
-      const fib = fibonacciRetracements.find((item) => item.id === selectedId);
-      if (!fib) return null;
-      const { id: _id, datasetId: _datasetId, ...data } = fib;
-      return { kind: "fibonacci", data };
-    },
-    deleteSelected: () => {
-      if (selectedId) deleteFib(selectedId);
-    },
-    paste: (item) => {
-      if (item.kind !== "fibonacci") return;
-      const offset = getDefaultPasteOffset(candleStore.candles);
-      const fib: FibonacciRetracement = {
-        ...offsetClipboardItem(item, offset).data,
-        id: crypto.randomUUID(),
-        datasetId,
-      };
-      fibonacciRetracements.push(fib);
-      callbacks.onCreate(fib);
-      selectFib(fib.id);
-    },
-    cancelDrawing: () => {
-      if (!drawPoint1) return false;
-      drawPoint1 = null;
-      window.removeEventListener("pointermove", handleDrawPointerMove);
-      clearGhost();
-      callbacks.onDrawingComplete();
-      return true;
+  const unregisterLifecycle = attachManagedDrawingLifecycle({
+    manager,
+    kind: "fibonacci",
+    bridge: createClipboardBridge({
+      kind: "fibonacci",
+      datasetId,
+      candleStore,
+      getSelectedId: () => selectedId,
+      findById: (id) => fibonacciRetracements.find((item) => item.id === id),
+      append: (fib) => { fibonacciRetracements.push(fib); },
+      onCreate: callbacks.onCreate,
+      select: (id) => selectFib(id),
+      deleteSelected: () => { if (selectedId) deleteFib(selectedId); },
+      createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
+      cancelDrawing: () => {
+        if (!drawPoint1) return false;
+        drawPoint1 = null;
+        window.removeEventListener("pointermove", handleDrawPointerMove);
+        clearGhost();
+        callbacks.onDrawingComplete();
+        return true;
+      },
+    }),
+    syncAll,
+    isDragActive: () => dragActive,
+    onDeselect: () => {
+      if (selectedId === null) return;
+      selectedId = null;
+      removeToolbar();
+      syncAll();
     },
   });
 
@@ -818,18 +818,6 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     if (selectedId) selectFib(null);
   }
 
-  const unregisterDeselect = manager.registerDeselect("fibonacci", () => {
-    if (selectedId === null) return;
-    selectedId = null;
-    removeToolbar();
-    syncAll();
-  });
-
-  const unregisterOverlaySync = manager.registerOverlaySync(() => {
-    if (!dragActive) syncAll();
-  });
-  manager.ensureOverlayLoop();
-
   syncAll();
 
   const onVisibleRangeChange = () => {
@@ -852,9 +840,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     cancelAnimationFrame(interactionSyncRaf);
     cancelAnimationFrame(finalSyncRaf);
     window.clearTimeout(wheelSyncTimer);
-    unregisterSelectionBridge();
-    unregisterDeselect();
-    unregisterOverlaySync();
+    unregisterLifecycle();
     try { chart.unsubscribeClick(handleDrawClick); } catch { }
     try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRangeChange); } catch { }
     container.removeEventListener("wheel", handleScaleWheel, { capture: true });
