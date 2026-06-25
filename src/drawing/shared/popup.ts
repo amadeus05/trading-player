@@ -1,6 +1,8 @@
 export function mountAnchoredPopup(options: {
   container: HTMLElement;
   anchor: Element;
+  horizontalAnchor?: Element;
+  verticalAnchor?: Element;
   popup: HTMLElement;
   width: number;
   gap?: number;
@@ -8,14 +10,17 @@ export function mountAnchoredPopup(options: {
   onDismiss?: () => void;
 }): () => void {
   const { container, anchor, popup, width } = options;
+  const horizontalAnchor = options.horizontalAnchor ?? anchor;
+  const verticalAnchor = options.verticalAnchor ?? anchor;
   const gap = options.gap ?? 6;
   const margin = options.margin ?? 4;
-  const anchorBounds = anchor.getBoundingClientRect();
+  const horizontalBounds = horizontalAnchor.getBoundingClientRect();
+  const verticalBounds = verticalAnchor.getBoundingClientRect();
   const containerBounds = container.getBoundingClientRect();
-  let left = anchorBounds.left - containerBounds.left;
+  let left = horizontalBounds.left - containerBounds.left;
   left = Math.max(margin, Math.min(left, containerBounds.width - width - margin));
   popup.style.left = `${left}px`;
-  popup.style.top = `${anchorBounds.bottom - containerBounds.top + gap}px`;
+  popup.style.top = `${verticalBounds.bottom - containerBounds.top + gap}px`;
   popup.addEventListener("pointerdown", stopPropagation);
   container.appendChild(popup);
 

@@ -1,3 +1,5 @@
+import templatesIcon from "../icons/ui/drawing-templates.svg?raw";
+
 export type DrawingLineStyle = "solid" | "dashed" | "dotted";
 
 const PENCIL = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M12.1 2.9a1 1 0 0 1 1.4 0l1.5 1.5a1 1 0 0 1 0 1.4l-8.4 8.4H3.5v-2.5l8.4-8.4z" stroke="currentColor" stroke-width="1.35"/><path d="M10.6 4.4l2.5 2.5" stroke="currentColor" stroke-width="1.35"/></svg>`;
@@ -27,6 +29,7 @@ export interface DrawingToolbarOptions {
   showText?: boolean;
   showColor?: boolean;
   showLock?: boolean;
+  showTemplates?: boolean;
 }
 
 export function createDrawingToolbar(options: DrawingToolbarOptions): HTMLDivElement {
@@ -37,10 +40,14 @@ export function createDrawingToolbar(options: DrawingToolbarOptions): HTMLDivEle
   const fill = options.showFill ? `<button type="button" class="rect-tb-color-btn rect-tb-fill-btn" title="Цвет заливки"><span class="rect-tb-color-icon">${BUCKET}</span><span class="rect-tb-color-bar" style="background:${options.fillColor};opacity:${(options.fillOpacity ?? 100) / 100}"></span></button>` : "";
   const text = options.showText ? `<button type="button" class="rect-tb-color-btn rect-tb-text-btn trend-toolbar-text" title="Текст"><span class="rect-tb-color-icon rect-tb-text-letter">T</span><span class="rect-tb-color-bar" style="background:${options.textColor ?? options.lineColor}"></span></button>` : "";
   const lock = options.showLock ? `<div class="rect-toolbar-sep"></div><button type="button" class="rect-tb-lock rect-tb-icon-btn" title="${options.locked ? "Разблокировать" : "Заблокировать"}"${options.locked ? ` data-active="1"` : ""}>${lockIcon(Boolean(options.locked))}</button>` : "";
+  const showTemplates = options.showTemplates !== false;
+  const templates = showTemplates
+    ? `<div class="rect-toolbar-sep"></div><button type="button" class="rect-tb-templates rect-tb-icon-btn" title="Шаблоны">${templatesIcon}</button>`
+    : "";
   const afterGrip = showColor || options.showFill || options.showText ? `<div class="rect-toolbar-sep"></div>` : "";
   div.innerHTML = `<div class="rect-toolbar-row">
     <div class="rect-tb-grip" title="Переместить панель"><svg width="8" height="14" viewBox="0 0 8 14" fill="currentColor"><circle cx="2" cy="2" r="1.5"/><circle cx="6" cy="2" r="1.5"/><circle cx="2" cy="7" r="1.5"/><circle cx="6" cy="7" r="1.5"/><circle cx="2" cy="12" r="1.5"/><circle cx="6" cy="12" r="1.5"/></svg></div>
-    ${afterGrip}${color}${fill}${text}
+    ${templates}${afterGrip}${color}${fill}${text}
     <div class="rect-toolbar-sep"></div>
     <button type="button" class="rect-tb-width-btn">${LINE}<span class="rect-tb-width-label">${options.width}px</span></button>
     <button type="button" class="rect-tb-style-btn">${drawingStyleIcon(options.style)}</button>

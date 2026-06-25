@@ -12,6 +12,7 @@ const COLORS = [
 export function openColorPalette(options: {
   container: HTMLElement;
   anchor: Element;
+  verticalAnchor?: Element;
   color: string;
   opacity?: number;
   onColor: (color: string) => void;
@@ -72,5 +73,12 @@ export function openColorPalette(options: {
     div.appendChild(row);
   }
   markActive(options.color);
-  return mountAnchoredPopup({ container: options.container, anchor: options.anchor, popup: div, width: 210, onDismiss: options.onDismiss });
+  return mountAnchoredPopup({
+    container: options.container,
+    anchor: options.anchor,
+    verticalAnchor: options.verticalAnchor,
+    popup: div,
+    width: 210,
+    onDismiss: options.onDismiss,
+  });
 }

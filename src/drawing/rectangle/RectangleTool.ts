@@ -5,6 +5,7 @@
 import type { Rectangle } from "../../types";
 import { pointToPixel, snapXToNearestCandle, timeToX, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
+import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
 import { attachManagedDrawingLifecycle, createClipboardBridge, getPlotWidth, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import { createDrawingOverlay } from "../shared/overlay";
 import { forgetFloatingPanelPosition } from "../shared/floatingPanel";
@@ -332,12 +333,14 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     container,
     preset: "full",
     className: "rect-toolbar",
+    templateKind: "rectangle",
     persistenceKey: (rect) => `rectangle:${rect.id}`,
     getState: (rect) => ({
       lineColor: rect.borderColor,
       fillColor: rect.fillColor,
       fillOpacity: rect.fillOpacity,
       textColor: rectTextColor(rect),
+      text: rect.text ?? "",
       width: rect.borderWidth,
       style: rect.borderStyle,
       locked: rect.locked,
@@ -348,6 +351,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
         ...(patch.fillColor != null ? { fillColor: patch.fillColor } : {}),
         ...(patch.fillOpacity != null ? { fillOpacity: patch.fillOpacity } : {}),
         ...(patch.textColor != null ? { textColor: patch.textColor } : {}),
+        ...(patch.text != null ? { text: patch.text } : {}),
         ...(patch.width != null ? { borderWidth: patch.width } : {}),
         ...(patch.style ? { borderStyle: patch.style } : {}),
         ...(patch.locked != null ? { locked: patch.locked } : {}),
@@ -658,6 +662,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     const tR = Math.max(drawPoint1.time, time);
     const pT = Math.max(drawPoint1.price, price);
     const pB = Math.min(drawPoint1.price, price);
+    const tpl = getDefaultDrawingTemplateState("rectangle");
     const newRect: Rectangle = {
       id: crypto.randomUUID(),
       datasetId,
@@ -665,13 +670,13 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       timeRight: tR,
       priceTop: pT,
       priceBottom: pB,
-      borderColor: "#ff2727",
-      fillColor: "#2962ff",
-      fillOpacity: 20,
-      textColor: "#2962ff",
+      borderColor: tpl.lineColor,
+      fillColor: tpl.fillColor ?? "#2962ff",
+      fillOpacity: tpl.fillOpacity ?? 20,
+      textColor: tpl.textColor ?? tpl.fillColor ?? "#2962ff",
       text: "",
-      borderWidth: 2,
-      borderStyle: "solid",
+      borderWidth: tpl.width,
+      borderStyle: tpl.style,
       locked: false,
     };
     rectangles.push(newRect);

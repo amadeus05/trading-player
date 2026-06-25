@@ -5,6 +5,7 @@
 import type { FibonacciRetracement } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
+import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
 import { attachManagedDrawingLifecycle, attachScaleInteractionSync, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import type { DrawingLineStyle } from "../shared/DrawingToolbar";
 import { createDrawingOverlay } from "../shared/overlay";
@@ -272,6 +273,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   toolbarController = new DrawingToolbarController({
     container,
     preset: "line-only",
+    templateKind: "fibonacci",
     persistenceKey: (fib) => `fibonacci:${fib.id}`,
     getState: (fib) => {
       const lineStyle = fibLineStyle(fib);
@@ -713,6 +715,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
       drawPoint1 = { time, price };
       window.addEventListener("pointermove", handleDrawPointerMove);
     } else {
+      const tpl = getDefaultDrawingTemplateState("fibonacci");
       const newFib: FibonacciRetracement = {
         id: crypto.randomUUID(),
         datasetId,
@@ -720,8 +723,8 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
         point2: { time, price },
         showLabels: true,
         locked: false,
-        lineWidth: DEFAULT_FIB_LINE.width,
-        lineStyle: DEFAULT_FIB_LINE.style,
+        lineWidth: tpl.width,
+        lineStyle: tpl.style,
       };
       fibonacciRetracements.push(newFib);
       callbacks.onCreate(newFib);

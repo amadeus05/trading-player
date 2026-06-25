@@ -6,6 +6,7 @@
 import type { ParallelChannel } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
+import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
 import { attachManagedDrawingLifecycle, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import { createDrawingOverlay } from "../shared/overlay";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
@@ -332,6 +333,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     container,
     preset: "channel",
     className: "trend-toolbar",
+    templateKind: "parallelchannel",
     persistenceKey: (channel) => `parallel-channel:${channel.id}`,
     getState: (channel) => ({
       lineColor: channel.color,
@@ -840,17 +842,18 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       ? widthPointFromPixels(p1px, p2px, cursor)
       : point;
 
+    const tpl = getDefaultDrawingTemplateState("parallelchannel");
     const newChannel: ParallelChannel = {
       id: crypto.randomUUID(),
       datasetId,
       point1: drawPoint1,
       point2: drawPoint2,
       widthPoint: widthPoint ?? point,
-      color: "#d1d4dc",
-      fillColor: "#787b86",
-      fillOpacity: 20,
-      width: 1,
-      lineStyle: "solid",
+      color: tpl.lineColor,
+      fillColor: tpl.fillColor ?? "#787b86",
+      fillOpacity: tpl.fillOpacity ?? 20,
+      width: tpl.width,
+      lineStyle: tpl.style,
       extendLeft: false,
       extendRight: false,
       locked: false,

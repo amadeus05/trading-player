@@ -7,6 +7,7 @@
 import type { TrendLine } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
+import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
 import { createTrendLineExtendSlots } from "./trendLineToolbarSlots";
 import { createDrawingOverlay } from "../shared/overlay";
 import { attachManagedDrawingLifecycle, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
@@ -230,10 +231,13 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     container,
     preset: "full",
     className: "trend-toolbar",
+    templateKind: "trendline",
     persistenceKey: (tl) => `trend-line:${tl.id}`,
     getState: (tl) => ({
       lineColor: tl.color,
       textColor: tl.color,
+      text: tl.label,
+      showLabel: tl.showLabel,
       width: tl.width,
       style: tl.lineStyle,
       locked: Boolean(tl.locked),
@@ -241,8 +245,11 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     onPatch: (tl, patch) => {
       updateLine(tl.id, {
         ...(patch.lineColor != null ? { color: patch.lineColor } : {}),
+        ...(patch.textColor != null ? { color: patch.textColor } : {}),
         ...(patch.width != null ? { width: patch.width } : {}),
         ...(patch.style ? { lineStyle: patch.style } : {}),
+        ...(patch.text != null ? { label: patch.text, showLabel: patch.showLabel ?? Boolean(patch.text.trim()) } : {}),
+        ...(patch.showLabel != null && patch.text == null ? { showLabel: patch.showLabel } : {}),
         ...(patch.locked != null ? { locked: patch.locked } : {}),
       });
     },
@@ -589,14 +596,15 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       }
     } else {
       // Second click – create line
+      const tpl = getDefaultDrawingTemplateState("trendline");
       const newLine: TrendLine = {
         id: crypto.randomUUID(),
         datasetId,
         point1: drawPoint1,
         point2: { time, price },
-        color: "#ff4976",
-        width: 2,
-        lineStyle: "solid",
+        color: tpl.lineColor,
+        width: tpl.width,
+        lineStyle: tpl.style,
         extendLeft: false,
         extendRight: false,
         showLabel: false,

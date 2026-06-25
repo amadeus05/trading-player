@@ -6,6 +6,7 @@
 import type { FibonacciTrendExtension } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
+import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
 import { attachManagedDrawingLifecycle, attachScaleInteractionSync, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import type { DrawingLineStyle } from "../shared/DrawingToolbar";
 import { createDrawingOverlay } from "../shared/overlay";
@@ -306,6 +307,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
   toolbarController = new DrawingToolbarController({
     container,
     preset: "line-only",
+    templateKind: "fibtrendext",
     persistenceKey: (fib) => `fibtrendext:${fib.id}`,
     getState: (fib) => {
       const lineStyle = fibLineStyle(fib);
@@ -955,6 +957,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       const p3Price = pointer ? pxToPrice(series, pointer.y) : price;
       if (p3Time == null || p3Price == null || p3Price <= 0) return;
 
+      const tpl = getDefaultDrawingTemplateState("fibtrendext");
       const newFib: FibonacciTrendExtension = {
         id: crypto.randomUUID(),
         datasetId,
@@ -963,8 +966,8 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
         point3: { time: p3Time, price: p3Price },
         showLabels: true,
         locked: false,
-        lineWidth: DEFAULT_FIB_LINE.width,
-        lineStyle: DEFAULT_FIB_LINE.style,
+        lineWidth: tpl.width,
+        lineStyle: tpl.style,
       };
       fibonacciTrendExtensions.push(newFib);
       callbacks.onCreate(newFib);

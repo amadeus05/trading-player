@@ -1832,7 +1832,7 @@ aside {
   overflow: hidden;
   padding: 4px 0;
   border: 1px solid #2a2e39;
-  border-radius: 0 0 8px 8px;
+  border-radius: 8px;
   background: #1e222d;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
   pointer-events: all;
@@ -1877,6 +1877,87 @@ aside {
   min-height: 1px;
   border-radius: 2px;
   background: currentColor;
+}
+
+.rect-templates-menu {
+  position: absolute;
+  z-index: 21;
+  min-width: 248px;
+  overflow: hidden;
+  padding: 4px 0;
+  border: 1px solid #2a2e39;
+  border-radius: 8px;
+  background: #1e222d;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  pointer-events: all;
+}
+
+.rect-templates-action {
+  justify-content: flex-start;
+}
+
+.rect-templates-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: #2a2e39;
+}
+
+.rect-templates-row {
+  display: flex;
+  align-items: stretch;
+  min-height: 40px;
+  padding-right: 4px;
+}
+
+.rect-templates-row:hover {
+  background: #2a2e39;
+}
+
+.rect-templates-row .rect-line-menu-item,
+.rect-templates-row .rect-templates-delete {
+  background: transparent;
+}
+
+.rect-templates-row .rect-line-menu-item:hover,
+.rect-templates-row .rect-templates-delete:hover {
+  background: transparent;
+}
+
+.rect-templates-row:hover .rect-templates-delete {
+  color: #d1d4dc;
+}
+
+.rect-templates-item {
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-start;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rect-templates-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  align-self: stretch;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #9598a1;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.rect-templates-delete svg {
+  width: 16px;
+  height: 16px;
+}
+
+.rect-toolbar .rect-tb-templates svg {
+  width: 18px;
+  height: 18px;
 }
 
 .rect-toolbar .rect-tb-icon-btn {

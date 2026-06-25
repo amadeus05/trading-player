@@ -1,14 +1,25 @@
 import { openColorPalette } from "./colorPalette";
 import { createDrawingToolbar, drawingStyleIcon, type DrawingLineStyle, type DrawingToolbarOptions } from "./DrawingToolbar";
+import {
+  deleteDrawingTemplate,
+  getDefaultDrawingTemplateState,
+  listDrawingTemplates,
+  saveDrawingTemplate,
+  type DrawingTemplateKind,
+  type DrawingTemplateState,
+} from "./drawingTemplates";
 import { mountFloatingPanel } from "./floatingPanel";
 import { mountAnchoredPopup } from "./popup";
 import { hexToRgba } from "./colorUtils";
+import removeDrawingIcon from "../icons/ui/remove-drawing.svg?raw";
 
 export interface DrawingToolbarState {
   lineColor: string;
   fillColor?: string;
   fillOpacity?: number;
   textColor?: string;
+  text?: string;
+  showLabel?: boolean;
   width: number;
   style: DrawingLineStyle;
   locked?: boolean;
@@ -19,6 +30,8 @@ export interface DrawingToolbarPatch {
   fillColor?: string;
   fillOpacity?: number;
   textColor?: string;
+  text?: string;
+  showLabel?: boolean;
   width?: number;
   style?: DrawingLineStyle;
   locked?: boolean;
@@ -53,6 +66,7 @@ export interface DrawingToolbarControllerOptions<T> {
   enabled?: boolean;
   preset?: DrawingToolbarPreset;
   className?: string;
+  templateKind: DrawingTemplateKind;
   persistenceKey: (drawing: T) => string;
   getState: (drawing: T) => DrawingToolbarState;
   onPatch: (drawing: T, patch: DrawingToolbarPatch) => void;
@@ -82,6 +96,32 @@ const PRESET_OPTIONS: Record<Exclude<DrawingToolbarPreset, "none">, Partial<Draw
     showLock: true,
   },
 };
+
+function templateStateFromToolbar(state: DrawingToolbarState): DrawingTemplateState {
+  return {
+    lineColor: state.lineColor,
+    ...(state.fillColor != null ? { fillColor: state.fillColor } : {}),
+    ...(state.fillOpacity != null ? { fillOpacity: state.fillOpacity } : {}),
+    ...(state.textColor != null ? { textColor: state.textColor } : {}),
+    ...(state.text != null ? { text: state.text } : {}),
+    ...(state.showLabel != null ? { showLabel: state.showLabel } : {}),
+    width: state.width,
+    style: state.style,
+  };
+}
+
+function templatePatchFromState(state: DrawingTemplateState): DrawingToolbarPatch {
+  return {
+    lineColor: state.lineColor,
+    ...(state.fillColor != null ? { fillColor: state.fillColor } : {}),
+    ...(state.fillOpacity != null ? { fillOpacity: state.fillOpacity } : {}),
+    ...(state.textColor != null ? { textColor: state.textColor } : {}),
+    ...(state.text != null ? { text: state.text } : {}),
+    ...(state.showLabel != null ? { showLabel: state.showLabel } : {}),
+    width: state.width,
+    style: state.style,
+  };
+}
 
 function lockIcon(locked: boolean): string {
   return locked
@@ -268,6 +308,10 @@ export class DrawingToolbarController<T> {
       event.stopPropagation();
       this.options.onDelete(drawing);
     });
+    panel.querySelector<HTMLElement>(".rect-tb-templates")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.openTemplatesMenu(event.currentTarget as Element, drawing);
+    });
 
     this.applyState(this.options.getState(drawing));
   }
@@ -315,6 +359,7 @@ export class DrawingToolbarController<T> {
     this.cleanupPopup = openColorPalette({
       container: this.options.container,
       anchor,
+      verticalAnchor: this.panel ?? undefined,
       color,
       opacity: withOpacity ? state.fillOpacity ?? 100 : undefined,
       onColor: (nextColor) => {
@@ -376,9 +421,97 @@ export class DrawingToolbarController<T> {
     this.cleanupPopup = mountAnchoredPopup({
       container: this.options.container,
       anchor,
+      verticalAnchor: this.panel ?? undefined,
       popup: menu,
       width: kind === "width" ? 104 : 168,
-      gap: 2,
+      onDismiss: () => { this.cleanupPopup = null; },
+    });
+  }
+
+  private applyTemplate(drawing: T, state: DrawingTemplateState) {
+    this.options.onPatch(drawing, templatePatchFromState(state));
+    this.refresh();
+    this.options.onSync?.();
+  }
+
+  private openTemplatesMenu(anchor: Element, drawing: T) {
+    if (this.cleanupPopup) {
+      this.closePopups();
+      return;
+    }
+
+    const menu = document.createElement("div");
+    menu.className = "rect-templates-menu";
+
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "rect-line-menu-item rect-templates-action";
+    saveBtn.textContent = "Сохранить шаблон как…";
+    saveBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const name = window.prompt("Имя шаблона");
+      if (name == null) return;
+      const current = templateStateFromToolbar(this.options.getState(drawing));
+      saveDrawingTemplate(this.options.templateKind, name, current);
+      this.closePopups();
+    });
+    menu.appendChild(saveBtn);
+
+    const defaultBtn = document.createElement("button");
+    defaultBtn.type = "button";
+    defaultBtn.className = "rect-line-menu-item rect-templates-action";
+    defaultBtn.textContent = "Применить шаблон по умолчанию";
+    defaultBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.applyTemplate(drawing, getDefaultDrawingTemplateState(this.options.templateKind));
+      this.closePopups();
+    });
+    menu.appendChild(defaultBtn);
+
+    const templates = listDrawingTemplates(this.options.templateKind);
+    if (templates.length > 0) {
+      const sep = document.createElement("div");
+      sep.className = "rect-templates-sep";
+      menu.appendChild(sep);
+    }
+
+    templates.forEach((template) => {
+      const row = document.createElement("div");
+      row.className = "rect-templates-row";
+
+      const applyBtn = document.createElement("button");
+      applyBtn.type = "button";
+      applyBtn.className = "rect-line-menu-item rect-templates-item";
+      applyBtn.textContent = template.name;
+      applyBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.applyTemplate(drawing, template.state);
+        this.closePopups();
+      });
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "rect-templates-delete";
+      deleteBtn.title = "Удалить шаблон";
+      deleteBtn.innerHTML = removeDrawingIcon;
+      deleteBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        deleteDrawingTemplate(template.id);
+        this.closePopups();
+        this.openTemplatesMenu(anchor, drawing);
+      });
+
+      row.appendChild(applyBtn);
+      row.appendChild(deleteBtn);
+      menu.appendChild(row);
+    });
+
+    this.cleanupPopup = mountAnchoredPopup({
+      container: this.options.container,
+      anchor,
+      verticalAnchor: this.panel ?? undefined,
+      popup: menu,
+      width: 248,
       onDismiss: () => { this.cleanupPopup = null; },
     });
   }
