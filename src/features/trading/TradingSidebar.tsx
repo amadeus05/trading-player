@@ -1,4 +1,4 @@
-import { Button, Card, Checkbox, InputNumber, Select, Slider, Tag, Tooltip } from "antd";
+import { Button, Card, InputNumber, Select, Slider, Tag, Tooltip } from "antd";
 import { Check, CircleHelp, Pencil, X } from "lucide-react";
 import type { Candle, Trade } from "../../types";
 import { formatDateTime, formatNumber, formatPrice } from "../../shared/lib/market";
@@ -14,7 +14,8 @@ interface TradingSidebarProps {
   workingTrades: Trade[];
   focusedTradeId: string | null;
   editingTradeId: string | null;
-  onProtectionChange: (enabled: boolean) => void;
+  onBeginOrderDraft: (side: Trade["side"]) => void;
+  onCancelOrderDraft: () => void;
   onPlaceOrder: (side: Trade["side"]) => void;
   onTradeFocus: (id: string | null) => void;
   onTradeEditStart: (trade: Trade) => void;
@@ -22,6 +23,64 @@ interface TradingSidebarProps {
   onTradeEditSave: () => void;
   onCancelOrder: (id: string) => void;
   onCloseTrade: (trade: Trade) => void;
+}
+
+function OrderSideButton({
+  side,
+  className,
+  label,
+  orderDraftSide,
+  disabled,
+  takeProfit,
+  stopLoss,
+  onBeginOrderDraft,
+  onCancelOrderDraft,
+  onPlaceOrder,
+}: {
+  side: Trade["side"];
+  className: string;
+  label: string;
+  orderDraftSide: Trade["side"] | null;
+  disabled: boolean;
+  takeProfit: number;
+  stopLoss: number;
+  onBeginOrderDraft: (side: Trade["side"]) => void;
+  onCancelOrderDraft: () => void;
+  onPlaceOrder: (side: Trade["side"]) => void;
+}) {
+  if (orderDraftSide === side) {
+    return (
+      <div className={`tradeBtnSplit ${className}`}>
+        <button
+          type="button"
+          className="tradeBtnSplitPart confirm"
+          aria-label={`Подтвердить ${label}`}
+          disabled={disabled || takeProfit <= 0 || stopLoss <= 0}
+          onClick={() => onPlaceOrder(side)}
+        >
+          <Check size={20} strokeWidth={2.5} />
+        </button>
+        <button
+          type="button"
+          className="tradeBtnSplitPart cancel"
+          aria-label="Отменить создание сделки"
+          onClick={onCancelOrderDraft}
+        >
+          <X size={20} strokeWidth={2.5} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <Button
+      className={className}
+      disabled={disabled || (orderDraftSide != null && orderDraftSide !== side)}
+      onClick={() => onBeginOrderDraft(side)}
+    >
+      {label}
+    </Button>
+  );
 }
 
 export function TradingSidebar({
@@ -34,7 +93,8 @@ export function TradingSidebar({
   workingTrades,
   focusedTradeId,
   editingTradeId,
-  onProtectionChange,
+  onBeginOrderDraft,
+  onCancelOrderDraft,
   onPlaceOrder,
   onTradeFocus,
   onTradeEditStart,
@@ -50,7 +110,7 @@ export function TradingSidebar({
     orderValue,
     allocationPercent,
     limitPrice,
-    protectionEnabled,
+    orderDraftSide,
     takeProfit,
     stopLoss,
     ticketQuantity,
@@ -66,6 +126,8 @@ export function TradingSidebar({
     setTakeProfit: onTakeProfitChange,
     setStopLoss: onStopLossChange,
   } = orderForm;
+  const orderActionsDisabled = hasBlockingTrade || !currentCandle || editingTradeId != null;
+
   return (
     <aside>
       <div className="orderHeader"><b>Trade</b></div>
@@ -95,13 +157,7 @@ export function TradingSidebar({
           </div>
         </div>
       )}
-      <div className="protectionToggle">
-        <Checkbox disabled={editingTradeId != null} checked={protectionEnabled} onChange={(event) => onProtectionChange(event.target.checked)}>
-          TP / SL
-        </Checkbox>
-        <span>обязательно</span>
-      </div>
-      {protectionEnabled && (
+      {orderDraftSide && (
         <div className="limitProtection">
           <div className="ticketField"><span>Take Profit</span><InputNumber controls={false} placeholder="Не задан" value={takeProfit || undefined} precision={pricePrecision} step={10 ** -pricePrecision} onChange={(value) => onTakeProfitChange(value ?? 0)} /></div>
           <div className="ticketField"><span>Stop Loss</span><InputNumber controls={false} placeholder="Не задан" value={stopLoss || undefined} precision={pricePrecision} step={10 ** -pricePrecision} onChange={(value) => onStopLossChange(value ?? 0)} /></div>
@@ -129,8 +185,30 @@ export function TradingSidebar({
         <div><span>Liq. Price</span><b><em>{longLiquidation != null ? formatPrice(longLiquidation, pricePrecision) : "—"}</em> / <strong>{shortLiquidation != null ? formatPrice(shortLiquidation, pricePrecision) : "—"}</strong></b></div>
       </div>
       <div className="tradeBtns">
-        <Button className="long" disabled={hasBlockingTrade || !currentCandle || !protectionEnabled || takeProfit <= 0 || stopLoss <= 0} onClick={() => onPlaceOrder("LONG")}>Long</Button>
-        <Button className="short" disabled={hasBlockingTrade || !currentCandle || !protectionEnabled || takeProfit <= 0 || stopLoss <= 0} onClick={() => onPlaceOrder("SHORT")}>Short</Button>
+        <OrderSideButton
+          side="LONG"
+          className="long"
+          label="Long"
+          orderDraftSide={orderDraftSide}
+          disabled={orderActionsDisabled}
+          takeProfit={takeProfit}
+          stopLoss={stopLoss}
+          onBeginOrderDraft={onBeginOrderDraft}
+          onCancelOrderDraft={onCancelOrderDraft}
+          onPlaceOrder={onPlaceOrder}
+        />
+        <OrderSideButton
+          side="SHORT"
+          className="short"
+          label="Short"
+          orderDraftSide={orderDraftSide}
+          disabled={orderActionsDisabled}
+          takeProfit={takeProfit}
+          stopLoss={stopLoss}
+          onBeginOrderDraft={onBeginOrderDraft}
+          onCancelOrderDraft={onCancelOrderDraft}
+          onPlaceOrder={onPlaceOrder}
+        />
       </div>
       <div className="sideTitle">ПОЗИЦИИ И ЗАЯВКИ</div>
       {workingTrades.length ? workingTrades.map((trade) => {

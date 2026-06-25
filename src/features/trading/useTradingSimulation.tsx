@@ -25,7 +25,7 @@ interface UseTradingSimulationOptions {
 
 const orderErrorMessages: Record<CreateOrderError, string> = {
   "invalid-size": "Проверьте цену и размер заявки",
-  "missing-protection": "Включите TP/SL и укажите обе цены",
+  "missing-protection": "Укажите Take Profit и Stop Loss",
   "invalid-barriers": "Проверьте расположение TP/SL относительно цены входа",
 };
 
@@ -49,10 +49,11 @@ export function useTradingSimulation({
     amountUnit,
     orderValue,
     limitPrice,
+    orderDraftSide,
     protectionEnabled,
     takeProfit,
     stopLoss,
-    resetProtection,
+    cancelOrderDraft,
   } = orderForm;
   const { message, notification } = AntApp.useApp();
   const processedTick = useRef<string | null>(null);
@@ -65,6 +66,10 @@ export function useTradingSimulation({
   const tickKey = currentCandle
     ? `${datasetId}:${timeframe}:${currentCandle.time}`
     : null;
+
+  useEffect(() => {
+    if (blockingTrade && orderDraftSide) cancelOrderDraft();
+  }, [blockingTrade, cancelOrderDraft, orderDraftSide]);
 
   const notifyTradeClosed = useCallback((
     trade: Trade,
@@ -161,9 +166,9 @@ export function useTradingSimulation({
       trades: [...current.trades, created.trade],
       annotations: [...current.annotations, created.barrier],
     }));
-    setFocusedTradeId(created.trade.id);
+    cancelOrderDraft();
+    setFocusedTradeId(null);
     setTradeEditDraft(null);
-    resetProtection();
     void message.success(orderType === "MARKET" ? `${side} открыт` : `${side} limit размещён`);
   };
 

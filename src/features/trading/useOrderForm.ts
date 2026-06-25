@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Candle } from "../../types";
+import type { Candle, Trade } from "../../types";
 import { PAPER_BALANCE_USDT } from "../../shared/config/simulation";
 import type { AmountUnit, OrderType } from "./types";
 
@@ -18,7 +18,7 @@ export function useOrderForm({
   const [orderValue, setOrderValue] = useState(100);
   const [allocationPercent, setAllocationPercent] = useState(1);
   const [limitPrice, setLimitPrice] = useState(0);
-  const [protectionEnabled, setProtectionEnabled] = useState(false);
+  const [orderDraftSide, setOrderDraftSide] = useState<Trade["side"] | null>(null);
   const [takeProfit, setTakeProfit] = useState(0);
   const [stopLoss, setStopLoss] = useState(0);
 
@@ -49,15 +49,26 @@ export function useOrderForm({
     if (nextOrderType === "LIMIT" && currentCandle) setLimitPrice(currentCandle.close);
   };
 
-  const changeProtection = (enabled: boolean) => {
-    setProtectionEnabled(enabled);
-    if (!enabled || !currentCandle?.close) return;
+  const beginOrderDraft = (side: Trade["side"]) => {
+    if (!currentCandle?.close) return;
     const currentPrice = currentCandle.close;
+    setOrderDraftSide(side);
     if (orderType === "LIMIT") {
       setLimitPrice(Number(currentPrice.toFixed(pricePrecision)));
     }
-    setTakeProfit(Number((currentPrice * 1.01).toFixed(pricePrecision)));
-    setStopLoss(Number((currentPrice * 0.99).toFixed(pricePrecision)));
+    if (side === "LONG") {
+      setTakeProfit(Number((currentPrice * 1.01).toFixed(pricePrecision)));
+      setStopLoss(Number((currentPrice * 0.99).toFixed(pricePrecision)));
+      return;
+    }
+    setTakeProfit(Number((currentPrice * 0.99).toFixed(pricePrecision)));
+    setStopLoss(Number((currentPrice * 1.01).toFixed(pricePrecision)));
+  };
+
+  const cancelOrderDraft = () => {
+    setOrderDraftSide(null);
+    setTakeProfit(0);
+    setStopLoss(0);
   };
 
   const changeOrderValue = (nextValue: number) => {
@@ -86,9 +97,7 @@ export function useOrderForm({
   };
 
   const resetProtection = () => {
-    setProtectionEnabled(false);
-    setTakeProfit(0);
-    setStopLoss(0);
+    cancelOrderDraft();
   };
 
   return {
@@ -98,15 +107,17 @@ export function useOrderForm({
     orderValue,
     allocationPercent,
     limitPrice,
-    protectionEnabled,
+    orderDraftSide,
+    protectionEnabled: orderDraftSide != null,
     takeProfit,
     stopLoss,
     ...ticket,
+    beginOrderDraft,
+    cancelOrderDraft,
     changeAllocation,
     changeAmountUnit,
     changeOrderType,
     changeOrderValue,
-    changeProtection,
     resetProtection,
     setLeverage,
     setLimitPrice,

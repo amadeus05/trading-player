@@ -255,10 +255,15 @@ export function PlayerPage() {
           workingTrades={workingTrades}
           focusedTradeId={focusedTradeId}
           editingTradeId={tradeEditDraft?.id ?? null}
-          onProtectionChange={(enabled) => {
+          onBeginOrderDraft={(side) => {
             setFocusedTradeId(null);
             setTradeEditDraft(null);
-            orderForm.changeProtection(enabled);
+            orderForm.beginOrderDraft(side);
+          }}
+          onCancelOrderDraft={() => {
+            setFocusedTradeId(null);
+            setTradeEditDraft(null);
+            orderForm.cancelOrderDraft();
           }}
           onPlaceOrder={placeOrder}
           onTradeFocus={setFocusedTradeId}

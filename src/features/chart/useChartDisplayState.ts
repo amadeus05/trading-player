@@ -33,6 +33,7 @@ export function useChartDisplayState({
   const {
     limitPrice,
     orderType,
+    orderDraftSide,
     protectionEnabled,
     stopLoss,
     takeProfit,
@@ -55,13 +56,14 @@ export function useChartDisplayState({
             && barrier.entryTime <= (currentCandle?.time ?? 0),
         )
       : NO_BARRIERS;
-    const draftProtectionTrade: Trade | undefined = protectionEnabled
+    const draftProtectionTrade: Trade | undefined = orderDraftSide
+      && workingTrades.length === 0
       && ticketPrice > 0
       && takeProfit > 0
       && stopLoss > 0
       ? {
           id: "__draft_protection__",
-          side: "LONG",
+          side: orderDraftSide,
           entryTime: currentCandle?.time ?? 0,
           entry: ticketPrice,
           size: 0,
@@ -71,20 +73,22 @@ export function useChartDisplayState({
           comment: "",
         }
       : undefined;
-    const displayedTrade = editedTrade ?? draftProtectionTrade;
+    const displayedTrade = (tradeEditDraft && editedTrade)
+      ? editedTrade
+      : draftProtectionTrade;
     const displayedTrades = displayedTrade?.id === "__draft_protection__"
       ? [...trades, displayedTrade]
       : tradeEditDraft && editedTrade
         ? trades.map((trade) => trade.id === editedTrade.id ? editedTrade : trade)
         : trades;
-    const barriers: Barrier[] = editedTrade
+    const barriers: Barrier[] = tradeEditDraft && editedTrade
       ? activeBarriers
       : draftProtectionTrade
         ? [{
             id: draftProtectionTrade.id,
             entryTime: currentCandle?.time ?? 0,
-            upper: draftProtectionTrade.tp,
-            lower: draftProtectionTrade.sl,
+            upper: draftProtectionTrade.side === "LONG" ? draftProtectionTrade.tp : draftProtectionTrade.sl,
+            lower: draftProtectionTrade.side === "LONG" ? draftProtectionTrade.sl : draftProtectionTrade.tp,
             timeLimit: Number.MAX_SAFE_INTEGER,
           }]
         : NO_BARRIERS;
@@ -106,6 +110,7 @@ export function useChartDisplayState({
     focusedTradeId,
     limitPrice,
     orderType,
+    orderDraftSide,
     protectionEnabled,
     stopLoss,
     takeProfit,
