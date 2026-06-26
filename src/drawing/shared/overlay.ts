@@ -20,21 +20,33 @@ interface SharedOverlayEntry {
 
 const sharedByContainer = new WeakMap<HTMLElement, Map<string, SharedOverlayEntry>>();
 
+const WHEEL_FORWARD_SELECTOR = [
+  `svg[${DRAWING_OVERLAY_ATTRIBUTE}]`,
+  ".trend-line-label",
+  ".drawing-inline-text-editor",
+].join(", ");
+
 function ensureWheelForwarding(container: HTMLElement): void {
   if (wheelForwardingContainers.has(container)) return;
   wheelForwardingContainers.add(container);
   container.addEventListener("wheel", (event) => {
     const target = event.target;
-    if (!(target instanceof Element) || !target.closest(`svg[${DRAWING_OVERLAY_ATTRIBUTE}]`)) {
+    if (!(target instanceof Element) || !target.closest(WHEEL_FORWARD_SELECTOR)) {
       return;
     }
     const overlays = Array.from(
       container.querySelectorAll<SVGSVGElement>(`svg[${DRAWING_OVERLAY_ATTRIBUTE}]`),
     );
-    const visibility = overlays.map((overlay) => overlay.style.visibility);
+    const htmlLayers = Array.from(
+      container.querySelectorAll<HTMLElement>(WHEEL_FORWARD_SELECTOR),
+    ).filter((el) => !(el instanceof SVGSVGElement));
+    const overlayVisibility = overlays.map((overlay) => overlay.style.visibility);
+    const htmlVisibility = htmlLayers.map((layer) => layer.style.visibility);
     overlays.forEach((overlay) => { overlay.style.visibility = "hidden"; });
+    htmlLayers.forEach((layer) => { layer.style.visibility = "hidden"; });
     const underlyingElement = document.elementFromPoint(event.clientX, event.clientY);
-    overlays.forEach((overlay, index) => { overlay.style.visibility = visibility[index]; });
+    overlays.forEach((overlay, index) => { overlay.style.visibility = overlayVisibility[index]; });
+    htmlLayers.forEach((layer, index) => { layer.style.visibility = htmlVisibility[index]; });
 
     if (underlyingElement && container.contains(underlyingElement)) {
       underlyingElement.dispatchEvent(new WheelEvent("wheel", {

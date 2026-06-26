@@ -176,7 +176,7 @@ export function ReplayChart({
         vertTouchDrag: true,
       },
       handleScale: {
-        mouseWheel: false,
+        mouseWheel: true,
         pinch: true,
         axisPressedMouseMove: { time: true, price: true },
       },
@@ -372,6 +372,9 @@ export function ReplayChart({
       const y = event.clientY - bounds.top;
       const plotRight = bounds.width - priceScaleWidth - 4;
       const timeAxisTop = bounds.height - timeScaleHeight - 4;
+      const onPriceScale = x >= plotRight;
+      const withCtrl = event.ctrlKey || event.metaKey;
+      if (!onPriceScale && !withCtrl) return;
       if (y >= timeAxisTop && x < plotRight) return;
       if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
       const range = cs.priceScale().getVisibleRange();
