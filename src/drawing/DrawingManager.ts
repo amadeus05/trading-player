@@ -36,6 +36,7 @@ export class DrawingManager {
   private bridgesByKind = new Map<DrawingSelectionKind, DrawingSelectionBridge>();
   private purgeByKind = new Map<DrawingSelectionKind, () => void>();
   private overlaySyncById = new Map<symbol, () => void>();
+  private overlayLoopTokens = new Set<symbol>();
   private overlayLoopId = 0;
   private pendingOverlaySyncFrame = 0;
   private clipboard: DrawingClipboardItem | null = null;
@@ -123,14 +124,24 @@ export class DrawingManager {
     this.overlaySyncById.forEach((sync) => sync());
   }
 
-  /** One shared rAF loop for all drawing overlays — avoids per-tool sync races. */
-  ensureOverlayLoop(): void {
-    if (this.overlayLoopId) return;
+  /** Starts a shared temporary rAF loop for active chart interactions. */
+  ensureOverlayLoop(): () => void {
+    const token = Symbol("overlay-loop");
+    this.overlayLoopTokens.add(token);
+    if (this.overlayLoopId) {
+      return () => this.stopOverlayLoop(token);
+    }
+
     const loop = () => {
+      if (!this.overlayLoopTokens.size) {
+        this.overlayLoopId = 0;
+        return;
+      }
       this.syncOverlays();
       this.overlayLoopId = requestAnimationFrame(loop);
     };
     this.overlayLoopId = requestAnimationFrame(loop);
+    return () => this.stopOverlayLoop(token);
   }
 
   /**
@@ -190,6 +201,7 @@ export class DrawingManager {
     this.clearSelection();
     cancelAnimationFrame(this.overlayLoopId);
     cancelAnimationFrame(this.pendingOverlaySyncFrame);
+    this.overlayLoopTokens.clear();
     this.overlayLoopId = 0;
     this.pendingOverlaySyncFrame = 0;
     this.overlaySyncById.clear();
@@ -258,5 +270,12 @@ export class DrawingManager {
   private applyMode(): void {
     this.container.dataset.drawingMode = this.mode;
     this.container.dataset.drawingActive = this.isDrawing() ? "true" : "false";
+  }
+
+  private stopOverlayLoop(token: symbol): void {
+    this.overlayLoopTokens.delete(token);
+    if (this.overlayLoopTokens.size || !this.overlayLoopId) return;
+    cancelAnimationFrame(this.overlayLoopId);
+    this.overlayLoopId = 0;
   }
 }

@@ -449,7 +449,7 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
   }
 
   const unregisterOverlaySync = manager.registerOverlaySync(syncOverlayPositions);
-  manager.ensureOverlayLoop();
+  const stopOverlayLoop = manager.ensureOverlayLoop();
 
   function handleKeyDown(event: KeyboardEvent) {
     if (event.key === "Escape") {
@@ -476,6 +476,7 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
 
   function cleanup() {
     unregisterOverlaySync();
+    stopOverlayLoop();
     clearTimeout(dismissTimeout);
     try { chart.unsubscribeClick(handleDrawClick); } catch {}
     container.removeEventListener("mousemove", handleMouseMove);

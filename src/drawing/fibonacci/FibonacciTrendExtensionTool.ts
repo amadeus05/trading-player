@@ -994,7 +994,6 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
   }
 
   syncAll();
-  manager.ensureOverlayLoop();
 
   const onVisibleRangeChange = () => {
     if (!dragActive) manager.scheduleOverlaySync();

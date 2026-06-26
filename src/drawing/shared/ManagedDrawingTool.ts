@@ -79,7 +79,7 @@ export function attachManagedDrawingLifecycle(options: ManagedDrawingLifecycleOp
   const unregisterOverlaySync = options.manager.registerOverlaySync(() => {
     if (!options.isDragActive()) options.syncAll();
   });
-  options.manager.ensureOverlayLoop();
+  options.manager.scheduleOverlaySync();
   return () => {
     unregisterBridge();
     unregisterDeselect();
