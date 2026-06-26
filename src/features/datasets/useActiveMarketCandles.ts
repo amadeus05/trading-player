@@ -16,18 +16,21 @@ export function useActiveMarketCandles(
 
   useEffect(() => {
     if (!datasetId) {
+      setLoading(false);
       setCandles([]);
       return;
     }
 
     const cached = cacheRef.current?.get(datasetId);
     if (cached) {
+      setLoading(false);
       setCandles(cached);
       return;
     }
 
     const parsed = parseMarketDatasetId(datasetId);
     if (!parsed) {
+      setLoading(false);
       setCandles([]);
       return;
     }
@@ -36,6 +39,7 @@ export function useActiveMarketCandles(
       (entry) => entry.category === parsed.category && entry.symbol === parsed.symbol,
     );
     if (!item) {
+      setLoading(false);
       setCandles([]);
       return;
     }
