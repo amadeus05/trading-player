@@ -22,6 +22,17 @@ export type IntrabarResolution =
 export class IntrabarExitResolver {
   private readonly normalizedSources = new WeakMap<readonly Candle[], { ordered: Candle[]; interval: number | null }>();
 
+  private lowerBound(candles: readonly Candle[], targetTime: number): number {
+    let low = 0;
+    let high = candles.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (candles[middle].time < targetTime) low = middle + 1;
+      else high = middle;
+    }
+    return low;
+  }
+
   private normalize(source: readonly Candle[]) {
     const cached = this.normalizedSources.get(source);
     if (cached) return cached;
@@ -51,16 +62,19 @@ export class IntrabarExitResolver {
 
     const expectedCount = parentTimeframeSeconds / lowerTimeframe;
     const endTime = parentOpenTime + parentTimeframeSeconds;
-    const window = ordered.filter((candle) => candle.time >= parentOpenTime && candle.time < endTime);
+    const windowStart = this.lowerBound(ordered, parentOpenTime);
+    const windowEnd = this.lowerBound(ordered, endTime);
+    const windowLength = windowEnd - windowStart;
     if (
-      window.length !== expectedCount ||
-      window[0]?.time !== parentOpenTime ||
-      window.at(-1)?.time !== endTime - lowerTimeframe
+      windowLength !== expectedCount ||
+      ordered[windowStart]?.time !== parentOpenTime ||
+      ordered[windowEnd - 1]?.time !== endTime - lowerTimeframe
     ) {
       return { kind: "fallback", reason: "incomplete-window" };
     }
 
-    for (const candle of window) {
+    for (let index = windowStart; index < windowEnd; index += 1) {
+      const candle = ordered[index];
       const slHit = barrier.side === "LONG" ? candle.low <= barrier.sl : candle.high >= barrier.sl;
       const tpHit = barrier.side === "LONG" ? candle.high >= barrier.tp : candle.low <= barrier.tp;
       if (slHit && tpHit) return { kind: "fallback", reason: "ambiguous-lower-candle" };
