@@ -251,10 +251,64 @@ main {
 }
 
 .trend-label {
-  font-size: 11px;
-  font-weight: 600;
-  pointer-events: none;
+  font: 500 14px/1 system-ui, sans-serif;
+  pointer-events: all;
   text-anchor: middle;
+  dominant-baseline: middle;
+  cursor: text;
+  user-select: none;
+}
+
+.trend-line-label {
+  position: absolute;
+  z-index: 9;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent !important;
+  box-shadow: none;
+  font: 500 14px/1 system-ui, sans-serif;
+  white-space: nowrap;
+  pointer-events: all;
+  cursor: text;
+  user-select: text;
+  caret-color: currentColor;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.trend-line-label.is-editing {
+  outline: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  opacity: 1;
+  caret-color: currentColor;
+  min-width: 1px;
+}
+
+.trend-line-label:focus {
+  outline: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.trend-line-label::selection {
+  background: rgba(255, 255, 255, 0.2);
+  color: inherit;
+}
+
+.trend-line-label.is-editing.is-placeholder {
+  color: #d1d4dc;
+  opacity: 0.85;
+}
+
+.trend-line-label.is-placeholder {
+  opacity: 0.85;
+}
+
+.trend-label.is-placeholder {
+  opacity: 0.85;
 }
 
 g[data-trend-id].selected .trend-main-line {
@@ -520,7 +574,7 @@ g[data-channel-id].selected .pc-edge-line {
 .chart[data-drawings-visible="false"] .rect-toolbar,
 .chart[data-drawings-visible="false"] .trend-toolbar,
 .chart[data-drawings-visible="false"] .trend-text-editor,
-.chart[data-drawings-visible="false"] .rect-inline-text-editor {
+.chart[data-drawings-visible="false"] .drawing-inline-text-editor {
   display: none !important;
 }
 
@@ -1645,21 +1699,46 @@ aside {
   opacity: 0.85;
 }
 
-.rect-inline-text-editor {
+.drawing-inline-text-editor {
   position: absolute;
   z-index: 22;
-  width: min(240px, 70%);
-  height: 34px;
-  padding: 4px 8px;
-  transform: translate(-50%, -50%);
-  border: 1px solid #2962ff;
-  border-radius: 4px;
+  min-width: 24px;
+  max-width: min(320px, 70vw);
+  padding: 0;
+  border: 0;
   outline: none;
-  background: rgba(13, 15, 21, 0.92);
-  font: 500 14px/1 system-ui, sans-serif;
-  text-align: center;
+  background: transparent;
+  box-shadow: none;
+  font: 500 14px/1.2 system-ui, sans-serif;
+  white-space: pre-wrap;
+  word-break: break-word;
   pointer-events: all;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  cursor: text;
+  caret-color: currentColor;
+}
+
+.drawing-inline-text-editor:empty::before {
+  content: attr(data-placeholder);
+  color: #d1d4dc;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.drawing-inline-text-editor--line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+  font: 500 14px/1 system-ui, sans-serif;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.drawing-inline-text-editor.is-placeholder {
+  color: #d1d4dc;
+  opacity: 0.85;
 }
 
 .rect-ghost-el {
@@ -1684,6 +1763,7 @@ aside {
   .rect-label-el,
   .trend-hit-area,
   .trend-label,
+  .trend-line-label,
   .fib-trend-hit,
   .fib-level-hit,
   .fib-handle,

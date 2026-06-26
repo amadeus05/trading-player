@@ -6,6 +6,7 @@ import type { Rectangle } from "../../types";
 import { pointToPixel, snapXToNearestCandle, timeToX, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
 import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
+import { openInlineTextEditor } from "../shared/inlineTextEditor";
 import { attachManagedDrawingLifecycle, createClipboardBridge, getPlotWidth, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import { createDrawingOverlay } from "../shared/overlay";
 import { forgetFloatingPanelPosition } from "../shared/floatingPanel";
@@ -145,7 +146,8 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
 
   let selectedId: string | null = null;
   let toolbarController: DrawingToolbarController<Rectangle>;
-  let textEditor: HTMLInputElement | null = null;
+  let textEditor: (() => void) | null = null;
+  let editingTextRectId: string | null = null;
   let dragActive = false;
 
   let drawPoint1: { time: number; price: number } | null = null;
@@ -169,8 +171,9 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
   const elMap = new Map<string, RectEls>();
 
   function closeTextEditor() {
-    textEditor?.remove();
+    textEditor?.();
     textEditor = null;
+    editingTextRectId = null;
   }
 
   function removeToolbar() {
@@ -195,35 +198,64 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     closeTextEditor();
     const bounds = getBounds(rect, chart, series, candleStore.candles);
     if (!bounds) return;
-    const visibleBounds = clampHorizontalBounds(bounds);
-    const input = document.createElement("input");
-    input.className = "rect-inline-text-editor";
-    input.value = rect.text ?? "";
-    input.placeholder = "Add text";
-    input.style.left = `${visibleBounds.x + visibleBounds.w / 2}px`;
-    input.style.top = `${visibleBounds.y + visibleBounds.h / 2}px`;
-    input.style.color = rectTextColor(rect);
-    container.appendChild(input);
-    textEditor = input;
 
-    const commit = () => {
-      if (textEditor !== input) return;
-      rect.text = input.value.trim();
-      callbacks.onUpdate(rect);
-      closeTextEditor();
+    let els = elMap.get(rect.id);
+    if (!els) {
       syncOne(rect);
+      els = elMap.get(rect.id);
+    }
+    if (!els) return;
+
+    syncOne(rect);
+    const labelRect = els.text.getBoundingClientRect();
+    const hostRect = container.getBoundingClientRect();
+    const hasText = Boolean(rect.text?.trim());
+    const boxLeft = labelRect.width > 0
+      ? labelRect.left - hostRect.left
+      : visibleBoundsCenter(rect).x;
+    const boxTop = labelRect.height > 0
+      ? labelRect.top - hostRect.top
+      : visibleBoundsCenter(rect).y;
+
+    editingTextRectId = rect.id;
+    els.text.style.display = "none";
+
+    textEditor = openInlineTextEditor({
+      container,
+      x: boxLeft,
+      y: boxTop,
+      width: labelRect.width > 0 ? labelRect.width : undefined,
+      height: labelRect.height > 0 ? labelRect.height : undefined,
+      positionMode: labelRect.width > 0 ? "box" : "center",
+      color: hasText ? rectTextColor(rect) : "#d1d4dc",
+      activeColor: rectTextColor(rect),
+      value: rect.text,
+      placeholder: "+ Add text",
+      placeholderAsContent: !hasText,
+      textAlign: "center",
+      onCommit: (value) => {
+        textEditor = null;
+        editingTextRectId = null;
+        rect.text = value.trim();
+        callbacks.onUpdate(rect);
+        syncOne(rect);
+      },
+      onDismiss: () => {
+        textEditor = null;
+        editingTextRectId = null;
+        syncOne(rect);
+      },
+    });
+  }
+
+  function visibleBoundsCenter(rect: Rectangle) {
+    const bounds = getBounds(rect, chart, series, candleStore.candles);
+    if (!bounds) return { x: 0, y: 0 };
+    const visibleBounds = clampHorizontalBounds(bounds);
+    return {
+      x: visibleBounds.x + visibleBounds.w / 2,
+      y: visibleBounds.y + visibleBounds.h / 2,
     };
-    input.addEventListener("pointerdown", (e) => e.stopPropagation());
-    input.addEventListener("blur", commit);
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); commit(); }
-      if (e.key === "Escape") { e.preventDefault(); closeTextEditor(); syncOne(rect); }
-    });
-    requestAnimationFrame(() => {
-      if (textEditor !== input) return;
-      input.focus();
-      input.select();
-    });
   }
 
   function buildEls(rect: Rectangle): RectEls {
@@ -428,26 +460,38 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     els.border.setAttribute("stroke-dasharray", strokeDash(rect.borderStyle));
     els.hit.style.cursor = rect.locked ? "default" : "move";
     const centerX = safe.x + safe.w / 2;
-    const labelValue = rect.text || (selected ? "+ Add text" : "");
-    const labelLines = labelValue ? wrapRectangleText(labelValue, safe.w, safe.h) : [];
-    els.text.textContent = "";
-    try {
-      labelLines.forEach((line, index) => {
-        const tspan = document.createElementNS(SVG_NS, "tspan");
-        tspan.setAttribute("x", String(centerX));
-        tspan.setAttribute("y", String(safe.y + safe.h / 2 - ((labelLines.length - 1) * 18) / 2 + index * 18));
-        tspan.textContent = line;
-        els.text.appendChild(tspan);
-      });
-    } catch {
-      // Text rendering must never interrupt the rectangle render loop.
-      els.text.textContent = labelValue;
-      els.text.setAttribute("x", String(centerX));
-      els.text.setAttribute("y", String(safe.y + safe.h / 2));
+    if (editingTextRectId === rect.id) {
+      els.text.style.display = "none";
+    } else {
+      const hasText = Boolean(rect.text?.trim());
+      const showPlaceholder = selected && !hasText;
+      const textValue = rect.text ?? "";
+      const labelValue = hasText ? textValue : (showPlaceholder ? "+ Add text" : "");
+      const labelLines = hasText ? wrapRectangleText(textValue, safe.w, safe.h) : [];
+      els.text.textContent = "";
+      if (hasText) {
+        try {
+          labelLines.forEach((line, index) => {
+            const tspan = document.createElementNS(SVG_NS, "tspan");
+            tspan.setAttribute("x", String(centerX));
+            tspan.setAttribute("y", String(safe.y + safe.h / 2 - ((labelLines.length - 1) * 18) / 2 + index * 18));
+            tspan.textContent = line;
+            els.text.appendChild(tspan);
+          });
+        } catch {
+          els.text.textContent = labelValue;
+          els.text.setAttribute("x", String(centerX));
+          els.text.setAttribute("y", String(safe.y + safe.h / 2));
+        }
+      } else if (showPlaceholder) {
+        els.text.textContent = labelValue;
+        els.text.setAttribute("x", String(centerX));
+        els.text.setAttribute("y", String(safe.y + safe.h / 2));
+      }
+      els.text.setAttribute("fill", hasText ? rectTextColor(rect) : "#d1d4dc");
+      els.text.style.display = safe.w >= 70 && safe.h >= 28 && Boolean(labelValue) ? "" : "none";
+      els.text.classList.toggle("is-placeholder", showPlaceholder);
     }
-    els.text.setAttribute("fill", rectTextColor(rect));
-    els.text.style.display = safe.w >= 70 && safe.h >= 28 && Boolean(labelValue) ? "" : "none";
-    els.text.classList.toggle("is-placeholder", !rect.text);
 
     const coords = getHandleCoords(safe);
     els.handles.forEach((h, i) => {
