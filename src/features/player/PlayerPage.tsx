@@ -19,6 +19,7 @@ import { useOrderForm } from "../trading/useOrderForm";
 import { useChartDisplayState } from "../chart/useChartDisplayState";
 import { useMarketCatalog } from "../datasets/useMarketCatalog";
 import { useActiveMarketCandles } from "../datasets/useActiveMarketCandles";
+import { shouldPrefetchMarketCandles } from "../datasets/marketCandleRanges";
 
 export function PlayerPage() {
   const { message } = AntApp.useApp();
@@ -70,7 +71,13 @@ export function PlayerPage() {
     [state.settings],
   );
   const { baseAsset, quoteAsset } = getMarketAssets(activeDataset?.name);
-  const { candles: raw, loading: candlesLoading } = useActiveMarketCandles(
+  const {
+    candles: raw,
+    loading: candlesLoading,
+    loadingMore: candlesLoadingMore,
+    hasMore: hasMoreCandles,
+    loadMore: loadMoreCandles,
+  } = useActiveMarketCandles(
     dataset,
     catalog,
     candleCacheRef,
@@ -101,6 +108,11 @@ export function PlayerPage() {
     interactionActiveRef: chartInteractionActive,
     initialTimeframe,
   });
+  useEffect(() => {
+    if (!hasMoreCandles || candlesLoadingMore) return;
+    if (!shouldPrefetchMarketCandles(raw, replayIndex)) return;
+    void loadMoreCandles();
+  }, [candlesLoadingMore, hasMoreCandles, loadMoreCandles, raw, replayIndex]);
   const orderForm = useOrderForm({ currentCandle: cur, pricePrecision });
   const {
     focusedTradeId,
