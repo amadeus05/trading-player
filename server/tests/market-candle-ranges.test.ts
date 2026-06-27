@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   buildInitialMarketCandleRange,
   buildNextMarketCandleRange,
+  buildReplayStartMarketCandleRange,
+  hasLoadedMarketCandleRange,
   MARKET_CANDLE_INTERVAL_MS,
   shouldPrefetchMarketCandles,
 } from "../../src/features/datasets/marketCandleRanges";
@@ -57,6 +59,81 @@ test("next market candle range starts after the last loaded candle", () => {
     from: START + 3 * MARKET_CANDLE_INTERVAL_MS,
     to: START + 8 * MARKET_CANDLE_INTERVAL_MS,
   });
+});
+
+test("replay start range always includes full prehistory from catalog start", () => {
+  const range = buildReplayStartMarketCandleRange(
+    {
+      from: START,
+      to: START + 10_000 * MARKET_CANDLE_INTERVAL_MS,
+    },
+    START + 5_000 * MARKET_CANDLE_INTERVAL_MS,
+    5,
+  );
+
+  assert.deepEqual(range, {
+    from: START,
+    to: START + 7_000 * MARKET_CANDLE_INTERVAL_MS,
+  });
+});
+
+test("replay start range clamps prehistory near the catalog start", () => {
+  const range = buildReplayStartMarketCandleRange(
+    {
+      from: START,
+      to: START + 100 * MARKET_CANDLE_INTERVAL_MS,
+    },
+    START + MARKET_CANDLE_INTERVAL_MS,
+    5,
+  );
+
+  assert.deepEqual(range, {
+    from: START,
+    to: START + 100 * MARKET_CANDLE_INTERVAL_MS,
+  });
+});
+
+test("replay start range keeps full prehistory near the catalog end", () => {
+  const range = buildReplayStartMarketCandleRange(
+    {
+      from: START,
+      to: START + 100 * MARKET_CANDLE_INTERVAL_MS,
+    },
+    START + 99 * MARKET_CANDLE_INTERVAL_MS,
+    5,
+  );
+
+  assert.deepEqual(range, {
+    from: START,
+    to: START + 100 * MARKET_CANDLE_INTERVAL_MS,
+  });
+});
+
+test("replay start range expands future context for high timeframes", () => {
+  const range = buildReplayStartMarketCandleRange(
+    {
+      from: START,
+      to: START + 100_000 * MARKET_CANDLE_INTERVAL_MS,
+    },
+    START + 80_000 * MARKET_CANDLE_INTERVAL_MS,
+    1_440,
+  );
+
+  assert.deepEqual(range, {
+    from: START,
+    to: START + 97_280 * MARKET_CANDLE_INTERVAL_MS,
+  });
+});
+
+test("loaded market candle range requires full coverage of the requested window", () => {
+  const range = {
+    from: START + 5 * MARKET_CANDLE_INTERVAL_MS,
+    to: START + 15 * MARKET_CANDLE_INTERVAL_MS,
+  };
+
+  assert.equal(hasLoadedMarketCandleRange(Array.from({ length: 20 }, (_, index) => candle(index)), range), true);
+  assert.equal(hasLoadedMarketCandleRange(Array.from({ length: 10 }, (_, index) => candle(index)), range), false);
+  assert.equal(hasLoadedMarketCandleRange([], range), false);
 });
 
 test("next market candle range returns null when the catalog is fully loaded", () => {

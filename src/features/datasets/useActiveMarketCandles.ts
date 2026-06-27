@@ -8,6 +8,8 @@ import {
 import {
   buildInitialMarketCandleRange,
   buildNextMarketCandleRange,
+  buildReplayStartMarketCandleRange,
+  hasLoadedMarketCandleRange,
 } from "./marketCandleRanges";
 
 const mergeCandles = (current: Candle[], incoming: Candle[]): Candle[] => {
@@ -116,5 +118,24 @@ export function useActiveMarketCandles(
     }
   }, [cacheRef, candles, catalogItem, datasetId, loading, loadingMore, parsedDataset]);
 
-  return { candles, loading, loadingMore, hasMore, loadMore };
+  const loadAroundTime = useCallback(async (time: number, timeframeMinutes = 5): Promise<boolean> => {
+    if (!datasetId || !parsedDataset || !catalogItem || loading) return false;
+    const range = buildReplayStartMarketCandleRange(catalogItem, time * 1_000, timeframeMinutes);
+    if (!range) return false;
+    if (hasLoadedMarketCandleRange(candles, range)) return true;
+    setLoading(true);
+    setLoadingMore(false);
+    try {
+      const rows = await fetchMarketCandles(parsedDataset.category, parsedDataset.symbol, range.from, range.to);
+      cacheRef.current?.set(datasetId, rows);
+      setCandles(rows);
+      return rows.length > 0;
+    } catch {
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [cacheRef, candles, catalogItem, datasetId, loading, parsedDataset]);
+
+  return { candles, loading, loadingMore, hasMore, loadMore, loadAroundTime };
 }

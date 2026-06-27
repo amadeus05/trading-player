@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App as AntApp, Empty } from "antd";
 import type { Candle, SimulationSettings } from "../../types";
 import type { DrawingMode } from "../../drawing";
@@ -77,6 +77,7 @@ export function PlayerPage() {
     loadingMore: candlesLoadingMore,
     hasMore: hasMoreCandles,
     loadMore: loadMoreCandles,
+    loadAroundTime: loadCandlesAroundTime,
   } = useActiveMarketCandles(
     dataset,
     catalog,
@@ -108,11 +109,53 @@ export function PlayerPage() {
     interactionActiveRef: chartInteractionActive,
     initialTimeframe,
   });
+  const [pendingReplayTime, setPendingReplayTime] = useState<number | null>(null);
+  const [pendingTimeframeChange, setPendingTimeframeChange] = useState<{
+    timeframe: number;
+    replayTime: number;
+  } | null>(null);
   useEffect(() => {
     if (!hasMoreCandles || candlesLoadingMore) return;
     if (!shouldPrefetchMarketCandles(raw, replayIndex)) return;
     void loadMoreCandles();
   }, [candlesLoadingMore, hasMoreCandles, loadMoreCandles, raw, replayIndex]);
+  useEffect(() => {
+    if (pendingReplayTime == null || !raw.length) return;
+    const last = raw.at(-1)!.time;
+    if (pendingReplayTime > last) return;
+    selectReplayTime(pendingReplayTime);
+    setPendingReplayTime(null);
+  }, [pendingReplayTime, raw, selectReplayTime]);
+  useEffect(() => {
+    if (!pendingTimeframeChange || !raw.length) return;
+    const last = raw.at(-1)!.time;
+    if (pendingTimeframeChange.replayTime > last) return;
+    changeTimeframe(pendingTimeframeChange.timeframe, pendingTimeframeChange.replayTime);
+    setState((current) => ({
+      ...current,
+      timeframeMinutes: pendingTimeframeChange.timeframe,
+    }));
+    setPendingTimeframeChange(null);
+  }, [changeTimeframe, pendingTimeframeChange, raw, setState]);
+  const selectReplayTimeWithData = useCallback((time: number, timeframeMinutes = tf) => {
+    setPlaying(false);
+    setPendingReplayTime(time);
+    void loadCandlesAroundTime(time, timeframeMinutes).then((loaded) => {
+      if (!loaded) setPendingReplayTime(null);
+    });
+  }, [loadCandlesAroundTime, setPlaying, tf]);
+  const handleStartAction = useCallback((key: string) => {
+    if (key === "first" && activeDataset) {
+      selectReplayTimeWithData(Math.floor(activeDataset.from / 1_000));
+      return;
+    }
+    if (key === "random" && activeDataset) {
+      const randomTime = Math.floor((activeDataset.from + Math.random() * Math.max(1, activeDataset.to - activeDataset.from)) / 1_000);
+      selectReplayTimeWithData(randomTime);
+      return;
+    }
+    handleReplayStartAction(key);
+  }, [activeDataset, handleReplayStartAction, selectReplayTimeWithData]);
   const orderForm = useOrderForm({ currentCandle: cur, pricePrecision });
   const {
     focusedTradeId,
@@ -172,10 +215,19 @@ export function PlayerPage() {
       settings: { ...(current.settings ?? DEFAULT_SIMULATION_SETTINGS), [key]: Math.max(0, value ?? 0) },
     }));
   }
-  function handleTimeframeChange(nextTimeframe: number) {
-    changeTimeframe(nextTimeframe);
-    setState((current) => ({ ...current, timeframeMinutes: nextTimeframe }));
-  }
+  const handleTimeframeChange = useCallback((nextTimeframe: number) => {
+    const replayTime = cur?.time;
+    setPlaying(false);
+    if (replayTime == null) {
+      changeTimeframe(nextTimeframe);
+      setState((current) => ({ ...current, timeframeMinutes: nextTimeframe }));
+      return;
+    }
+    setPendingTimeframeChange({ timeframe: nextTimeframe, replayTime });
+    void loadCandlesAroundTime(replayTime, nextTimeframe).then((loaded) => {
+      if (!loaded) setPendingTimeframeChange(null);
+    });
+  }, [changeTimeframe, cur?.time, loadCandlesAroundTime, setPlaying, setState]);
   return (
     <div className="app">
       <AppHeader
@@ -219,7 +271,7 @@ export function PlayerPage() {
                 trades={chartDisplay.trades}
                 onBarrierChange={moveBarrier}
                 selectingStart={selectingStart}
-                onStartSelected={selectReplayTime}
+                onStartSelected={selectReplayTimeWithData}
                 focusRevision={focusRevision}
                 pricePrecision={pricePrecision}
                 entryMarker={chartDisplay.entryMarker}
@@ -250,7 +302,7 @@ export function PlayerPage() {
             currentCandle={cur}
             replayIndex={replayIndex}
             candleCount={candles.length}
-            onStartAction={handleReplayStartAction}
+            onStartAction={handleStartAction}
             onReset={reset}
             onPlayingChange={setPlaying}
             onStep={step}
@@ -292,6 +344,7 @@ export function PlayerPage() {
         journalOpen={journal}
         settings={simulationSettings}
         candles={candles}
+        replayDateRange={activeDataset ? { from: activeDataset.from, to: activeDataset.to } : undefined}
         trades={state.trades}
         onSettingsClose={() => setSettingsOpen(false)}
         onSettingsReset={() => setState((current) => ({ ...current, settings: DEFAULT_SIMULATION_SETTINGS }))}
@@ -305,7 +358,7 @@ export function PlayerPage() {
           },
         }))}
         onDatePickerClose={() => setDatePickerOpen(false)}
-        onReplayTimeSelect={selectReplayTime}
+        onReplayTimeSelect={selectReplayTimeWithData}
         onJournalClose={() => setJournal(false)}
         onCancelOrder={cancelOrder}
         onCloseTrade={closeTrade}

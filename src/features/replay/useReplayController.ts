@@ -53,13 +53,12 @@ export function useReplayController({
     return () => window.clearInterval(intervalId);
   }, [interactionActiveRef, lastIndex, playing, speed]);
 
-  const changeTimeframe = (nextTimeframe: number) => {
-    const replayTime = currentCandle?.time;
+  const changeTimeframe = (nextTimeframe: number, anchorTime = currentCandle?.time) => {
     const nextCandles = aggregateCandles(rawCandles, nextTimeframe);
     let nextIndex = 0;
-    if (replayTime != null) {
+    if (anchorTime != null) {
       for (let candidate = 0; candidate < nextCandles.length; candidate += 1) {
-        if (nextCandles[candidate].time > replayTime) break;
+        if (nextCandles[candidate].time > anchorTime) break;
         nextIndex = candidate;
       }
     }

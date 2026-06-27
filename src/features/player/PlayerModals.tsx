@@ -11,6 +11,7 @@ interface PlayerModalsProps {
   journalOpen: boolean;
   settings: SimulationSettings;
   candles: Candle[];
+  replayDateRange?: { from: number; to: number };
   trades: Trade[];
   onSettingsClose: () => void;
   onSettingsReset: () => void;
@@ -33,6 +34,7 @@ export function PlayerModals({
   journalOpen,
   settings,
   candles,
+  replayDateRange,
   trades,
   onSettingsClose,
   onSettingsReset,
@@ -132,8 +134,8 @@ export function PlayerModals({
       >
         <DatePicker
           style={{ width: "100%" }}
-          minDate={candles[0] ? dayjs(candles[0].time * 1_000) : undefined}
-          maxDate={candles.at(-1) ? dayjs(candles.at(-1)!.time * 1_000) : undefined}
+          minDate={replayDateRange ? dayjs(replayDateRange.from) : candles[0] ? dayjs(candles[0].time * 1_000) : undefined}
+          maxDate={replayDateRange ? dayjs(replayDateRange.to - 1) : candles.at(-1) ? dayjs(candles.at(-1)!.time * 1_000) : undefined}
           onChange={(value) => {
             if (!value) return;
             onReplayTimeSelect(value.startOf("day").unix());

@@ -1,6 +1,8 @@
 export const MARKET_CANDLE_INTERVAL_MS = 5 * 60 * 1_000;
 export const INITIAL_MARKET_CANDLE_LIMIT = 5_000;
 export const NEXT_MARKET_CANDLE_LIMIT = 5_000;
+export const REPLAY_FORWARD_BASE_CANDLES = 2_000;
+export const REPLAY_FORWARD_TIMEFRAME_BARS = 60;
 export const MARKET_CANDLE_PREFETCH_THRESHOLD = 500;
 
 export interface MarketCandleRange {
@@ -26,6 +28,44 @@ export function buildInitialMarketCandleRange(
   const from = alignDown(boundary.from);
   const to = Math.min(alignUp(boundary.to), from + candleLimit * MARKET_CANDLE_INTERVAL_MS);
   return to > from ? { from, to } : null;
+}
+
+const timeframeToBaseCandles = (timeframeMinutes: number): number => {
+  if (!Number.isFinite(timeframeMinutes) || timeframeMinutes <= 0) return 1;
+  return Math.max(1, Math.ceil((timeframeMinutes * 60 * 1_000) / MARKET_CANDLE_INTERVAL_MS));
+};
+
+export function buildReplayStartMarketCandleRange(
+  boundary: MarketRangeBoundary,
+  targetTimeMs: number,
+  timeframeMinutes = 5,
+): MarketCandleRange | null {
+  const boundaryFrom = alignDown(boundary.from);
+  const boundaryTo = alignUp(boundary.to);
+  if (boundaryTo <= boundaryFrom) return null;
+
+  const timeframeBaseCandles = timeframeToBaseCandles(timeframeMinutes);
+  const forwardCandles = Math.max(
+    REPLAY_FORWARD_BASE_CANDLES,
+    REPLAY_FORWARD_TIMEFRAME_BARS * timeframeBaseCandles,
+  );
+  const alignedTarget = alignDown(targetTimeMs);
+  const from = boundaryFrom;
+  const to = Math.min(boundaryTo, alignedTarget + forwardCandles * MARKET_CANDLE_INTERVAL_MS);
+
+  return to > from ? { from, to } : null;
+}
+
+export function hasLoadedMarketCandleRange(
+  loadedCandles: { time: number }[],
+  range: MarketCandleRange,
+): boolean {
+  const first = loadedCandles[0];
+  const last = loadedCandles.at(-1);
+  if (!first || !last) return false;
+  const firstTimeMs = first.time * 1_000;
+  const lastExclusiveMs = (last.time * 1_000) + MARKET_CANDLE_INTERVAL_MS;
+  return firstTimeMs <= range.from && lastExclusiveMs >= range.to;
 }
 
 export function buildNextMarketCandleRange(
