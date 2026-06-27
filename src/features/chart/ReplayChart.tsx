@@ -392,6 +392,29 @@ export function ReplayChart({
       cs.priceScale().setVisibleRange(nextRange);
       drawingManager.scheduleOverlaySync();
     };
+    let stopChartInteractionOverlayLoop: (() => void) | null = null;
+    let chartInteractionWheelTimer = 0;
+    const startChartInteractionOverlayLoop = () => {
+      if (!stopChartInteractionOverlayLoop) {
+        stopChartInteractionOverlayLoop = drawingManager.ensureOverlayLoop();
+      }
+    };
+    const stopChartInteractionOverlayLoopNow = () => {
+      window.clearTimeout(chartInteractionWheelTimer);
+      chartInteractionWheelTimer = 0;
+      stopChartInteractionOverlayLoop?.();
+      stopChartInteractionOverlayLoop = null;
+      drawingManager.scheduleOverlaySync();
+    };
+    const syncOverlaysDuringWheel = () => {
+      startChartInteractionOverlayLoop();
+      window.clearTimeout(chartInteractionWheelTimer);
+      chartInteractionWheelTimer = window.setTimeout(stopChartInteractionOverlayLoopNow, 180);
+    };
+    ref.current.addEventListener("pointerdown", startChartInteractionOverlayLoop, { capture: true });
+    window.addEventListener("pointerup", stopChartInteractionOverlayLoopNow);
+    window.addEventListener("pointercancel", stopChartInteractionOverlayLoopNow);
+    ref.current.addEventListener("wheel", syncOverlaysDuringWheel, { capture: true, passive: true });
     ref.current.addEventListener("pointerdown", markManualScale);
     ref.current.addEventListener("dblclick", resetManualScale);
     ref.current.addEventListener("wheel", zoomPriceScale, { capture: true, passive: false     });
@@ -508,6 +531,11 @@ export function ReplayChart({
       savedCandleInterval.current = candleInterval;
       if (range) followRealtime.current = Math.abs(range.to - (candleStore.candles.length - 1)) < 0.75;
       if (manualPriceScale.current) savedPriceRange.current = cs.priceScale().getVisibleRange();
+      ref.current?.removeEventListener("pointerdown", startChartInteractionOverlayLoop, { capture: true });
+      window.removeEventListener("pointerup", stopChartInteractionOverlayLoopNow);
+      window.removeEventListener("pointercancel", stopChartInteractionOverlayLoopNow);
+      ref.current?.removeEventListener("wheel", syncOverlaysDuringWheel, { capture: true });
+      stopChartInteractionOverlayLoopNow();
       ref.current?.removeEventListener("pointerdown", markManualScale);
       ref.current?.removeEventListener("dblclick", resetManualScale);
       ref.current?.removeEventListener("wheel", zoomPriceScale, { capture: true });
