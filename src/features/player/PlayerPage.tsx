@@ -116,9 +116,9 @@ export function PlayerPage() {
   } | null>(null);
   useEffect(() => {
     if (!hasMoreCandles || candlesLoadingMore) return;
-    if (!shouldPrefetchMarketCandles(raw, replayIndex)) return;
+    if (!shouldPrefetchMarketCandles(raw, cur?.time)) return;
     void loadMoreCandles();
-  }, [candlesLoadingMore, hasMoreCandles, loadMoreCandles, raw, replayIndex]);
+  }, [candlesLoadingMore, cur?.time, hasMoreCandles, loadMoreCandles, raw]);
   useEffect(() => {
     if (pendingReplayTime == null || !raw.length) return;
     const last = raw.at(-1)!.time;

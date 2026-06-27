@@ -149,10 +149,11 @@ test("next market candle range returns null when the catalog is fully loaded", (
   assert.equal(range, null);
 });
 
-test("prefetch trigger only fires near the loaded window end", () => {
+test("prefetch trigger uses candle time, not the visible timeframe index", () => {
   const loaded = Array.from({ length: 100 }, (_, index) => candle(index));
 
-  assert.equal(shouldPrefetchMarketCandles(loaded, 40, 10), false);
-  assert.equal(shouldPrefetchMarketCandles(loaded, 90, 10), true);
-  assert.equal(shouldPrefetchMarketCandles([], 0, 10), false);
+  assert.equal(shouldPrefetchMarketCandles(loaded, candle(40).time, 10), false);
+  assert.equal(shouldPrefetchMarketCandles(loaded, candle(90).time, 10), true);
+  assert.equal(shouldPrefetchMarketCandles([], candle(90).time, 10), false);
+  assert.equal(shouldPrefetchMarketCandles(loaded, undefined, 10), false);
 });

@@ -82,9 +82,11 @@ export function buildNextMarketCandleRange(
 
 export function shouldPrefetchMarketCandles(
   loadedCandles: { time: number }[],
-  replayIndex: number,
+  currentTime: number | null | undefined,
   threshold = MARKET_CANDLE_PREFETCH_THRESHOLD,
 ): boolean {
-  if (!loadedCandles.length) return false;
-  return loadedCandles.length - 1 - replayIndex <= threshold;
+  const last = loadedCandles.at(-1);
+  if (!last || currentTime == null) return false;
+  const remainingMs = (last.time - currentTime) * 1_000;
+  return remainingMs <= threshold * MARKET_CANDLE_INTERVAL_MS;
 }
