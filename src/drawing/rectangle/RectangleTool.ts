@@ -6,7 +6,6 @@ import type { Rectangle } from "../../types";
 import { pointToPixel, snapXToNearestCandle, timeToX, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
 import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
-import { openInlineTextEditor } from "../shared/inlineTextEditor";
 import { attachManagedDrawingLifecycle, createClipboardBridge, getPlotWidth, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import { createDrawingOverlay } from "../shared/overlay";
 import { forgetFloatingPanelPosition } from "../shared/floatingPanel";
@@ -26,6 +25,8 @@ const HANDLE_CURSORS: Record<HandlePos, string> = {
   bl: "nesw-resize", bc: "ns-resize", br: "nwse-resize",
 };
 
+const PLACEHOLDER = "+ Add text";
+
 function rectTextColor(rect: Rectangle): string {
   return rect.textColor ?? "#2962ff";
 }
@@ -34,41 +35,6 @@ function strokeDash(style: Rectangle["borderStyle"]): string {
   if (style === "dashed") return "8 4";
   if (style === "dotted") return "2 4";
   return "";
-}
-
-function wrapRectangleText(value: string, width: number, height: number): string[] {
-  const safeWidth = Number.isFinite(width) ? width : 70;
-  const safeHeight = Number.isFinite(height) ? height : 28;
-  const maxChars = Math.max(1, Math.floor((safeWidth - 16) / 7.5));
-  const maxLines = Math.max(1, Math.floor((safeHeight - 12) / 18));
-  const words = value.trim().split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let current = "";
-
-  for (const word of words) {
-    const chunks: string[] = [];
-    if (word.length > maxChars) {
-      for (let offset = 0; offset < word.length; offset += maxChars) {
-        chunks.push(word.slice(offset, offset + maxChars));
-      }
-    } else chunks.push(word);
-    for (const chunk of chunks) {
-      const candidate = current ? `${current} ${chunk}` : chunk;
-      if (candidate.length <= maxChars) current = candidate;
-      else {
-        if (current) lines.push(current);
-        current = chunk;
-      }
-    }
-  }
-  if (current) lines.push(current);
-  if (lines.length <= maxLines) return lines;
-  const visible = lines.slice(0, maxLines);
-  const last = visible.length - 1;
-  if (last >= 0 && visible[last]) {
-    visible[last] = `${visible[last].slice(0, Math.max(1, maxChars - 1)).trimEnd()}…`;
-  }
-  return visible;
 }
 
 function hexToRgba(hex: string, opacity: number): string {
@@ -147,7 +113,6 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
 
   let selectedId: string | null = null;
   let toolbarController: DrawingToolbarController<Rectangle>;
-  let textEditor: (() => void) | null = null;
   let editingTextRectId: string | null = null;
   let dragActive = false;
 
@@ -170,11 +135,10 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     handles: SVGCircleElement[];
   }
   const elMap = new Map<string, RectEls>();
+  const labelOverlays = new Map<string, HTMLDivElement>();
 
   function closeTextEditor() {
-    textEditor?.();
-    textEditor = null;
-    editingTextRectId = null;
+    if (editingTextRectId) commitLabelEdit(editingTextRectId);
   }
 
   function removeToolbar() {
@@ -194,59 +158,73 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     syncAll();
   }
 
+  function normalizeLabelValue(raw: string): string {
+    return raw.replaceAll(PLACEHOLDER, "").trim();
+  }
+
+  function placeLabelCaret(el: HTMLElement, atEnd = false) {
+    const range = document.createRange();
+    const selection = window.getSelection();
+    const textNode = el.firstChild;
+    if (textNode?.nodeType === Node.TEXT_NODE) {
+      const offset = atEnd ? (textNode.textContent?.length ?? 0) : 0;
+      range.setStart(textNode, offset);
+    } else {
+      range.setStart(el, 0);
+    }
+    range.collapse(true);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }
+
+  function restoreLabelCaret(el: HTMLElement) {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => placeLabelCaret(el, true));
+    });
+  }
+
+  function commitLabelEdit(id: string) {
+    if (editingTextRectId !== id) return;
+    const el = labelOverlays.get(id);
+    const rect = rectangles.find((item) => item.id === id);
+    if (!el || !rect) {
+      editingTextRectId = null;
+      return;
+    }
+
+    el.contentEditable = "false";
+    el.classList.remove("is-editing");
+    rect.text = normalizeLabelValue(el.textContent ?? "");
+    editingTextRectId = null;
+    callbacks.onUpdate(rect);
+    syncOne(rect);
+  }
+
+  function cancelLabelEdit(id: string) {
+    if (editingTextRectId !== id) return;
+    editingTextRectId = null;
+    const rect = rectangles.find((item) => item.id === id);
+    if (rect) syncOne(rect);
+  }
+
   function openTextEditor(rect: Rectangle) {
     if (rect.locked) return;
-    closeTextEditor();
-    const bounds = getBounds(rect, chart, series, candleStore.candles);
-    if (!bounds) return;
-
-    let els = elMap.get(rect.id);
-    if (!els) {
-      syncOne(rect);
-      els = elMap.get(rect.id);
-    }
-    if (!els) return;
-
+    if (editingTextRectId && editingTextRectId !== rect.id) commitLabelEdit(editingTextRectId);
     syncOne(rect);
-    const labelRect = els.text.getBoundingClientRect();
-    const hostRect = container.getBoundingClientRect();
+    const el = labelOverlays.get(rect.id);
+    if (!el) return;
+
     const hasText = Boolean(rect.text?.trim());
-    const boxLeft = labelRect.width > 0
-      ? labelRect.left - hostRect.left
-      : visibleBoundsCenter(rect).x;
-    const boxTop = labelRect.height > 0
-      ? labelRect.top - hostRect.top
-      : visibleBoundsCenter(rect).y;
-
+    if (!hasText) {
+      el.textContent = PLACEHOLDER;
+      el.classList.add("is-placeholder");
+      el.style.color = "#d1d4dc";
+    }
     editingTextRectId = rect.id;
-    els.text.style.display = "none";
-
-    textEditor = openInlineTextEditor({
-      container,
-      x: boxLeft,
-      y: boxTop,
-      width: labelRect.width > 0 ? labelRect.width : undefined,
-      height: labelRect.height > 0 ? labelRect.height : undefined,
-      positionMode: labelRect.width > 0 ? "box" : "center",
-      color: hasText ? rectTextColor(rect) : "#d1d4dc",
-      activeColor: rectTextColor(rect),
-      value: rect.text,
-      placeholder: "+ Add text",
-      placeholderAsContent: !hasText,
-      textAlign: "center",
-      onCommit: (value) => {
-        textEditor = null;
-        editingTextRectId = null;
-        rect.text = value.trim();
-        callbacks.onUpdate(rect);
-        syncOne(rect);
-      },
-      onDismiss: () => {
-        textEditor = null;
-        editingTextRectId = null;
-        syncOne(rect);
-      },
-    });
+    el.classList.add("is-editing");
+    el.contentEditable = "true";
+    el.focus({ preventScroll: true });
+    restoreLabelCaret(el);
   }
 
   function visibleBoundsCenter(rect: Rectangle) {
@@ -276,10 +254,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     hit.setAttribute("stroke", "none");
 
     const text = document.createElementNS(SVG_NS, "text");
-    text.setAttribute("class", "rect-label-el");
-    text.setAttribute("text-anchor", "middle");
-    text.setAttribute("dominant-baseline", "middle");
-    text.setAttribute("pointer-events", "all");
+    text.style.display = "none";
 
     const handles: SVGCircleElement[] = HANDLE_POSITIONS.map((pos) => {
       const c = document.createElementNS(SVG_NS, "circle");
@@ -307,21 +282,6 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       const current = rectangles.find((item) => item.id === rect.id);
       if (current) openTextEditor(current);
     });
-    text.addEventListener("pointerdown", (e) => {
-      if (!manager.canEditExistingDrawings()) return;
-      e.stopPropagation();
-    });
-    text.addEventListener("pointerup", (e) => {
-      if (!manager.canEditExistingDrawings()) return;
-      e.stopPropagation();
-      e.preventDefault();
-      const current = rectangles.find((item) => item.id === rect.id);
-      if (!current) return;
-      if (selectedId !== rect.id) selectRect(rect.id);
-      if (current.locked) return;
-      openTextEditor(current);
-    });
-
     handles.forEach((h, i) => {
       h.addEventListener("pointerdown", (e) => {
         if (!manager.canEditExistingDrawings()) return;
@@ -341,6 +301,8 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     forgetFloatingPanelPosition(`rectangle:${id}`);
     const els = elMap.get(id);
     if (els) { els.group.remove(); elMap.delete(id); }
+    labelOverlays.get(id)?.remove();
+    labelOverlays.delete(id);
     if (selectedId === id) {
       selectedId = null;
       removeToolbar();
@@ -355,6 +317,8 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       els.group.remove();
     }
     elMap.clear();
+    for (const el of labelOverlays.values()) el.remove();
+    labelOverlays.clear();
     rectangles = [];
     if (selectedId !== null) {
       selectedId = null;
@@ -446,6 +410,87 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     syncAll();
   }
 
+  function ensureLabelOverlay(rect: Rectangle): HTMLDivElement {
+    let el = labelOverlays.get(rect.id);
+    if (el) return el;
+
+    el = document.createElement("div");
+    el.className = "rectangle-label";
+    el.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+      if (!manager.canEditExistingDrawings()) return;
+      const current = rectangles.find((item) => item.id === rect.id);
+      if (!current || current.locked) return;
+      if (selectedId !== rect.id) selectRect(rect.id);
+      openTextEditor(current);
+    });
+    el.addEventListener("focus", () => {
+      if (editingTextRectId !== rect.id) return;
+      restoreLabelCaret(el);
+    });
+    el.addEventListener("beforeinput", (event) => {
+      if (editingTextRectId !== rect.id) return;
+      if (!el.classList.contains("is-placeholder")) return;
+      if (!event.inputType.startsWith("insert")) return;
+      const data = (event as InputEvent).data;
+      if (!data) return;
+      event.preventDefault();
+      const current = rectangles.find((item) => item.id === rect.id);
+      const textColor = current ? rectTextColor(current) : el.style.color;
+      el.textContent = data;
+      el.classList.remove("is-placeholder");
+      el.style.color = textColor;
+      placeLabelCaret(el, true);
+    });
+    el.addEventListener("keydown", (event) => {
+      if (editingTextRectId !== rect.id) return;
+      if (event.key === "Enter") {
+        event.preventDefault();
+        el.blur();
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancelLabelEdit(rect.id);
+      }
+    });
+    el.addEventListener("blur", () => {
+      if (editingTextRectId === rect.id) commitLabelEdit(rect.id);
+    });
+
+    container.appendChild(el);
+    labelOverlays.set(rect.id, el);
+    return el;
+  }
+
+  function syncLabelOverlay(rect: Rectangle, bounds: PixelBounds, selected: boolean) {
+    const el = ensureLabelOverlay(rect);
+    const safe = { x: bounds.x, y: bounds.y, w: Math.max(0, bounds.w), h: Math.max(0, bounds.h) };
+    const visibleBounds = clampHorizontalBounds(safe);
+    el.style.left = `${visibleBounds.x + visibleBounds.w / 2}px`;
+    el.style.top = `${visibleBounds.y + visibleBounds.h / 2}px`;
+    el.style.width = `${Math.max(1, visibleBounds.w)}px`;
+    el.style.transform = "translate(-50%, -50%)";
+
+    if (editingTextRectId === rect.id) {
+      el.style.display = "";
+      return;
+    }
+
+    const hasText = Boolean(rect.text?.trim());
+    const showPlaceholder = selected && !hasText;
+    if (!hasText && !showPlaceholder) {
+      el.style.display = "none";
+      return;
+    }
+
+    el.style.display = safe.w >= 70 && safe.h >= 28 ? "" : "none";
+    el.contentEditable = "false";
+    el.classList.remove("is-editing");
+    el.style.color = hasText ? rectTextColor(rect) : "#d1d4dc";
+    el.textContent = hasText ? (rect.text ?? "") : PLACEHOLDER;
+    el.classList.toggle("is-placeholder", showPlaceholder);
+  }
+
   function applyPixelBounds(els: RectEls, b: PixelBounds, rect: Rectangle, selected: boolean) {
     const { x, y, w, h } = b;
     const safe = { x, y, w: Math.max(0, w), h: Math.max(0, h) };
@@ -462,39 +507,8 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     els.border.setAttribute("stroke-width", String(rect.borderWidth));
     els.border.setAttribute("stroke-dasharray", strokeDash(rect.borderStyle));
     els.hit.style.cursor = rect.locked ? "default" : "move";
-    const centerX = safe.x + safe.w / 2;
-    if (editingTextRectId === rect.id) {
-      els.text.style.display = "none";
-    } else {
-      const hasText = Boolean(rect.text?.trim());
-      const showPlaceholder = selected && !hasText;
-      const textValue = rect.text ?? "";
-      const labelValue = hasText ? textValue : (showPlaceholder ? "+ Add text" : "");
-      const labelLines = hasText ? wrapRectangleText(textValue, safe.w, safe.h) : [];
-      els.text.textContent = "";
-      if (hasText) {
-        try {
-          labelLines.forEach((line, index) => {
-            const tspan = document.createElementNS(SVG_NS, "tspan");
-            tspan.setAttribute("x", String(centerX));
-            tspan.setAttribute("y", String(safe.y + safe.h / 2 - ((labelLines.length - 1) * 18) / 2 + index * 18));
-            tspan.textContent = line;
-            els.text.appendChild(tspan);
-          });
-        } catch {
-          els.text.textContent = labelValue;
-          els.text.setAttribute("x", String(centerX));
-          els.text.setAttribute("y", String(safe.y + safe.h / 2));
-        }
-      } else if (showPlaceholder) {
-        els.text.textContent = labelValue;
-        els.text.setAttribute("x", String(centerX));
-        els.text.setAttribute("y", String(safe.y + safe.h / 2));
-      }
-      els.text.setAttribute("fill", hasText ? rectTextColor(rect) : "#d1d4dc");
-      els.text.style.display = safe.w >= 70 && safe.h >= 28 && Boolean(labelValue) ? "" : "none";
-      els.text.classList.toggle("is-placeholder", showPlaceholder);
-    }
+    els.text.style.display = "none";
+    syncLabelOverlay(rect, safe, selected);
 
     const coords = getHandleCoords(safe);
     els.handles.forEach((h, i) => {
@@ -509,7 +523,12 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     let els = elMap.get(rect.id);
     if (!els) { els = buildEls(rect); elMap.set(rect.id, els); }
     const b = getBounds(rect, chart, series, candleStore.candles);
-    if (!b) { els.group.setAttribute("visibility", "hidden"); return; }
+    if (!b) {
+      els.group.setAttribute("visibility", "hidden");
+      const label = labelOverlays.get(rect.id);
+      if (label) label.style.display = "none";
+      return;
+    }
     els.group.setAttribute("visibility", "visible");
     applyPixelBounds(els, b, rect, selectedId === rect.id);
   }
@@ -538,7 +557,8 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
         const dy = (event.clientY - cb.top) - sy;
         const els = elMap.get(id);
         if (!els) return;
-        applyPixelBounds(els, { x: origB.x + dx, y: origB.y + dy, w: origB.w, h: origB.h }, rect, true);
+        const previewBounds = { x: origB.x + dx, y: origB.y + dy, w: origB.w, h: origB.h };
+        applyPixelBounds(els, previewBounds, rect, true);
       },
       onEnd: (_event, moved) => {
         if (!moved || !latestEv) return;
@@ -774,9 +794,11 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(refreshGhostAfterViewportChange); } catch { }
     container.removeEventListener("mousemove", handleMouseMove);
     container.removeEventListener("pointerdown", onBgPointerDown);
-    overlay.remove();
-    toolbarController.destroy();
     removeToolbar();
+    toolbarController.destroy();
+    overlay.remove();
+    for (const el of labelOverlays.values()) el.remove();
+    labelOverlays.clear();
     clearGhost();
   };
 }
