@@ -185,7 +185,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   datasetId: string;
   callbacks: ParallelChannelCallbacks;
 }): () => void {
-  const { container, chart, series, candleStore, drawingMode, datasetId, callbacks, manager } = opts;
+  const { container, chart, series, candleStore, datasetId, callbacks, manager } = opts;
   let parallelChannels = [...opts.parallelChannels];
 
   const overlay = createDrawingOverlay(container, chart, "parallel-channel-overlay");
@@ -809,7 +809,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   }
 
   function handleDrawClick(event: any) {
-    if (drawingMode !== "parallelchannel") return;
+    if (manager.getMode() !== "parallelchannel") return;
     if (isChannelHandleTarget(event.sourceEvent?.target ?? null)) return;
     const point = clickToPoint(event);
     if (!point) return;
@@ -889,15 +889,13 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   }
 
   function handleBackgroundClick(event: PointerEvent) {
-    if (drawingMode !== "none") return;
+    if (manager.getMode() !== "none") return;
     const target = event.target as Element;
     if (target.closest(".trend-toolbar") || target.closest(".pc-hit-area") || target.closest(".rect-handle-el") || target.closest(".pc-mid-handle")) return;
     if (selectedId) selectChannel(null);
   }
 
-  if (drawingMode === "parallelchannel") {
-    chart.subscribeClick(handleDrawClick);
-  }
+  chart.subscribeClick(handleDrawClick);
   container.addEventListener("mousemove", handleMouseMove);
   container.addEventListener("pointerdown", handleBackgroundClick);
 

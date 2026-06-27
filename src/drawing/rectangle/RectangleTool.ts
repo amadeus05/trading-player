@@ -131,7 +131,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
   datasetId: string;
   callbacks: RectangleCallbacks;
 }): () => void {
-  const { container, chart, series, candleStore, drawingMode, datasetId, callbacks, manager } = opts;
+  const { container, chart, series, candleStore, datasetId, callbacks, manager } = opts;
   let rectangles = [...opts.rectangles];
 
   const getPlotWidthLocal = () => getPlotWidth(chart);
@@ -667,7 +667,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
   }
 
   function handleDrawClick(event: { time?: unknown; sourceEvent?: PointerEvent; seriesData?: Map<unknown, { close?: number }> }) {
-    if (drawingMode !== "rectangle") return;
+    if (manager.getMode() !== "rectangle") return;
     const bounds = container.getBoundingClientRect();
     const sourceEvent = event.sourceEvent;
     const rawX = sourceEvent ? sourceEvent.clientX - bounds.left : null;
@@ -746,14 +746,12 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     updateGhostRect(lastGhostPointer.x, lastGhostPointer.y);
   };
 
-  if (drawingMode === "rectangle") {
-    chart.subscribeClick(handleDrawClick);
-    chart.timeScale().subscribeVisibleLogicalRangeChange(refreshGhostAfterViewportChange);
-  }
+  chart.subscribeClick(handleDrawClick);
+  chart.timeScale().subscribeVisibleLogicalRangeChange(refreshGhostAfterViewportChange);
   container.addEventListener("mousemove", handleMouseMove);
 
   const onBgPointerDown = (e: PointerEvent) => {
-    if (drawingMode !== "none") return;
+    if (manager.getMode() !== "none") return;
     const t = e.target as Element;
     if (
       t.closest(".rect-toolbar") ||

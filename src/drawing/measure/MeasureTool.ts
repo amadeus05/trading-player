@@ -97,9 +97,7 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
   pricePrecision: number;
   onComplete: () => void;
 }): () => void {
-  const { container, chart, series, candleStore, active, pricePrecision, onComplete, manager } = opts;
-
-  if (!active) return () => {};
+  const { container, chart, series, candleStore, pricePrecision, onComplete, manager } = opts;
 
   let volumePrefix = new Float64Array(0);
   const ensureVolumePrefix = () => {
@@ -341,6 +339,16 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
     tooltip.style.display = "none";
   }
 
+  function resetMeasurement() {
+    point1 = null;
+    point2 = null;
+    completed = false;
+    cachedStatsKey = "";
+    cachedStats = null;
+    lastCompletedRenderKey = "";
+    hideAll();
+  }
+
   function updateTooltip(px1: { x: number; y: number }, px2: { x: number; y: number }, stats: ReturnType<typeof calculateStats>) {
     const { priceDelta, pctChange, barCount, timeDelta, totalVolume } = stats;
     const absDelta = Math.abs(priceDelta);
@@ -395,6 +403,7 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
   }
 
   function handleDrawClick(event: any) {
+    if (manager.getMode() !== "measure") return;
     if (completed) return;
     const bounds = container.getBoundingClientRect();
     const sourceEvent = event.sourceEvent as PointerEvent | undefined;
@@ -416,6 +425,7 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
   }
 
   function handleMouseMove(event: MouseEvent) {
+    if (manager.getMode() !== "measure") return;
     if (completed || !point1) return;
     const bounds = container.getBoundingClientRect();
     const x = event.clientX - bounds.left;
@@ -449,11 +459,11 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
   }
 
   const unregisterOverlaySync = manager.registerOverlaySync(syncOverlayPositions);
-  const stopOverlayLoop = manager.ensureOverlayLoop();
 
   function handleKeyDown(event: KeyboardEvent) {
     if (event.key === "Escape") {
-      cleanup();
+      if (manager.getMode() !== "measure" && !point1 && !completed) return;
+      resetMeasurement();
       onComplete();
     }
   }
@@ -462,7 +472,7 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
     if (!completed) return;
     const target = event.target as Element;
     if (target.closest(".measure-tooltip")) return;
-    cleanup();
+    resetMeasurement();
     onComplete();
   }
 
@@ -476,7 +486,6 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
 
   function cleanup() {
     unregisterOverlaySync();
-    stopOverlayLoop();
     clearTimeout(dismissTimeout);
     try { chart.unsubscribeClick(handleDrawClick); } catch {}
     container.removeEventListener("mousemove", handleMouseMove);

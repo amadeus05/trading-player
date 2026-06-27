@@ -108,6 +108,7 @@ export function ReplayChart({
     applyReplayIndex: (nextIndex: number, allCandles: Candle[]) => void;
     syncOverlays: () => void;
     setDrawingsVisible: (visible: boolean) => void;
+    setDrawingMode: (mode: DrawingMode) => void;
     rebuildTradeOverlays: () => void;
   } | null>(null);
   const overlayPropsRef = useRef({
@@ -125,7 +126,6 @@ export function ReplayChart({
     showClosedTradeOverlays,
   };
   const prevReplayIndexRef = useRef(index);
-  const previousDrawingModeRef = useRef(drawingMode);
   const callbacksRef = useRef({
     onBarrierChange,
     onStartSelected,
@@ -148,8 +148,6 @@ export function ReplayChart({
     const timeframeChanged = savedCandleInterval.current != null
       && candleInterval != null
       && savedCandleInterval.current !== candleInterval;
-    const drawingModeChanged = previousDrawingModeRef.current !== drawingMode;
-    const viewportBeforeModeChange = drawingModeChanged ? savedLogicalRange.current : null;
     const forceFocus = appliedFocusRevision.current !== focusRevision;
     if (!visible.length) return;
     const candleStore = { candles: visible as Candle[] };
@@ -330,19 +328,18 @@ export function ReplayChart({
       initialRange = defaultFocusRange(safeIndex);
       if (forceFocus) followRealtime.current = false;
     }
-    applyReplayIndex(safeIndex, candles, initialRange ?? viewportBeforeModeChange);
+    applyReplayIndex(safeIndex, candles, initialRange);
     if (timeframeChanged && initialRange) {
       deferredTimeRangeFrame = requestAnimationFrame(() => {
         chart.timeScale().setVisibleLogicalRange(initialRange!);
         primePriceScaleInteraction();
       });
-    } else if (forceFocus || viewportBeforeModeChange) {
+    } else if (forceFocus) {
       deferredTimeRangeFrame = requestAnimationFrame(() => {
         primePriceScaleInteraction();
       });
     }
     appliedFocusRevision.current = focusRevision;
-    previousDrawingModeRef.current = drawingMode;
     const priceScaleWidth = Math.max(70, chart.priceScale("right").width());
     const timeScaleHeight = Math.max(28, chart.timeScale().height());
     let chartAlive = true;
@@ -424,6 +421,14 @@ export function ReplayChart({
       applyReplayIndex,
       syncOverlays: () => drawingManager.scheduleOverlaySync(),
       setDrawingsVisible: (visible) => drawingManager.setDrawingsVisible(visible),
+      setDrawingMode: (mode) => {
+        drawingManager.setMode(mode);
+        chart.applyOptions({
+          crosshair: {
+            mode: mode === "measure" ? CrosshairMode.Hidden : CrosshairMode.Normal,
+          },
+        });
+      },
       rebuildTradeOverlays,
     };
     prevReplayIndexRef.current = index;
@@ -555,7 +560,7 @@ export function ReplayChart({
       chart.remove();
       chartRuntimeRef.current = null;
     };
-  }, [candles, selectingStart, focusRevision, pricePrecision, drawingMode, datasetId]);
+  }, [candles, selectingStart, focusRevision, pricePrecision, datasetId]);
 
   useLayoutEffect(() => {
     chartRuntimeRef.current?.rebuildTradeOverlays();
@@ -564,6 +569,10 @@ export function ReplayChart({
   useLayoutEffect(() => {
     chartRuntimeRef.current?.setDrawingsVisible(drawingsVisible);
   }, [drawingsVisible]);
+
+  useLayoutEffect(() => {
+    chartRuntimeRef.current?.setDrawingMode(drawingMode);
+  }, [drawingMode]);
 
   useLayoutEffect(() => {
     if (prevReplayIndexRef.current === index) return;

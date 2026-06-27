@@ -78,7 +78,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
   onSelect?: (id: string | null) => void;
   callbacks: TrendLineCallbacks;
 }): () => void {
-  const { container, chart, series, candleStore, drawingMode, datasetId, callbacks, onSelect, manager } = opts;
+  const { container, chart, series, candleStore, datasetId, callbacks, onSelect, manager } = opts;
   let trendLines = [...opts.trendLines];
 
   /* ---- SVG overlay ---- */
@@ -673,7 +673,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
   /* ---- Drawing mode ---- */
 
   function handleDrawClick(event: any) {
-    if (drawingMode !== "trendline") return;
+    if (manager.getMode() !== "trendline") return;
     const rect = container.getBoundingClientRect();
     const sourceEvent = event.sourceEvent as PointerEvent | undefined;
     const x = sourceEvent ? sourceEvent.clientX - rect.left : null;
@@ -741,7 +741,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
 
   /* ---- Deselect on background click ---- */
   function handleBackgroundClick(event: PointerEvent) {
-    if (drawingMode !== "none") return;
+    if (manager.getMode() !== "none") return;
     const target = event.target as Element;
     if (target.closest(".trend-toolbar") || target.closest(".trend-hit-area") || target.closest(".rect-handle-el") || target.closest(".trend-line-label")) return;
     if (selectedId) {
@@ -750,9 +750,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
   }
 
   /* ---- Attach events ---- */
-  if (drawingMode === "trendline") {
-    chart.subscribeClick(handleDrawClick);
-  }
+  chart.subscribeClick(handleDrawClick);
   container.addEventListener("mousemove", handleMouseMove);
   container.addEventListener("pointerdown", handleBackgroundClick);
 

@@ -192,7 +192,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
   pricePrecision: number;
   callbacks: FibonacciTrendExtensionCallbacks;
 }): () => void {
-  const { container, chart, series, candleStore, drawingMode, datasetId, pricePrecision, callbacks, manager } = opts;
+  const { container, chart, series, candleStore, datasetId, pricePrecision, callbacks, manager } = opts;
   let fibonacciTrendExtensions = [...opts.fibonacciTrendExtensions];
 
   const overlay = createDrawingOverlay(container, chart, "fib-overlay");
@@ -929,7 +929,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
   }
 
   function handleDrawClick(event: any) {
-    if (drawingMode !== "fibtrendext") return;
+    if (manager.getMode() !== "fibtrendext") return;
     const rect = container.getBoundingClientRect();
     const sourceEvent = event.sourceEvent as PointerEvent | undefined;
     let x = sourceEvent ? sourceEvent.clientX - rect.left : null;
@@ -982,7 +982,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
   }
 
   function handleBackgroundClick(event: PointerEvent) {
-    if (drawingMode !== "none") return;
+    if (manager.getMode() !== "none") return;
     const target = event.target as Element;
     if (
       target.closest(".rect-toolbar")
@@ -1004,9 +1004,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
   window.addEventListener("pointerup", scaleInteractionSync.handlePointerUp);
   window.addEventListener("pointercancel", scaleInteractionSync.handlePointerUp);
 
-  if (drawingMode === "fibtrendext") {
-    chart.subscribeClick(handleDrawClick);
-  }
+  chart.subscribeClick(handleDrawClick);
   container.addEventListener("pointerdown", handleBackgroundClick);
 
   return () => {
