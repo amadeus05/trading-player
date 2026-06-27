@@ -179,7 +179,6 @@ export function PlayerPage() {
     onWarning: message.warning,
   });
   const {
-    blockingTrade,
     workingTrades,
     cancelOrder,
     closeTrade,
@@ -315,7 +314,6 @@ export function PlayerPage() {
           baseAsset={baseAsset}
           quoteAsset={quoteAsset}
           orderForm={orderForm}
-          hasBlockingTrade={blockingTrade != null}
           workingTrades={workingTrades}
           focusedTradeId={focusedTradeId}
           editingTradeId={tradeEditDraft?.id ?? null}

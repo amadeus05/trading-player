@@ -57,7 +57,6 @@ export function useChartDisplayState({
         )
       : NO_BARRIERS;
     const draftProtectionTrade: Trade | undefined = orderDraftSide
-      && workingTrades.length === 0
       && ticketPrice > 0
       && takeProfit > 0
       && stopLoss > 0

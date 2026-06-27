@@ -146,3 +146,39 @@ test("closes an existing trade and becomes idempotent for the same tick", () => 
   assert.equal(repeated.state, first.state);
   assert.deepEqual(repeated.events, []);
 });
+
+test("closes multiple open trades independently on the same tick", () => {
+  const longTrade: Trade = {
+    id: "open-long",
+    side: "LONG",
+    entryTime: 1_000,
+    entry: 100,
+    size: 1,
+    sl: 90,
+    tp: 101,
+    status: "OPEN",
+    entryFee: 0.02,
+    comment: "",
+  };
+  const shortTrade: Trade = {
+    id: "open-short",
+    side: "SHORT",
+    entryTime: 1_000,
+    entry: 100,
+    size: 1,
+    sl: 110,
+    tp: 99,
+    status: "OPEN",
+    entryFee: 0.02,
+    comment: "",
+  };
+  const state: Persisted = { datasets: [], trades: [longTrade, shortTrade], annotations: [] };
+  const tick = candle(1_900, { high: 102, low: 98 });
+
+  const result = advanceSimulation({ state, rawCandles: [tick], candle: tick, timeframeMinutes: 15, settings });
+
+  assert.deepEqual(result.state.trades.map((trade) => trade.status), ["CLOSED", "CLOSED"]);
+  assert.deepEqual(result.state.trades.map((trade) => trade.outcome), ["TP", "TP"]);
+  assert.deepEqual(result.events.map((event) => event.type), ["trade-closed", "trade-closed"]);
+  assert.deepEqual(result.events.map((event) => event.trade.id), ["open-long", "open-short"]);
+});

@@ -49,7 +49,6 @@ export function useTradingSimulation({
     amountUnit,
     orderValue,
     limitPrice,
-    orderDraftSide,
     protectionEnabled,
     takeProfit,
     stopLoss,
@@ -62,14 +61,9 @@ export function useTradingSimulation({
     () => state.trades.filter((trade) => trade.status === "OPEN" || trade.status === "PENDING"),
     [state.trades],
   );
-  const blockingTrade = workingTrades.at(-1);
   const tickKey = currentCandle
     ? `${datasetId}:${timeframe}:${currentCandle.time}`
     : null;
-
-  useEffect(() => {
-    if (blockingTrade && orderDraftSide) cancelOrderDraft();
-  }, [blockingTrade, cancelOrderDraft, orderDraftSide]);
 
   const notifyTradeClosed = useCallback((
     trade: Trade,
@@ -133,10 +127,6 @@ export function useTradingSimulation({
 
   const placeOrder = (side: Trade["side"]) => {
     if (!currentCandle) return;
-    if (blockingTrade) {
-      void message.warning("Сначала закройте позицию или отмените лимитную заявку");
-      return;
-    }
     const created = createOrder({
       id: crypto.randomUUID(),
       side,
@@ -167,7 +157,7 @@ export function useTradingSimulation({
       annotations: [...current.annotations, created.barrier],
     }));
     cancelOrderDraft();
-    setFocusedTradeId(null);
+    setFocusedTradeId(created.trade.id);
     setTradeEditDraft(null);
     void message.success(orderType === "MARKET" ? `${side} открыт` : `${side} limit размещён`);
   };
@@ -210,5 +200,5 @@ export function useTradingSimulation({
     void message.success("Сделка удалена");
   };
 
-  return { blockingTrade, workingTrades, cancelOrder, closeTrade, deleteTrade, placeOrder };
+  return { workingTrades, cancelOrder, closeTrade, deleteTrade, placeOrder };
 }

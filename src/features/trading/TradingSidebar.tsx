@@ -10,7 +10,6 @@ interface TradingSidebarProps {
   baseAsset: string;
   quoteAsset: string;
   orderForm: OrderFormController;
-  hasBlockingTrade: boolean;
   workingTrades: Trade[];
   focusedTradeId: string | null;
   editingTradeId: string | null;
@@ -89,7 +88,6 @@ export function TradingSidebar({
   baseAsset,
   quoteAsset,
   orderForm,
-  hasBlockingTrade,
   workingTrades,
   focusedTradeId,
   editingTradeId,
@@ -126,7 +124,7 @@ export function TradingSidebar({
     setTakeProfit: onTakeProfitChange,
     setStopLoss: onStopLossChange,
   } = orderForm;
-  const orderActionsDisabled = hasBlockingTrade || !currentCandle || editingTradeId != null;
+  const orderActionsDisabled = !currentCandle || editingTradeId != null;
 
   return (
     <aside>
