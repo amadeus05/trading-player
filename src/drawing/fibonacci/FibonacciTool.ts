@@ -9,6 +9,7 @@ import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
 import { attachManagedDrawingLifecycle, attachScaleInteractionSync, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import type { DrawingLineStyle } from "../shared/DrawingToolbar";
 import { createDrawingOverlay } from "../shared/overlay";
+import { bindDrawingPointerClick } from "../shared/drawingPointerClick";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 
 export type FibonacciCallbacks = DrawingCrudCallbacks<FibonacciRetracement>;
@@ -760,14 +761,20 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   window.addEventListener("pointerup", scaleInteractionSync.handlePointerUp);
   window.addEventListener("pointercancel", scaleInteractionSync.handlePointerUp);
 
-  chart.subscribeClick(handleDrawClick);
+  const cleanupDrawingClick = bindDrawingPointerClick({
+    container,
+    chart,
+    manager,
+    mode: "fibonacci",
+    onClick: handleDrawClick,
+  });
   container.addEventListener("pointerdown", handleBackgroundClick);
 
   return () => {
     cancelAnimationFrame(ghostRaf);
     scaleInteractionSync.destroy();
     unregisterLifecycle();
-    try { chart.unsubscribeClick(handleDrawClick); } catch { }
+    cleanupDrawingClick();
     try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRangeChange); } catch { }
     container.removeEventListener("wheel", scaleInteractionSync.handleScaleWheel, { capture: true });
     container.removeEventListener("pointerdown", scaleInteractionSync.handlePointerDown, { capture: true });

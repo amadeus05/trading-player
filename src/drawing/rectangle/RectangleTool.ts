@@ -10,6 +10,7 @@ import { openInlineTextEditor } from "../shared/inlineTextEditor";
 import { attachManagedDrawingLifecycle, createClipboardBridge, getPlotWidth, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import { createDrawingOverlay } from "../shared/overlay";
 import { forgetFloatingPanelPosition } from "../shared/floatingPanel";
+import { bindDrawingPointerClick, type DrawingPointerClickEvent } from "../shared/drawingPointerClick";
 import type { DrawingCrudCallbacks, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 
 export type RectangleCallbacks = DrawingCrudCallbacks<Rectangle>;
@@ -668,7 +669,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     });
   }
 
-  function handleDrawClick(event: { time?: unknown; sourceEvent?: PointerEvent; seriesData?: Map<unknown, { close?: number }> }) {
+  function handleDrawClick(event: DrawingPointerClickEvent) {
     if (manager.getMode() !== "rectangle") return;
     const bounds = container.getBoundingClientRect();
     const sourceEvent = event.sourceEvent;
@@ -678,12 +679,8 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       ? snapXToNearestCandle(chart, Math.max(0, Math.min(rawX, getPlotWidthLocal())))
       : null;
     const y = rawY;
-    const time = x != null
-      ? xToSnappedTime(chart, x, candleStore.candles)
-      : (typeof event.time === "number" ? event.time : null);
-    const price = y != null
-      ? series.coordinateToPrice(y)
-      : event.seriesData?.get(series)?.close;
+    const time = x != null ? xToSnappedTime(chart, x, candleStore.candles) : null;
+    const price = y != null ? series.coordinateToPrice(y) : null;
     if (time == null || price == null || price <= 0) return;
 
     if (!drawPoint1) {
@@ -748,7 +745,13 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     updateGhostRect(lastGhostPointer.x, lastGhostPointer.y);
   };
 
-  chart.subscribeClick(handleDrawClick);
+  const cleanupDrawingClick = bindDrawingPointerClick({
+    container,
+    chart,
+    manager,
+    mode: "rectangle",
+    onClick: handleDrawClick,
+  });
   chart.timeScale().subscribeVisibleLogicalRangeChange(refreshGhostAfterViewportChange);
   container.addEventListener("mousemove", handleMouseMove);
 
@@ -767,7 +770,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
 
   return () => {
     unregisterLifecycle();
-    try { chart.unsubscribeClick(handleDrawClick); } catch { }
+    cleanupDrawingClick();
     try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(refreshGhostAfterViewportChange); } catch { }
     container.removeEventListener("mousemove", handleMouseMove);
     container.removeEventListener("pointerdown", onBgPointerDown);

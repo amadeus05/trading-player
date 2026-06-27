@@ -9,6 +9,7 @@ import { DrawingToolbarController } from "../shared/DrawingToolbarController";
 import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
 import { attachManagedDrawingLifecycle, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import { createDrawingOverlay } from "../shared/overlay";
+import { bindDrawingPointerClick } from "../shared/drawingPointerClick";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 
 export type ParallelChannelCallbacks = DrawingCrudCallbacks<ParallelChannel>;
@@ -895,13 +896,19 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     if (selectedId) selectChannel(null);
   }
 
-  chart.subscribeClick(handleDrawClick);
+  const cleanupDrawingClick = bindDrawingPointerClick({
+    container,
+    chart,
+    manager,
+    mode: "parallelchannel",
+    onClick: handleDrawClick,
+  });
   container.addEventListener("mousemove", handleMouseMove);
   container.addEventListener("pointerdown", handleBackgroundClick);
 
   return () => {
     unregisterLifecycle();
-    try { chart.unsubscribeClick(handleDrawClick); } catch { /* noop */ }
+    cleanupDrawingClick();
     container.removeEventListener("mousemove", handleMouseMove);
     container.removeEventListener("pointerdown", handleBackgroundClick);
     overlay.remove();

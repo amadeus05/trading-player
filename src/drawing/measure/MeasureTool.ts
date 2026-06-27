@@ -4,6 +4,7 @@
 
 import type { Candle } from "../../types";
 import { timeToLogical, timeToX, xToTime } from "../shared/coordinates";
+import { bindDrawingPointerClick } from "../shared/drawingPointerClick";
 import { createDrawingOverlay } from "../shared/overlay";
 import type { ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 
@@ -476,7 +477,13 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
     onComplete();
   }
 
-  chart.subscribeClick(handleDrawClick);
+  const cleanupDrawingClick = bindDrawingPointerClick({
+    container,
+    chart,
+    manager,
+    mode: "measure",
+    onClick: handleDrawClick,
+  });
   container.addEventListener("mousemove", handleMouseMove);
   document.addEventListener("keydown", handleKeyDown);
 
@@ -487,7 +494,7 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
   function cleanup() {
     unregisterOverlaySync();
     clearTimeout(dismissTimeout);
-    try { chart.unsubscribeClick(handleDrawClick); } catch {}
+    cleanupDrawingClick();
     container.removeEventListener("mousemove", handleMouseMove);
     container.removeEventListener("pointerdown", handleDismissClick);
     document.removeEventListener("keydown", handleKeyDown);

@@ -11,6 +11,7 @@ import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
 import { lineLabelLayout } from "../shared/lineLabelLayout";
 import { createTrendLineExtendSlots } from "./trendLineToolbarSlots";
 import { createDrawingOverlay } from "../shared/overlay";
+import { bindDrawingPointerClick } from "../shared/drawingPointerClick";
 import { attachManagedDrawingLifecycle, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 export type { DrawingMode } from "../shared/types";
@@ -750,14 +751,20 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
   }
 
   /* ---- Attach events ---- */
-  chart.subscribeClick(handleDrawClick);
+  const cleanupDrawingClick = bindDrawingPointerClick({
+    container,
+    chart,
+    manager,
+    mode: "trendline",
+    onClick: handleDrawClick,
+  });
   container.addEventListener("mousemove", handleMouseMove);
   container.addEventListener("pointerdown", handleBackgroundClick);
 
   /* ---- Cleanup ---- */
   return () => {
     unregisterLifecycle();
-    try { chart.unsubscribeClick(handleDrawClick); } catch { }
+    cleanupDrawingClick();
     container.removeEventListener("mousemove", handleMouseMove);
     container.removeEventListener("pointerdown", handleBackgroundClick);
     overlay.remove();
