@@ -1,9 +1,11 @@
-import templatesIcon from "../icons/ui/drawing-templates.svg?raw";
-
 export type DrawingLineStyle = "solid" | "dashed" | "dotted";
 
-const PENCIL = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M12.1 2.9a1 1 0 0 1 1.4 0l1.5 1.5a1 1 0 0 1 0 1.4l-8.4 8.4H3.5v-2.5l8.4-8.4z" stroke="currentColor" stroke-width="1.35"/><path d="M10.6 4.4l2.5 2.5" stroke="currentColor" stroke-width="1.35"/></svg>`;
-const BUCKET = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M3.2 14.2h11.6M5.8 14.2l1-5.8h7.4l1 5.8M7.8 8.4V6.4a1.6 1.6 0 0 1 3.2 0v2" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/></svg>`;
+const FILL_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20" fill="none" aria-hidden="true"><path stroke="currentColor" d="M13.5 6.5l-3-3-7 7 7.59 7.59a2 2 0 0 0 2.82 0l4.18-4.18a2 2 0 0 0 0-2.82L13.5 6.5zm0 0v-4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v6"></path><path fill="currentColor" d="M0 16.5C0 15 2.5 12 2.5 12S5 15 5 16.5 4 19 2.5 19 0 18 0 16.5z"></path><circle fill="currentColor" cx="9.5" cy="9.5" r="1.5"></circle></svg>`;
+const LINE_COLOR_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M10.62.72a2.47 2.47 0 0 1 3.5 0l1.16 1.16c.96.97.96 2.54 0 3.5l-.58.58-8.9 8.9-1 1-.14.14H0v-4.65l.14-.15 1-1 8.9-8.9.58-.58Zm2.8.7a1.48 1.48 0 0 0-2.1 0l-.23.23 3.26 3.26.23-.23c.58-.58.58-1.52 0-2.1l-1.16-1.16Zm.23 4.2-3.26-3.27-8.2 8.2 3.25 3.27 8.2-8.2Zm-8.9 8.9-3.27-3.26-.5.5V15h3.27l.5-.5Z"></path></svg>`;
+const TEXT_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 15" width="13" height="15" fill="none" aria-hidden="true"><path stroke="currentColor" d="M4 14.5h2.5m2.5 0H6.5m0 0V.5m0 0h-5a1 1 0 0 0-1 1V4m6-3.5h5a1 1 0 0 1 1 1V4"></path></svg>`;
+const UNLOCK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M14 6a3 3 0 0 0-3 3v3h8.5a2.5 2.5 0 0 1 2.5 2.5v7a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 6 21.5v-7A2.5 2.5 0 0 1 8.5 12H10V9a4 4 0 0 1 8 0h-1a3 3 0 0 0-3-3zm-1 11a1 1 0 1 1 2 0v2a1 1 0 1 1-2 0v-2zm-6-2.5c0-.83.67-1.5 1.5-1.5h11c.83 0 1.5.67 1.5 1.5v7c0 .83-.67 1.5-1.5 1.5h-11A1.5 1.5 0 0 1 7 21.5v-7z"></path></svg>`;
+const LOCK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M14 5a4 4 0 0 0-4 4v3H8.5A2.5 2.5 0 0 0 6 14.5v7A2.5 2.5 0 0 0 8.5 24h11a2.5 2.5 0 0 0 2.5-2.5v-7a2.5 2.5 0 0 0-2.5-2.5H18V9a4 4 0 0 0-4-4zm3 7V9a3 3 0 1 0-6 0v3h6zm-4 5a1 1 0 1 1 2 0v2a1 1 0 1 1-2 0v-2zm-6-2.5c0-.83.67-1.5 1.5-1.5h11c.83 0 1.5.67 1.5 1.5v7c0 .83-.67 1.5-1.5 1.5h-11A1.5 1.5 0 0 1 7 21.5v-7z"></path></svg>`;
+const TEMPLATES_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M28 16H16v1h12v-1ZM28 20H16v1h12v-1ZM16 24h12v1H16v-1Z"></path><path fill="currentColor" fill-rule="evenodd" d="m22 30-10 4V12a1 1 0 0 1 1-1h18a1 1 0 0 1 1 1v22l-10-4Zm-9 2.52V12h18v20.52l-9-3.6-9 3.6Z"></path></svg>`;
 const LINE = `<svg width="14" height="10" viewBox="0 0 14 10" aria-hidden="true"><line x1="0" y1="5" x2="14" y2="5" stroke="currentColor" stroke-width="1.5"/></svg>`;
 const DELETE = `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3V2.5a1.5 1.5 0 013 0V3h4a.5.5 0 010 1h-.554l-.602 8.43A1.5 1.5 0 018.85 13.5H3.15a1.5 1.5 0 01-1.494-1.07L1.054 4H.5a.5.5 0 010-1h4zm1 0h1V2.5a.5.5 0 00-1 0V3zM2.06 4l.579 8.14a.5.5 0 00.498.36h5.726a.5.5 0 00.498-.36L9.94 4H2.06z" fill="currentColor"/></svg>`;
 
@@ -13,7 +15,7 @@ export function drawingStyleIcon(style: DrawingLineStyle): string {
 }
 
 export function toolbarLockIcon(locked: boolean): string {
-  return `<svg width="14" height="16" viewBox="0 0 14 16" fill="currentColor" aria-hidden="true"><rect x="1" y="7" width="12" height="8" rx="1.5"/><path d="${locked ? "M3.5 7V5a3.5 3.5 0 1 1 7 0v2" : "M10.5 7V5a3.5 3.5 0 0 0-7 0v2"}" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>`;
+  return locked ? LOCK_ICON : UNLOCK_ICON;
 }
 
 export interface DrawingToolbarOptions {
@@ -36,13 +38,13 @@ export function createDrawingToolbar(options: DrawingToolbarOptions): HTMLDivEle
   const div = document.createElement("div");
   div.className = `rect-toolbar drawing-toolbar ${options.className ?? ""}`.trim();
   const showColor = options.showColor !== false;
-  const color = showColor ? `<button type="button" class="rect-tb-color-btn rect-tb-border-btn trend-toolbar-color" title="Цвет линии"><span class="rect-tb-color-icon">${PENCIL}</span><span class="rect-tb-color-bar" style="background:${options.lineColor}"></span></button>` : "";
-  const fill = options.showFill ? `<button type="button" class="rect-tb-color-btn rect-tb-fill-btn" title="Цвет заливки"><span class="rect-tb-color-icon">${BUCKET}</span><span class="rect-tb-color-bar" style="background:${options.fillColor};opacity:${(options.fillOpacity ?? 100) / 100}"></span></button>` : "";
-  const text = options.showText ? `<button type="button" class="rect-tb-color-btn rect-tb-text-btn trend-toolbar-text" title="Текст"><span class="rect-tb-color-icon rect-tb-text-letter">T</span><span class="rect-tb-color-bar" style="background:${options.textColor ?? options.lineColor}"></span></button>` : "";
+  const color = showColor ? `<button type="button" class="rect-tb-color-btn rect-tb-border-btn trend-toolbar-color" title="Цвет линии"><span class="rect-tb-color-icon">${LINE_COLOR_ICON}</span><span class="rect-tb-color-bar" style="background:${options.lineColor}"></span></button>` : "";
+  const fill = options.showFill ? `<button type="button" class="rect-tb-color-btn rect-tb-fill-btn" title="Цвет заливки"><span class="rect-tb-color-icon">${FILL_ICON}</span><span class="rect-tb-color-bar" style="background:${options.fillColor};opacity:${(options.fillOpacity ?? 100) / 100}"></span></button>` : "";
+  const text = options.showText ? `<button type="button" class="rect-tb-color-btn rect-tb-text-btn trend-toolbar-text" title="Текст"><span class="rect-tb-color-icon">${TEXT_ICON}</span><span class="rect-tb-color-bar" style="background:${options.textColor ?? options.lineColor}"></span></button>` : "";
   const lock = options.showLock ? `<div class="rect-toolbar-sep"></div><button type="button" class="rect-tb-lock rect-tb-icon-btn" title="${options.locked ? "Разблокировать" : "Заблокировать"}"${options.locked ? ` data-active="1"` : ""} aria-pressed="${options.locked ? "true" : "false"}">${toolbarLockIcon(Boolean(options.locked))}</button>` : "";
   const showTemplates = options.showTemplates !== false;
   const templates = showTemplates
-    ? `<div class="rect-toolbar-sep"></div><button type="button" class="rect-tb-templates rect-tb-icon-btn" title="Шаблоны">${templatesIcon}</button>`
+    ? `<div class="rect-toolbar-sep"></div><button type="button" class="rect-tb-templates rect-tb-icon-btn" title="Шаблоны">${TEMPLATES_ICON}</button>`
     : "";
   const afterGrip = showColor || options.showFill || options.showText ? `<div class="rect-toolbar-sep"></div>` : "";
   div.innerHTML = `<div class="rect-toolbar-row">
