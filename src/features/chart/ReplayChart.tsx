@@ -103,8 +103,6 @@ export function ReplayChart({
   const savedCandleInterval = useRef<number | null>(null);
   const renderedIndex = useRef<number | null>(null);
   const followRealtime = useRef(true);
-  const savedPriceRange = useRef<{ from: number; to: number } | null>(null);
-  const manualPriceScale = useRef(false);
   const appliedFocusRevision = useRef(focusRevision);
   const chartRuntimeRef = useRef<{
     applyReplayIndex: (nextIndex: number, allCandles: Candle[]) => void;
@@ -153,10 +151,6 @@ export function ReplayChart({
     const drawingModeChanged = previousDrawingModeRef.current !== drawingMode;
     const viewportBeforeModeChange = drawingModeChanged ? savedLogicalRange.current : null;
     const forceFocus = appliedFocusRevision.current !== focusRevision;
-    if (forceFocus) {
-      manualPriceScale.current = false;
-      savedPriceRange.current = null;
-    }
     if (!visible.length) return;
     const candleStore = { candles: visible as Candle[] };
     const chart = createChart(ref.current, {
@@ -204,9 +198,6 @@ export function ReplayChart({
       priceFormat: { type: "price", precision: pricePrecision, minMove: 10 ** -pricePrecision },
     });
     cs.setData(candleStore.candles.map(toCandlestickData));
-    if (manualPriceScale.current && savedPriceRange.current) {
-      cs.priceScale().setVisibleRange(savedPriceRange.current);
-    }
     const vs = chart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
       priceScaleId: "vol",
@@ -262,10 +253,7 @@ export function ReplayChart({
         savedLogicalRange.current = chart.timeScale().getVisibleLogicalRange() ?? preservedRange;
         followRealtime.current = shouldFollowRealtime;
         renderedIndex.current = nextIndex;
-        if (manualPriceScale.current && savedPriceRange.current) {
-          cs.priceScale().applyOptions({ autoScale: false });
-          cs.priceScale().setVisibleRange(savedPriceRange.current);
-        } else if (!canAppendOneBar) {
+        if (!canAppendOneBar && !forcedRange) {
           primePriceScaleInteraction();
         }
         drawingManager.scheduleOverlaySync();
@@ -346,6 +334,11 @@ export function ReplayChart({
     if (timeframeChanged && initialRange) {
       deferredTimeRangeFrame = requestAnimationFrame(() => {
         chart.timeScale().setVisibleLogicalRange(initialRange!);
+        primePriceScaleInteraction();
+      });
+    } else if (forceFocus || viewportBeforeModeChange) {
+      deferredTimeRangeFrame = requestAnimationFrame(() => {
+        primePriceScaleInteraction();
       });
     }
     appliedFocusRevision.current = focusRevision;
@@ -354,14 +347,20 @@ export function ReplayChart({
     const timeScaleHeight = Math.max(28, chart.timeScale().height());
     let chartAlive = true;
     const markManualScale = (event: PointerEvent) => {
-      const element = ref.current; if (!element) return;
+      const element = ref.current;
+      if (!element) return;
       const bounds = element.getBoundingClientRect();
-      if (event.clientX - bounds.left >= bounds.width - priceScaleWidth - 4) manualPriceScale.current = true;
+      if (event.clientX - bounds.left >= bounds.width - priceScaleWidth - 4) {
+        primePriceScaleInteraction();
+      }
     };
     const resetManualScale = (event: MouseEvent) => {
-      const element = ref.current; if (!element) return;
+      const element = ref.current;
+      if (!element) return;
       const bounds = element.getBoundingClientRect();
-      if (event.clientX - bounds.left >= bounds.width - priceScaleWidth - 4) { manualPriceScale.current = false; savedPriceRange.current = null }
+      if (event.clientX - bounds.left >= bounds.width - priceScaleWidth - 4) {
+        cs.priceScale().applyOptions({ autoScale: true });
+      }
     };
     const zoomPriceScale = (event: WheelEvent) => {
       if (!chartAlive) return;
@@ -386,15 +385,17 @@ export function ReplayChart({
       const center = (range.from + range.to) / 2;
       const half = ((range.to - range.from) * factor) / 2;
       const nextRange = { from: center - half, to: center + half };
-      manualPriceScale.current = true;
-      savedPriceRange.current = nextRange;
       cs.priceScale().applyOptions({ autoScale: false });
       cs.priceScale().setVisibleRange(nextRange);
       drawingManager.scheduleOverlaySync();
     };
     let stopChartInteractionOverlayLoop: (() => void) | null = null;
     let chartInteractionWheelTimer = 0;
+    const markManualViewportInteraction = () => {
+      followRealtime.current = false;
+    };
     const startChartInteractionOverlayLoop = () => {
+      markManualViewportInteraction();
       if (!stopChartInteractionOverlayLoop) {
         stopChartInteractionOverlayLoop = drawingManager.ensureOverlayLoop();
       }
@@ -407,6 +408,7 @@ export function ReplayChart({
       drawingManager.scheduleOverlaySync();
     };
     const syncOverlaysDuringWheel = () => {
+      markManualViewportInteraction();
       startChartInteractionOverlayLoop();
       window.clearTimeout(chartInteractionWheelTimer);
       chartInteractionWheelTimer = window.setTimeout(stopChartInteractionOverlayLoopNow, 180);
@@ -417,7 +419,7 @@ export function ReplayChart({
     ref.current.addEventListener("wheel", syncOverlaysDuringWheel, { capture: true, passive: true });
     ref.current.addEventListener("pointerdown", markManualScale);
     ref.current.addEventListener("dblclick", resetManualScale);
-    ref.current.addEventListener("wheel", zoomPriceScale, { capture: true, passive: false     });
+    ref.current.addEventListener("wheel", zoomPriceScale, { capture: true, passive: false });
     chartRuntimeRef.current = {
       applyReplayIndex,
       syncOverlays: () => drawingManager.scheduleOverlaySync(),
@@ -530,7 +532,6 @@ export function ReplayChart({
       savedLogicalRange.current = range;
       savedCandleInterval.current = candleInterval;
       if (range) followRealtime.current = Math.abs(range.to - (candleStore.candles.length - 1)) < 0.75;
-      if (manualPriceScale.current) savedPriceRange.current = cs.priceScale().getVisibleRange();
       ref.current?.removeEventListener("pointerdown", startChartInteractionOverlayLoop, { capture: true });
       window.removeEventListener("pointerup", stopChartInteractionOverlayLoopNow);
       window.removeEventListener("pointercancel", stopChartInteractionOverlayLoopNow);
