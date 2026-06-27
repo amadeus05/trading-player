@@ -1,5 +1,5 @@
 import { openColorPalette } from "./colorPalette";
-import { createDrawingToolbar, drawingStyleIcon, type DrawingLineStyle, type DrawingToolbarOptions } from "./DrawingToolbar";
+import { createDrawingToolbar, drawingStyleIcon, toolbarLockIcon, type DrawingLineStyle, type DrawingToolbarOptions } from "./DrawingToolbar";
 import {
   deleteDrawingTemplate,
   getDefaultDrawingTemplateState,
@@ -123,12 +123,6 @@ function templatePatchFromState(state: DrawingTemplateState): DrawingToolbarPatc
   };
 }
 
-function lockIcon(locked: boolean): string {
-  return locked
-    ? `<svg width="14" height="16" viewBox="0 0 14 16" fill="currentColor"><rect x="1" y="7" width="12" height="8" rx="1.5"/><path d="M3.5 7V5a3.5 3.5 0 1 1 7 0v2" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>`
-    : `<svg width="14" height="16" viewBox="0 0 14 16" fill="currentColor"><rect x="1" y="7" width="12" height="8" rx="1.5"/><path d="M10.5 7V5a3.5 3.5 0 0 0-7 0v2" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>`;
-}
-
 function createSeparator(): HTMLDivElement {
   const sep = document.createElement("div");
   sep.className = "rect-toolbar-sep";
@@ -168,6 +162,7 @@ function insertSlot(row: HTMLElement, anchor: ToolbarSlotAnchor, element: HTMLEl
 export class DrawingToolbarController<T> {
   private panel: HTMLDivElement | null = null;
   private currentDrawing: T | null = null;
+  private currentState: DrawingToolbarState | null = null;
   private cleanupPopup: (() => void) | null = null;
   private cleanupDrag: (() => void) | null = null;
   private slotCleanups: Array<() => void> = [];
@@ -194,11 +189,12 @@ export class DrawingToolbarController<T> {
     this.panel?.remove();
     this.panel = null;
     this.currentDrawing = null;
+    this.currentState = null;
   }
 
   refresh(): void {
     if (!this.enabled || !this.currentDrawing || !this.panel) return;
-    this.applyState(this.options.getState(this.currentDrawing));
+    this.applyState(this.currentState ?? this.options.getState(this.currentDrawing));
   }
 
   destroy(): void {
@@ -207,6 +203,7 @@ export class DrawingToolbarController<T> {
 
   private mount(drawing: T): void {
     const state = this.options.getState(drawing);
+    this.currentState = state;
     const preset = this.options.preset ?? "line-only";
     const presetOptions = preset === "none" ? {} : PRESET_OPTIONS[preset];
     const panel = createDrawingToolbar({
@@ -256,9 +253,7 @@ export class DrawingToolbarController<T> {
       drawing,
       container: this.options.container,
       patch: (patch) => {
-        this.options.onPatch(drawing, patch);
-        this.refresh();
-        this.options.onSync?.();
+        this.patchDrawing(drawing, patch);
       },
       sync: () => this.options.onSync?.(),
       closePopups: () => this.closePopups(),
@@ -299,10 +294,8 @@ export class DrawingToolbarController<T> {
     });
     panel.querySelector<HTMLElement>(".rect-tb-lock")?.addEventListener("click", (event) => {
       event.stopPropagation();
-      const current = this.options.getState(drawing);
-      this.options.onPatch(drawing, { locked: !current.locked });
-      this.refresh();
-      this.options.onSync?.();
+      const current = this.currentState ?? this.options.getState(drawing);
+      this.patchDrawing(drawing, { locked: !current.locked });
     });
     panel.querySelector<HTMLElement>(".rect-tb-del")?.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -313,7 +306,17 @@ export class DrawingToolbarController<T> {
       this.openTemplatesMenu(event.currentTarget as Element, drawing);
     });
 
-    this.applyState(this.options.getState(drawing));
+    this.applyState(this.currentState ?? this.options.getState(drawing));
+  }
+
+  private patchDrawing(drawing: T, patch: DrawingToolbarPatch): void {
+    this.options.onPatch(drawing, patch);
+    this.currentState = {
+      ...(this.currentState ?? this.options.getState(drawing)),
+      ...patch,
+    };
+    this.applyState(this.currentState);
+    this.options.onSync?.();
   }
 
   private applyState(state: DrawingToolbarState) {
@@ -336,7 +339,8 @@ export class DrawingToolbarController<T> {
     if (lockBtn) {
       lockBtn.dataset.active = state.locked ? "1" : "";
       lockBtn.title = state.locked ? "Разблокировать" : "Заблокировать";
-      lockBtn.innerHTML = lockIcon(Boolean(state.locked));
+      lockBtn.setAttribute("aria-pressed", state.locked ? "true" : "false");
+      lockBtn.innerHTML = toolbarLockIcon(Boolean(state.locked));
     }
   }
 
@@ -368,15 +372,11 @@ export class DrawingToolbarController<T> {
           : target === "fill"
             ? { fillColor: nextColor }
             : { textColor: nextColor };
-        this.options.onPatch(drawing, patch);
-        this.refresh();
-        this.options.onSync?.();
+        this.patchDrawing(drawing, patch);
       },
       onOpacity: withOpacity
         ? (opacity) => {
-            this.options.onPatch(drawing, { fillOpacity: opacity });
-            this.refresh();
-            this.options.onSync?.();
+            this.patchDrawing(drawing, { fillOpacity: opacity });
           }
         : undefined,
       onDismiss: () => { this.cleanupPopup = null; },
@@ -409,10 +409,8 @@ export class DrawingToolbarController<T> {
       button.innerHTML = `<span class="rect-line-menu-icon">${entry.icon}</span><span>${entry.label}</span>`;
       button.addEventListener("click", (event) => {
         event.stopPropagation();
-        if (kind === "width") this.options.onPatch(drawing, { width: Number(entry.value) });
-        else this.options.onPatch(drawing, { style: entry.value as DrawingLineStyle });
-        this.refresh();
-        this.options.onSync?.();
+        if (kind === "width") this.patchDrawing(drawing, { width: Number(entry.value) });
+        else this.patchDrawing(drawing, { style: entry.value as DrawingLineStyle });
         this.closePopups();
       });
       menu.appendChild(button);
@@ -429,9 +427,7 @@ export class DrawingToolbarController<T> {
   }
 
   private applyTemplate(drawing: T, state: DrawingTemplateState) {
-    this.options.onPatch(drawing, templatePatchFromState(state));
-    this.refresh();
-    this.options.onSync?.();
+    this.patchDrawing(drawing, templatePatchFromState(state));
   }
 
   private openTemplatesMenu(anchor: Element, drawing: T) {
@@ -451,7 +447,7 @@ export class DrawingToolbarController<T> {
       event.stopPropagation();
       const name = window.prompt("Имя шаблона");
       if (name == null) return;
-      const current = templateStateFromToolbar(this.options.getState(drawing));
+      const current = templateStateFromToolbar(this.currentState ?? this.options.getState(drawing));
       saveDrawingTemplate(this.options.templateKind, name, current);
       this.closePopups();
     });

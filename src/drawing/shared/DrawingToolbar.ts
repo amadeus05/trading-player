@@ -12,8 +12,8 @@ export function drawingStyleIcon(style: DrawingLineStyle): string {
   return `<svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><line x1="2" y1="8" x2="20" y2="8" stroke="currentColor" stroke-width="2"${dash}/></svg>`;
 }
 
-function lockIcon(locked: boolean): string {
-  return `<svg width="14" height="16" viewBox="0 0 14 16" fill="currentColor"><rect x="1" y="7" width="12" height="8" rx="1.5"/><path d="${locked ? "M3.5 7V5a3.5 3.5 0 1 1 7 0v2" : "M10.5 7V5a3.5 3.5 0 0 0-7 0v2"}" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>`;
+export function toolbarLockIcon(locked: boolean): string {
+  return `<svg width="14" height="16" viewBox="0 0 14 16" fill="currentColor" aria-hidden="true"><rect x="1" y="7" width="12" height="8" rx="1.5"/><path d="${locked ? "M3.5 7V5a3.5 3.5 0 1 1 7 0v2" : "M10.5 7V5a3.5 3.5 0 0 0-7 0v2"}" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>`;
 }
 
 export interface DrawingToolbarOptions {
@@ -39,7 +39,7 @@ export function createDrawingToolbar(options: DrawingToolbarOptions): HTMLDivEle
   const color = showColor ? `<button type="button" class="rect-tb-color-btn rect-tb-border-btn trend-toolbar-color" title="Цвет линии"><span class="rect-tb-color-icon">${PENCIL}</span><span class="rect-tb-color-bar" style="background:${options.lineColor}"></span></button>` : "";
   const fill = options.showFill ? `<button type="button" class="rect-tb-color-btn rect-tb-fill-btn" title="Цвет заливки"><span class="rect-tb-color-icon">${BUCKET}</span><span class="rect-tb-color-bar" style="background:${options.fillColor};opacity:${(options.fillOpacity ?? 100) / 100}"></span></button>` : "";
   const text = options.showText ? `<button type="button" class="rect-tb-color-btn rect-tb-text-btn trend-toolbar-text" title="Текст"><span class="rect-tb-color-icon rect-tb-text-letter">T</span><span class="rect-tb-color-bar" style="background:${options.textColor ?? options.lineColor}"></span></button>` : "";
-  const lock = options.showLock ? `<div class="rect-toolbar-sep"></div><button type="button" class="rect-tb-lock rect-tb-icon-btn" title="${options.locked ? "Разблокировать" : "Заблокировать"}"${options.locked ? ` data-active="1"` : ""}>${lockIcon(Boolean(options.locked))}</button>` : "";
+  const lock = options.showLock ? `<div class="rect-toolbar-sep"></div><button type="button" class="rect-tb-lock rect-tb-icon-btn" title="${options.locked ? "Разблокировать" : "Заблокировать"}"${options.locked ? ` data-active="1"` : ""} aria-pressed="${options.locked ? "true" : "false"}">${toolbarLockIcon(Boolean(options.locked))}</button>` : "";
   const showTemplates = options.showTemplates !== false;
   const templates = showTemplates
     ? `<div class="rect-toolbar-sep"></div><button type="button" class="rect-tb-templates rect-tb-icon-btn" title="Шаблоны">${templatesIcon}</button>`

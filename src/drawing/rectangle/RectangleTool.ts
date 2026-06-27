@@ -296,8 +296,9 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       if (!manager.canEditExistingDrawings()) return;
       e.stopPropagation(); e.preventDefault();
       const r = rectangles.find((item) => item.id === rect.id);
-      if (!r || r.locked) return;
+      if (!r) return;
       selectRect(rect.id);
+      if (r.locked) return;
       startBodyDrag(rect.id, e);
     });
     hit.addEventListener("dblclick", (e) => {
@@ -316,6 +317,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       const current = rectangles.find((item) => item.id === rect.id);
       if (!current) return;
       if (selectedId !== rect.id) selectRect(rect.id);
+      if (current.locked) return;
       openTextEditor(current);
     });
 
