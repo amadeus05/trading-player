@@ -60,10 +60,11 @@ test("calculates balance from closed trades and equity from open trades", () => 
       side: "LONG",
       entryTime: 4,
       entry: 100,
-      size: 99,
+      size: 1,
       sl: 95,
       tp: 115,
       status: "PENDING",
+      leverage: 10,
       comment: "",
     },
   ];
@@ -74,6 +75,8 @@ test("calculates balance from closed trades and equity from open trades", () => 
   assert.equal(stats.unrealizedPnl, 19);
   assert.equal(stats.balance, 1_015);
   assert.equal(stats.equity, 1_034);
+  assert.equal(stats.usedMargin, 210);
+  assert.equal(stats.availableBalance, 805);
   assert.equal(stats.growthPct, 3.4000000000000004);
   assert.equal(stats.closedTradeCount, 2);
   assert.equal(stats.openTradeCount, 1);

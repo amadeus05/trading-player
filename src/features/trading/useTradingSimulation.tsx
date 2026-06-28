@@ -18,6 +18,7 @@ interface UseTradingSimulationOptions {
   timeframe: number;
   settings: SimulationSettings;
   pricePrecision: number;
+  availableBalance: number;
   orderForm: OrderFormController;
   setFocusedTradeId: Dispatch<SetStateAction<string | null>>;
   setTradeEditDraft: Dispatch<SetStateAction<TradeEditDraft | null>>;
@@ -39,6 +40,7 @@ export function useTradingSimulation({
   timeframe,
   settings,
   pricePrecision,
+  availableBalance,
   orderForm,
   setFocusedTradeId,
   setTradeEditDraft,
@@ -52,6 +54,7 @@ export function useTradingSimulation({
     protectionEnabled,
     takeProfit,
     stopLoss,
+    ticketMargin,
     cancelOrderDraft,
   } = orderForm;
   const { message, notification } = AntApp.useApp();
@@ -127,6 +130,10 @@ export function useTradingSimulation({
 
   const placeOrder = (side: Trade["side"]) => {
     if (!currentCandle) return;
+    if (ticketMargin > availableBalance) {
+      void message.warning("Недостаточно свободного баланса для маржи");
+      return;
+    }
     const created = createOrder({
       id: crypto.randomUUID(),
       side,

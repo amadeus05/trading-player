@@ -1,16 +1,17 @@
 import { useMemo, useState } from "react";
 import type { Candle, Trade } from "../../types";
-import { PAPER_BALANCE_USDT } from "../../shared/config/simulation";
 import type { AmountUnit, OrderType } from "./types";
 
 interface UseOrderFormOptions {
   currentCandle?: Candle;
   pricePrecision: number;
+  availableBalance: number;
 }
 
 export function useOrderForm({
   currentCandle,
   pricePrecision,
+  availableBalance,
 }: UseOrderFormOptions) {
   const [orderType, setOrderType] = useState<OrderType>("MARKET");
   const [leverage, setLeverage] = useState(10);
@@ -26,15 +27,18 @@ export function useOrderForm({
     const ticketPrice = orderType === "MARKET"
       ? currentCandle?.close ?? 0
       : limitPrice || currentCandle?.close || 0;
+    const ticketMargin = amountUnit === "USDT"
+      ? orderValue
+      : ticketPrice > 0 ? orderValue * ticketPrice / leverage : 0;
+    const ticketNotional = ticketMargin * leverage;
     const ticketQuantity = ticketPrice > 0
-      ? amountUnit === "USDT" ? orderValue / ticketPrice : orderValue
+      ? ticketNotional / ticketPrice
       : 0;
-    const ticketNotional = ticketQuantity * ticketPrice;
     return {
       ticketPrice,
       ticketQuantity,
       ticketNotional,
-      ticketMargin: ticketNotional / leverage,
+      ticketMargin,
       longLiquidation: ticketPrice > 0 && leverage > 1
         ? ticketPrice * (1 - 1 / leverage)
         : null,
@@ -73,26 +77,26 @@ export function useOrderForm({
 
   const changeOrderValue = (nextValue: number) => {
     setOrderValue(nextValue);
-    const notional = amountUnit === "USDT"
+    const margin = amountUnit === "USDT"
       ? nextValue
-      : nextValue * ticket.ticketPrice;
+      : ticket.ticketPrice > 0 ? nextValue * ticket.ticketPrice / leverage : 0;
     setAllocationPercent(
-      Math.min(100, notional / leverage / PAPER_BALANCE_USDT * 100),
+      availableBalance > 0 ? Math.min(100, margin / availableBalance * 100) : 0,
     );
   };
 
   const changeAmountUnit = (nextUnit: AmountUnit) => {
-    setOrderValue(nextUnit === "USDT" ? ticket.ticketNotional : ticket.ticketQuantity);
+    setOrderValue(nextUnit === "USDT" ? ticket.ticketMargin : ticket.ticketQuantity);
     setAmountUnit(nextUnit);
   };
 
   const changeAllocation = (percent: number) => {
     setAllocationPercent(percent);
-    const notional = PAPER_BALANCE_USDT * (percent / 100) * leverage;
+    const margin = availableBalance * (percent / 100);
     setOrderValue(
       amountUnit === "USDT"
-        ? notional
-        : ticket.ticketPrice ? notional / ticket.ticketPrice : 0,
+        ? margin
+        : ticket.ticketPrice ? margin * leverage / ticket.ticketPrice : 0,
     );
   };
 

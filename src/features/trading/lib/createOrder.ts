@@ -48,7 +48,7 @@ export function createOrder({
   const entry = orderType === "MARKET"
     ? requestedEntry * (side === "LONG" ? 1 + entrySlippage : 1 - entrySlippage)
     : requestedEntry;
-  if (!Number.isFinite(entry) || entry <= 0 || orderValue <= 0) {
+  if (!Number.isFinite(entry) || entry <= 0 || orderValue <= 0 || leverage <= 0) {
     return { ok: false, error: "invalid-size" };
   }
   if (!protectionEnabled || stopLoss <= 0 || takeProfit <= 0) {
@@ -59,7 +59,7 @@ export function createOrder({
     : stopLoss <= entry || takeProfit >= entry;
   if (invalidBarriers) return { ok: false, error: "invalid-barriers" };
 
-  const size = amountUnit === "USDT" ? orderValue / entry : orderValue;
+  const size = amountUnit === "USDT" ? orderValue * leverage / entry : orderValue;
   const entryFeePct = orderType === "MARKET"
     ? settings.takerFeePct
     : settings.makerFeePct;

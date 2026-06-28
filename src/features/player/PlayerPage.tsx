@@ -161,7 +161,15 @@ export function PlayerPage() {
     }
     handleReplayStartAction(key);
   }, [activeDataset, handleReplayStartAction, selectReplayTimeWithData]);
-  const orderForm = useOrderForm({ currentCandle: cur, pricePrecision });
+  const accountStats = useMemo(
+    () => calculateAccountStats(accountSettings, state.trades, cur),
+    [accountSettings, cur, state.trades],
+  );
+  const orderForm = useOrderForm({
+    currentCandle: cur,
+    pricePrecision,
+    availableBalance: accountStats.availableBalance,
+  });
   const {
     focusedTradeId,
     tradeEditDraft,
@@ -199,15 +207,11 @@ export function PlayerPage() {
     timeframe: tf,
     settings: simulationSettings,
     pricePrecision,
+    availableBalance: accountStats.availableBalance,
     orderForm,
     setFocusedTradeId,
     setTradeEditDraft,
   });
-  const accountStats = useMemo(
-    () => calculateAccountStats(accountSettings, state.trades, cur),
-    [accountSettings, cur, state.trades],
-  );
-
   const chartDisplay = useChartDisplayState({
     trades: state.trades,
     annotations: state.annotations,

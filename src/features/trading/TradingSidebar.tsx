@@ -115,6 +115,7 @@ export function TradingSidebar({
     takeProfit,
     stopLoss,
     ticketQuantity,
+    ticketNotional,
     ticketMargin,
     longLiquidation,
     shortLiquidation,
@@ -147,6 +148,14 @@ export function TradingSidebar({
             <b className={accountStats.growthPct >= 0 ? "pos" : "neg"}>
               {accountStats.growthPct >= 0 ? "+" : ""}{accountStats.growthPct.toFixed(2)}%
             </b>
+          </div>
+          <div>
+            <span>Available</span>
+            <b>{formatNumber(accountStats.availableBalance)}</b>
+          </div>
+          <div>
+            <span>Used Margin</span>
+            <b>{formatNumber(accountStats.usedMargin)}</b>
           </div>
           <div>
             <span>Unrealized</span>
@@ -195,7 +204,7 @@ export function TradingSidebar({
         </div>
       )}
       <div className="ticketField">
-        <span>Value</span>
+        <span>{amountUnit === "USDT" ? "Margin" : "Quantity"}</span>
         <div className="amountInput">
           <InputNumber controls={false} min={0} value={orderValue} onChange={(value) => onOrderValueChange(value ?? 0)} />
           <Select
@@ -212,7 +221,8 @@ export function TradingSidebar({
       </div>
       <div className="orderSummary">
         <div><span>Quantity</span><b>{ticketQuantity ? formatPrice(ticketQuantity, Math.min(8, pricePrecision + 2)) : "—"} {baseAsset}</b></div>
-        <div><span>Cost</span><b>{ticketMargin ? `${formatNumber(ticketMargin)} ${quoteAsset}` : "—"}</b></div>
+        <div><span>Margin</span><b>{ticketMargin ? `${formatNumber(ticketMargin)} ${quoteAsset}` : "—"}</b></div>
+        <div><span>Notional</span><b>{ticketNotional ? `${formatNumber(ticketNotional)} ${quoteAsset}` : "—"}</b></div>
         <div><span>Liq. Price</span><b><em>{longLiquidation != null ? formatPrice(longLiquidation, pricePrecision) : "—"}</em> / <strong>{shortLiquidation != null ? formatPrice(shortLiquidation, pricePrecision) : "—"}</strong></b></div>
       </div>
       <div className="tradeBtns">
@@ -244,7 +254,7 @@ export function TradingSidebar({
       <div className="sideTitle">ПОЗИЦИИ И ЗАЯВКИ</div>
       {workingTrades.length ? workingTrades.map((trade) => {
         const unrealizedPnl = currentCandle && trade.status === "OPEN"
-          ? (trade.side === "LONG" ? currentCandle.close - trade.entry : trade.entry - currentCandle.close) * trade.size
+          ? (trade.side === "LONG" ? currentCandle.close - trade.entry : trade.entry - currentCandle.close) * trade.size - (trade.entryFee ?? 0)
           : null;
         const margin = trade.entry * trade.size / (trade.leverage ?? 1);
         const unrealizedRoi = unrealizedPnl != null && margin > 0

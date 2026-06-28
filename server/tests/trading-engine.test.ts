@@ -42,8 +42,8 @@ test("creates a market order with entry slippage, fee snapshot and barrier", () 
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.trade.entry, 100.02);
-  assert.equal(result.trade.entry * result.trade.size, 1_000);
-  assert.equal(result.trade.entryFee, 0.55);
+  assert.equal(result.trade.entry * result.trade.size, 10_000);
+  assert.equal(result.trade.entryFee, 5.5);
   assert.deepEqual(result.barrier, {
     id: "trade-1",
     entryTime: 1_000,
