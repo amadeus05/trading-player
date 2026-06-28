@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { Persisted, SimulationSettings, Trade } from "../../types";
 import type { TradeEditDraft } from "./types";
 
@@ -27,6 +27,11 @@ export function useTradeEditing({
 }: UseTradeEditingOptions) {
   const [focusedTradeId, setFocusedTradeId] = useState<string | null>(null);
   const [tradeEditDraft, setTradeEditDraft] = useState<TradeEditDraft | null>(null);
+  const tradeEditDraftRef = useRef<TradeEditDraft | null>(null);
+
+  useEffect(() => {
+    tradeEditDraftRef.current = tradeEditDraft;
+  }, [tradeEditDraft]);
 
   useEffect(() => {
     const clearTradeFocus = (event: PointerEvent) => {
@@ -35,12 +40,12 @@ export function useTradeEditing({
         target.closest("[data-trade-focus-id]")
         || target.closest(".barrier-handle")
       )) return;
-      if (tradeEditDraft) return;
+      if (tradeEditDraftRef.current) return;
       setFocusedTradeId(null);
     };
     document.addEventListener("pointerdown", clearTradeFocus, true);
     return () => document.removeEventListener("pointerdown", clearTradeFocus, true);
-  }, [tradeEditDraft]);
+  }, []);
 
   const moveBarrier = (id: string, kind: "tp" | "sl", price: number) => {
     const rounded = Number(price.toFixed(pricePrecision));

@@ -1,7 +1,7 @@
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import { SUPPORTED_TIMEFRAMES, type Timeframe } from "../domain/Candle.js";
-import { normalizeRequest, type MarketCategory } from "../domain/MarketRequest.js";
+import { normalizeMarketCategory, normalizeMarketSymbol, normalizeRequest } from "../domain/MarketRequest.js";
 import { MarketDataService } from "../application/MarketDataService.js";
 import { DownloadJobManager } from "../application/DownloadJobManager.js";
 
@@ -40,8 +40,8 @@ export class MarketDataController {
 
   private candles = async (req: Request, res: Response) => {
     try {
-      const category = String(req.query.category ?? "linear") as MarketCategory;
-      const symbol = String(req.query.symbol ?? "").toUpperCase();
+      const category = normalizeMarketCategory(req.query.category);
+      const symbol = normalizeMarketSymbol(req.query.symbol);
       const timeframe = String(req.query.timeframe ?? "5m") as Timeframe;
       if (!SUPPORTED_TIMEFRAMES.includes(timeframe)) throw new Error("Unsupported timeframe");
       const from = timestamp(req.query.from), to = timestamp(req.query.to);

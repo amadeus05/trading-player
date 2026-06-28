@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { Candle } from "../../types";
 import {
   fetchMarketCandles,
@@ -28,6 +28,8 @@ export function useActiveMarketCandles(
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const candlesRef = useRef<Candle[]>([]);
+  const loadingMoreRef = useRef(false);
   const parsedDataset = useMemo(() => parseMarketDatasetId(datasetId), [datasetId]);
   const catalogItem = useMemo(() => {
     if (!parsedDataset) return null;
@@ -41,9 +43,14 @@ export function useActiveMarketCandles(
   }, [candles, catalogItem]);
 
   useEffect(() => {
+    candlesRef.current = candles;
+  }, [candles]);
+
+  useEffect(() => {
     if (!datasetId) {
       setLoading(false);
       setLoadingMore(false);
+      loadingMoreRef.current = false;
       setCandles([]);
       return;
     }
@@ -52,6 +59,7 @@ export function useActiveMarketCandles(
     if (cached) {
       setLoading(false);
       setLoadingMore(false);
+      loadingMoreRef.current = false;
       setCandles(cached);
       return;
     }
@@ -59,6 +67,7 @@ export function useActiveMarketCandles(
     if (!parsedDataset) {
       setLoading(false);
       setLoadingMore(false);
+      loadingMoreRef.current = false;
       setCandles([]);
       return;
     }
@@ -66,6 +75,7 @@ export function useActiveMarketCandles(
     if (!catalogItem) {
       setLoading(false);
       setLoadingMore(false);
+      loadingMoreRef.current = false;
       setCandles([]);
       return;
     }
@@ -74,6 +84,7 @@ export function useActiveMarketCandles(
     if (!range) {
       setLoading(false);
       setLoadingMore(false);
+      loadingMoreRef.current = false;
       setCandles([]);
       return;
     }
@@ -81,6 +92,7 @@ export function useActiveMarketCandles(
     let cancelled = false;
     setLoading(true);
     setLoadingMore(false);
+    loadingMoreRef.current = false;
     void fetchMarketCandles(parsedDataset.category, parsedDataset.symbol, range.from, range.to)
       .then((rows) => {
         if (cancelled) return;
@@ -100,9 +112,10 @@ export function useActiveMarketCandles(
   }, [cacheRef, catalogItem, datasetId, parsedDataset]);
 
   const loadMore = useCallback(async () => {
-    if (!datasetId || !parsedDataset || !catalogItem || loading || loadingMore) return;
-    const range = buildNextMarketCandleRange(catalogItem, candles);
+    if (!datasetId || !parsedDataset || !catalogItem || loading || loadingMoreRef.current) return;
+    const range = buildNextMarketCandleRange(catalogItem, candlesRef.current);
     if (!range) return;
+    loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
       const rows = await fetchMarketCandles(parsedDataset.category, parsedDataset.symbol, range.from, range.to);
@@ -114,9 +127,10 @@ export function useActiveMarketCandles(
     } catch {
       // Keep the currently loaded window usable; the next prefetch can retry.
     } finally {
+      loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [cacheRef, candles, catalogItem, datasetId, loading, loadingMore, parsedDataset]);
+  }, [cacheRef, catalogItem, datasetId, loading, parsedDataset]);
 
   const loadAroundTime = useCallback(async (time: number, timeframeMinutes = 5): Promise<boolean> => {
     if (!datasetId || !parsedDataset || !catalogItem || loading) return false;
@@ -125,6 +139,7 @@ export function useActiveMarketCandles(
     if (hasLoadedMarketCandleRange(candles, range)) return true;
     setLoading(true);
     setLoadingMore(false);
+    loadingMoreRef.current = false;
     try {
       const rows = await fetchMarketCandles(parsedDataset.category, parsedDataset.symbol, range.from, range.to);
       cacheRef.current?.set(datasetId, rows);

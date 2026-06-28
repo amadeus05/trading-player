@@ -163,6 +163,7 @@ export function HistoryManager({ onOpen }: HistoryManagerProps) {
         source.close();
         eventSourceRef.current = null;
         setLoading(false);
+        void message.error("Соединение загрузки истории прервано");
       };
     } catch (error) {
       setLoading(false);

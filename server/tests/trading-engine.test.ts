@@ -49,7 +49,7 @@ test("creates a market order with entry slippage, fee snapshot and barrier", () 
     entryTime: 1_000,
     upper: 102,
     lower: 98,
-    timeLimit: 1_000 + 15 * 60 * 24,
+    timeLimit: 1_000 + 24 * 60 * 60,
   });
 });
 

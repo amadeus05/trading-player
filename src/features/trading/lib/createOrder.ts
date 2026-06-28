@@ -1,6 +1,8 @@
 import type { Barrier, Candle, SimulationSettings, Trade } from "../../../types";
 import type { AmountUnit, OrderType } from "../types";
 
+const DEFAULT_BARRIER_TTL_SECONDS = 24 * 60 * 60;
+
 export type CreateOrderError =
   | "invalid-size"
   | "missing-protection"
@@ -30,7 +32,6 @@ export function createOrder({
   id,
   side,
   candle,
-  timeframeMinutes,
   settings,
   orderType,
   leverage,
@@ -90,7 +91,7 @@ export function createOrder({
     entryTime: candle.time,
     upper: side === "LONG" ? takeProfit : stopLoss,
     lower: side === "LONG" ? stopLoss : takeProfit,
-    timeLimit: candle.time + timeframeMinutes * 60 * 24,
+    timeLimit: candle.time + DEFAULT_BARRIER_TTL_SECONDS,
   };
   return { ok: true, trade, barrier };
 }
