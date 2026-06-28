@@ -11,6 +11,7 @@ const settings: SimulationSettings = {
   slippagePct: 0.02,
   stopSlippagePct: 0.05,
   showClosedTradeOverlays: true,
+  ambiguousExitPolicy: "conservative",
 };
 
 const candle = (time: number, values: Partial<Candle> = {}): Candle => ({
@@ -181,4 +182,82 @@ test("closes multiple open trades independently on the same tick", () => {
   assert.deepEqual(result.state.trades.map((trade) => trade.outcome), ["TP", "TP"]);
   assert.deepEqual(result.events.map((event) => event.type), ["trade-closed", "trade-closed"]);
   assert.deepEqual(result.events.map((event) => event.trade.id), ["open-long", "open-short"]);
+});
+
+test("uses conservative ambiguous fallback policy by closing at SL", () => {
+  const trade: Trade = {
+    id: "ambiguous-conservative",
+    side: "LONG",
+    entryTime: 1_000,
+    entry: 100,
+    size: 1,
+    sl: 95,
+    tp: 105,
+    status: "OPEN",
+    entryFee: 0.02,
+    comment: "",
+  };
+  const state: Persisted = { datasets: [], trades: [trade], annotations: [] };
+  const tick = candle(1_900, { high: 106, low: 94 });
+
+  const result = advanceSimulation({ state, rawCandles: [tick], candle: tick, timeframeMinutes: 15, settings });
+
+  assert.equal(result.state.trades[0].status, "CLOSED");
+  assert.equal(result.state.trades[0].outcome, "SL");
+});
+
+test("uses optimistic ambiguous fallback policy by closing at TP", () => {
+  const trade: Trade = {
+    id: "ambiguous-optimistic",
+    side: "LONG",
+    entryTime: 1_000,
+    entry: 100,
+    size: 1,
+    sl: 95,
+    tp: 105,
+    status: "OPEN",
+    entryFee: 0.02,
+    comment: "",
+  };
+  const state: Persisted = { datasets: [], trades: [trade], annotations: [] };
+  const tick = candle(1_900, { high: 106, low: 94 });
+
+  const result = advanceSimulation({
+    state,
+    rawCandles: [tick],
+    candle: tick,
+    timeframeMinutes: 15,
+    settings: { ...settings, ambiguousExitPolicy: "optimistic" },
+  });
+
+  assert.equal(result.state.trades[0].status, "CLOSED");
+  assert.equal(result.state.trades[0].outcome, "TP");
+});
+
+test("uses ignore ambiguous fallback policy by keeping the trade open", () => {
+  const trade: Trade = {
+    id: "ambiguous-ignore",
+    side: "LONG",
+    entryTime: 1_000,
+    entry: 100,
+    size: 1,
+    sl: 95,
+    tp: 105,
+    status: "OPEN",
+    entryFee: 0.02,
+    comment: "",
+  };
+  const state: Persisted = { datasets: [], trades: [trade], annotations: [] };
+  const tick = candle(1_900, { high: 106, low: 94 });
+
+  const result = advanceSimulation({
+    state,
+    rawCandles: [tick],
+    candle: tick,
+    timeframeMinutes: 15,
+    settings: { ...settings, ambiguousExitPolicy: "ignore" },
+  });
+
+  assert.equal(result.state, state);
+  assert.deepEqual(result.events, []);
 });

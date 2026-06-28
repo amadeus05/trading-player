@@ -11,6 +11,7 @@ export const DEFAULT_SIMULATION_SETTINGS: SimulationSettings = {
   slippagePct: 0.02,
   stopSlippagePct: 0.05,
   showClosedTradeOverlays: true,
+  ambiguousExitPolicy: "conservative",
 };
 
 export const DEFAULT_ACCOUNT_SETTINGS: AccountSettings = {

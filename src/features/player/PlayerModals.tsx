@@ -1,8 +1,8 @@
 import dayjs from "dayjs";
-import { Button, DatePicker, InputNumber, Modal, Popconfirm, Space, Switch, Table, Tag } from "antd";
+import { Button, DatePicker, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tag } from "antd";
 import type { TableProps } from "antd";
 import { Trash2 } from "lucide-react";
-import type { AccountSettings, Candle, SimulationSettings, Trade } from "../../types";
+import type { AccountSettings, AmbiguousExitPolicy, Candle, SimulationSettings, Trade } from "../../types";
 import { formatDateTime, formatNumber } from "../../shared/lib/market";
 
 interface PlayerModalsProps {
@@ -17,10 +17,11 @@ interface PlayerModalsProps {
   onSettingsClose: () => void;
   onSettingsReset: () => void;
   onSettingChange: (
-    key: Exclude<keyof SimulationSettings, "showClosedTradeOverlays">,
+    key: Exclude<keyof SimulationSettings, "showClosedTradeOverlays" | "ambiguousExitPolicy">,
     value: number | null,
   ) => void;
   onInitialBalanceChange: (value: number | null) => void;
+  onAmbiguousExitPolicyChange: (value: AmbiguousExitPolicy) => void;
   onClosedTradeOverlaysChange: (checked: boolean) => void;
   onDatePickerClose: () => void;
   onReplayTimeSelect: (time: number) => void;
@@ -43,6 +44,7 @@ export function PlayerModals({
   onSettingsReset,
   onSettingChange,
   onInitialBalanceChange,
+  onAmbiguousExitPolicyChange,
   onClosedTradeOverlaysChange,
   onDatePickerClose,
   onReplayTimeSelect,
@@ -137,6 +139,19 @@ export function PlayerModals({
           <label><span>Taker fee</span><InputNumber value={settings.takerFeePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value) => onSettingChange("takerFeePct", value)} /><small>Market, Stop Loss и ручное закрытие</small></label>
           <label><span>Market slippage</span><InputNumber value={settings.slippagePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value) => onSettingChange("slippagePct", value)} /><small>Вход и ручное закрытие по рынку</small></label>
           <label><span>Stop slippage</span><InputNumber value={settings.stopSlippagePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value) => onSettingChange("stopSlippagePct", value)} /><small>Ухудшение цены исполнения Stop Loss</small></label>
+          <label>
+            <span>Ambiguous TP/SL</span>
+            <Select<AmbiguousExitPolicy>
+              value={settings.ambiguousExitPolicy}
+              onChange={onAmbiguousExitPolicyChange}
+              options={[
+                { value: "conservative", label: "Conservative: SL first" },
+                { value: "optimistic", label: "Optimistic: TP first" },
+                { value: "ignore", label: "Ignore until next candle" },
+              ]}
+            />
+            <small>Used only when TP and SL order cannot be resolved from lower candles</small>
+          </label>
           <label className="settingsToggle"><span>Разметка закрытых сделок</span><Switch checked={settings.showClosedTradeOverlays} onChange={onClosedTradeOverlaysChange} /><small>Зоны TP/SL и линия фактического выхода на графике</small></label>
         </div>
       </Modal>

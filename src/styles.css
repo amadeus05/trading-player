@@ -828,7 +828,8 @@ g[data-channel-id].selected .pc-edge-line {
   font-weight: 600;
 }
 
-.settingsGrid .ant-input-number {
+.settingsGrid .ant-input-number,
+.settingsGrid .ant-select {
   width: 100%;
 }
 

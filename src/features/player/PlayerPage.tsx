@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App as AntApp, Empty } from "antd";
-import type { Candle, SimulationSettings } from "../../types";
+import type { AmbiguousExitPolicy, Candle, SimulationSettings } from "../../types";
 import type { DrawingMode } from "../../drawing";
 import { ReplayChart } from "../chart/ReplayChart";
 import { PlayerModals } from "./PlayerModals";
@@ -221,10 +221,23 @@ export function PlayerPage() {
     currentCandle: cur,
     orderForm,
   });
-  function updateSimulationSetting(key: Exclude<keyof SimulationSettings, "showClosedTradeOverlays">, value: number | null) {
+  function updateSimulationSetting(
+    key: Exclude<keyof SimulationSettings, "showClosedTradeOverlays" | "ambiguousExitPolicy">,
+    value: number | null,
+  ) {
     setState((current) => ({
       ...current,
       settings: { ...(current.settings ?? DEFAULT_SIMULATION_SETTINGS), [key]: Math.max(0, value ?? 0) },
+    }));
+  }
+  function updateAmbiguousExitPolicy(value: AmbiguousExitPolicy) {
+    setState((current) => ({
+      ...current,
+      settings: {
+        ...DEFAULT_SIMULATION_SETTINGS,
+        ...current.settings,
+        ambiguousExitPolicy: value,
+      },
     }));
   }
   function updateInitialBalance(value: number | null) {
@@ -377,6 +390,7 @@ export function PlayerPage() {
         }))}
         onSettingChange={updateSimulationSetting}
         onInitialBalanceChange={updateInitialBalance}
+        onAmbiguousExitPolicyChange={updateAmbiguousExitPolicy}
         onClosedTradeOverlaysChange={(checked) => setState((current) => ({
           ...current,
           settings: {

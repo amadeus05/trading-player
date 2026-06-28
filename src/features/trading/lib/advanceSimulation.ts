@@ -27,7 +27,11 @@ export interface AdvanceSimulationResult {
   events: SimulationEvent[];
 }
 
-const resolveFallbackOutcome = (trade: Trade, candle: Candle): "TP" | "SL" | null => {
+const resolveFallbackOutcome = (
+  trade: Trade,
+  candle: Candle,
+  settings: SimulationSettings,
+): "TP" | "SL" | null => {
   const stopLossHit = trade.side === "LONG"
     ? candle.low <= trade.sl
     : candle.high >= trade.sl;
@@ -35,6 +39,10 @@ const resolveFallbackOutcome = (trade: Trade, candle: Candle): "TP" | "SL" | nul
     ? candle.high >= trade.tp
     : candle.low <= trade.tp;
   if (!stopLossHit && !takeProfitHit) return null;
+  if (stopLossHit && takeProfitHit) {
+    if (settings.ambiguousExitPolicy === "ignore") return null;
+    return settings.ambiguousExitPolicy === "optimistic" ? "TP" : "SL";
+  }
   return stopLossHit ? "SL" : "TP";
 };
 
@@ -71,7 +79,7 @@ export function advanceSimulation({
     if (intrabar.kind === "not-hit") return [];
     const outcome = intrabar.kind === "resolved"
       ? intrabar.outcome
-      : resolveFallbackOutcome(trade, candle);
+      : resolveFallbackOutcome(trade, candle, settings);
     if (!outcome) return [];
     const exitTime = intrabar.kind === "resolved" ? intrabar.candleTime : candle.time;
     const close = calculateBarrierClose(trade, outcome, settings);
