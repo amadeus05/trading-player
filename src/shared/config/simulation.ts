@@ -1,4 +1,4 @@
-import type { Barrier, Persisted, SimulationSettings } from "../../types";
+import type { AccountSettings, Barrier, Persisted, SimulationSettings } from "../../types";
 
 export const PAPER_BALANCE_USDT = 1_000;
 
@@ -13,11 +13,17 @@ export const DEFAULT_SIMULATION_SETTINGS: SimulationSettings = {
   showClosedTradeOverlays: true,
 };
 
+export const DEFAULT_ACCOUNT_SETTINGS: AccountSettings = {
+  initialBalance: PAPER_BALANCE_USDT,
+  quoteAsset: "USDT",
+};
+
 export const INITIAL_PLAYER_STATE: Persisted = {
   datasets: [],
   trades: [],
   annotations: [],
   settings: DEFAULT_SIMULATION_SETTINGS,
+  account: DEFAULT_ACCOUNT_SETTINGS,
 };
 
 export const NO_BARRIERS: Barrier[] = [];

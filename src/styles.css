@@ -945,6 +945,68 @@ aside {
   font-size: 11px;
 }
 
+.accountSummary {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid #242934;
+  border-radius: 7px;
+  background: #141821;
+}
+
+.accountSummaryMain {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.accountSummaryMain span,
+.accountSummaryGrid span {
+  color: #747b8d;
+  font-size: 11px;
+}
+
+.accountSummaryMain strong {
+  color: #eef0f6;
+  font-size: 18px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.accountSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.accountSummaryGrid div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 9px;
+  border-radius: 6px;
+  background: #0f1219;
+}
+
+.accountSummaryGrid b {
+  overflow: hidden;
+  color: #d8dbe5;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountSummaryGrid .pos {
+  color: #2bd9a8;
+}
+
+.accountSummaryGrid .neg {
+  color: #ff687d;
+}
+
 .ticketTopRow {
   display: grid;
   grid-template-columns: 1fr 1fr;

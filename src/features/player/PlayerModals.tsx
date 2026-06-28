@@ -2,7 +2,7 @@ import dayjs from "dayjs";
 import { Button, DatePicker, InputNumber, Modal, Popconfirm, Space, Switch, Table, Tag } from "antd";
 import type { TableProps } from "antd";
 import { Trash2 } from "lucide-react";
-import type { Candle, SimulationSettings, Trade } from "../../types";
+import type { AccountSettings, Candle, SimulationSettings, Trade } from "../../types";
 import { formatDateTime, formatNumber } from "../../shared/lib/market";
 
 interface PlayerModalsProps {
@@ -10,6 +10,7 @@ interface PlayerModalsProps {
   datePickerOpen: boolean;
   journalOpen: boolean;
   settings: SimulationSettings;
+  account: AccountSettings;
   candles: Candle[];
   replayDateRange?: { from: number; to: number };
   trades: Trade[];
@@ -19,6 +20,7 @@ interface PlayerModalsProps {
     key: Exclude<keyof SimulationSettings, "showClosedTradeOverlays">,
     value: number | null,
   ) => void;
+  onInitialBalanceChange: (value: number | null) => void;
   onClosedTradeOverlaysChange: (checked: boolean) => void;
   onDatePickerClose: () => void;
   onReplayTimeSelect: (time: number) => void;
@@ -33,12 +35,14 @@ export function PlayerModals({
   datePickerOpen,
   journalOpen,
   settings,
+  account,
   candles,
   replayDateRange,
   trades,
   onSettingsClose,
   onSettingsReset,
   onSettingChange,
+  onInitialBalanceChange,
   onClosedTradeOverlaysChange,
   onDatePickerClose,
   onReplayTimeSelect,
@@ -117,6 +121,18 @@ export function PlayerModals({
         )}
       >
         <div className="settingsGrid">
+          <label>
+            <span>Initial balance</span>
+            <InputNumber
+              value={account.initialBalance}
+              min={0}
+              precision={2}
+              step={100}
+              addonAfter={account.quoteAsset}
+              onChange={onInitialBalanceChange}
+            />
+            <small>Start deposit for balance, equity and growth</small>
+          </label>
           <label><span>Maker fee</span><InputNumber value={settings.makerFeePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value) => onSettingChange("makerFeePct", value)} /><small>Limit-вход и Take Profit</small></label>
           <label><span>Taker fee</span><InputNumber value={settings.takerFeePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value) => onSettingChange("takerFeePct", value)} /><small>Market, Stop Loss и ручное закрытие</small></label>
           <label><span>Market slippage</span><InputNumber value={settings.slippagePct} min={0} precision={4} step={0.001} addonAfter="%" onChange={(value) => onSettingChange("slippagePct", value)} /><small>Вход и ручное закрытие по рынку</small></label>

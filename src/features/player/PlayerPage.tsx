@@ -8,7 +8,7 @@ import { ReplayControls } from "../replay/ReplayControls";
 import { AppHeader } from "../../widgets/AppHeader";
 import { PlayerToolbar } from "../../widgets/PlayerToolbar";
 import { TradingSidebar } from "../trading/TradingSidebar";
-import { DEFAULT_SIMULATION_SETTINGS } from "../../shared/config/simulation";
+import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SIMULATION_SETTINGS } from "../../shared/config/simulation";
 import { formatMarketPair, formatTimeframe, getMarketAssets, inferPricePrecision } from "../../shared/lib/market";
 import { usePersistedPlayerState } from "./usePersistedPlayerState";
 import { useReplayController } from "../replay/useReplayController";
@@ -17,6 +17,7 @@ import { useTradeEditing } from "../trading/useTradeEditing";
 import { useTradingSimulation } from "../trading/useTradingSimulation";
 import { useOrderForm } from "../trading/useOrderForm";
 import { useChartDisplayState } from "../chart/useChartDisplayState";
+import { calculateAccountStats } from "../trading/lib/calculateAccountStats";
 import { useMarketCatalog } from "../datasets/useMarketCatalog";
 import { useActiveMarketCandles } from "../datasets/useActiveMarketCandles";
 import { shouldPrefetchMarketCandles } from "../datasets/marketCandleRanges";
@@ -69,6 +70,10 @@ export function PlayerPage() {
   const simulationSettings = useMemo(
     () => ({ ...DEFAULT_SIMULATION_SETTINGS, ...state.settings }),
     [state.settings],
+  );
+  const accountSettings = useMemo(
+    () => ({ ...DEFAULT_ACCOUNT_SETTINGS, ...state.account }),
+    [state.account],
   );
   const { baseAsset, quoteAsset } = getMarketAssets(activeDataset?.name);
   const {
@@ -198,6 +203,10 @@ export function PlayerPage() {
     setFocusedTradeId,
     setTradeEditDraft,
   });
+  const accountStats = useMemo(
+    () => calculateAccountStats(accountSettings, state.trades, cur),
+    [accountSettings, cur, state.trades],
+  );
 
   const chartDisplay = useChartDisplayState({
     trades: state.trades,
@@ -212,6 +221,16 @@ export function PlayerPage() {
     setState((current) => ({
       ...current,
       settings: { ...(current.settings ?? DEFAULT_SIMULATION_SETTINGS), [key]: Math.max(0, value ?? 0) },
+    }));
+  }
+  function updateInitialBalance(value: number | null) {
+    setState((current) => ({
+      ...current,
+      account: {
+        ...DEFAULT_ACCOUNT_SETTINGS,
+        ...current.account,
+        initialBalance: Math.max(0, value ?? 0),
+      },
     }));
   }
   const handleTimeframeChange = useCallback((nextTimeframe: number) => {
@@ -313,6 +332,7 @@ export function PlayerPage() {
           pricePrecision={pricePrecision}
           baseAsset={baseAsset}
           quoteAsset={quoteAsset}
+          accountStats={accountStats}
           orderForm={orderForm}
           workingTrades={workingTrades}
           focusedTradeId={focusedTradeId}
@@ -341,12 +361,18 @@ export function PlayerPage() {
         datePickerOpen={datePickerOpen}
         journalOpen={journal}
         settings={simulationSettings}
+        account={accountSettings}
         candles={candles}
         replayDateRange={activeDataset ? { from: activeDataset.from, to: activeDataset.to } : undefined}
         trades={state.trades}
         onSettingsClose={() => setSettingsOpen(false)}
-        onSettingsReset={() => setState((current) => ({ ...current, settings: DEFAULT_SIMULATION_SETTINGS }))}
+        onSettingsReset={() => setState((current) => ({
+          ...current,
+          settings: DEFAULT_SIMULATION_SETTINGS,
+          account: DEFAULT_ACCOUNT_SETTINGS,
+        }))}
         onSettingChange={updateSimulationSetting}
+        onInitialBalanceChange={updateInitialBalance}
         onClosedTradeOverlaysChange={(checked) => setState((current) => ({
           ...current,
           settings: {

@@ -2,6 +2,7 @@ import { Button, Card, InputNumber, Select, Slider, Tag, Tooltip } from "antd";
 import { Check, CircleHelp, Pencil, X } from "lucide-react";
 import type { Candle, Trade } from "../../types";
 import { formatDateTime, formatNumber, formatPrice } from "../../shared/lib/market";
+import type { AccountStats } from "./lib/calculateAccountStats";
 import type { OrderFormController } from "./useOrderForm";
 
 interface TradingSidebarProps {
@@ -9,6 +10,7 @@ interface TradingSidebarProps {
   pricePrecision: number;
   baseAsset: string;
   quoteAsset: string;
+  accountStats: AccountStats;
   orderForm: OrderFormController;
   workingTrades: Trade[];
   focusedTradeId: string | null;
@@ -87,6 +89,7 @@ export function TradingSidebar({
   pricePrecision,
   baseAsset,
   quoteAsset,
+  accountStats,
   orderForm,
   workingTrades,
   focusedTradeId,
@@ -129,6 +132,36 @@ export function TradingSidebar({
   return (
     <aside>
       <div className="orderHeader"><b>Trade</b></div>
+      <div className="accountSummary">
+        <div className="accountSummaryMain">
+          <span>Balance</span>
+          <strong>{formatNumber(accountStats.balance)} {quoteAsset}</strong>
+        </div>
+        <div className="accountSummaryGrid">
+          <div>
+            <span>Equity</span>
+            <b>{formatNumber(accountStats.equity)} {quoteAsset}</b>
+          </div>
+          <div>
+            <span>Growth</span>
+            <b className={accountStats.growthPct >= 0 ? "pos" : "neg"}>
+              {accountStats.growthPct >= 0 ? "+" : ""}{accountStats.growthPct.toFixed(2)}%
+            </b>
+          </div>
+          <div>
+            <span>Unrealized</span>
+            <b className={accountStats.unrealizedPnl >= 0 ? "pos" : "neg"}>
+              {accountStats.unrealizedPnl >= 0 ? "+" : ""}{formatNumber(accountStats.unrealizedPnl)}
+            </b>
+          </div>
+          <div>
+            <span>Realized</span>
+            <b className={accountStats.realizedPnl >= 0 ? "pos" : "neg"}>
+              {accountStats.realizedPnl >= 0 ? "+" : ""}{formatNumber(accountStats.realizedPnl)}
+            </b>
+          </div>
+        </div>
+      </div>
       <div className="ticketTopRow">
         <Select value="isolated" options={[{ value: "isolated", label: "Isolated" }]} />
         <Select

@@ -1,0 +1,1343 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trade Analytics Preview</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0e14;
+        --panel: #121721;
+        --panel-2: #161c28;
+        --panel-3: #0f141d;
+        --border: #293143;
+        --border-soft: #202838;
+        --text: #edf2fb;
+        --muted: #8f9aaf;
+        --muted-2: #69748a;
+        --green: #28d69f;
+        --green-soft: rgba(40, 214, 159, 0.14);
+        --red: #ff5b74;
+        --red-soft: rgba(255, 91, 116, 0.14);
+        --amber: #f5c85c;
+        --amber-soft: rgba(245, 200, 92, 0.14);
+        --blue: #6ea8fe;
+        --blue-soft: rgba(110, 168, 254, 0.14);
+        --violet: #8d7cff;
+        --shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      button,
+      select {
+        font: inherit;
+      }
+
+      .app {
+        min-height: 100vh;
+      }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        min-height: 64px;
+        padding: 12px 20px;
+        border-bottom: 1px solid var(--border-soft);
+        background: rgba(11, 14, 20, 0.92);
+        backdrop-filter: blur(14px);
+      }
+
+      .title {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        min-width: 220px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 18px;
+        line-height: 1.2;
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        color: var(--muted);
+        font-size: 13px;
+        white-space: nowrap;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .select,
+      .toggle,
+      .segmented {
+        display: inline-flex;
+        align-items: center;
+        min-height: 36px;
+        border: 1px solid var(--border);
+        background: var(--panel-2);
+        border-radius: 8px;
+        color: var(--text);
+      }
+
+      .select {
+        padding: 0 10px;
+        outline: none;
+      }
+
+      .segmented {
+        overflow: hidden;
+      }
+
+      .segmented button,
+      .toggle {
+        border: 0;
+        color: var(--muted);
+        background: transparent;
+        min-height: 34px;
+        padding: 0 12px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      .segmented button + button {
+        border-left: 1px solid var(--border);
+      }
+
+      .segmented button.active,
+      .toggle.active {
+        color: var(--text);
+        background: #222938;
+      }
+
+      .toggle {
+        gap: 8px;
+      }
+
+      .toggle .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--muted-2);
+      }
+
+      .toggle.active .dot {
+        background: var(--green);
+        box-shadow: 0 0 0 4px var(--green-soft);
+      }
+
+      main {
+        padding: 18px 20px 28px;
+      }
+
+      .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(8, minmax(130px, 1fr));
+        gap: 10px;
+      }
+
+      .card,
+      .panel {
+        border: 1px solid var(--border-soft);
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+
+      .card {
+        min-height: 92px;
+        border-radius: 8px;
+        padding: 14px;
+      }
+
+      .label {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.2;
+        white-space: nowrap;
+      }
+
+      .value {
+        margin-top: 10px;
+        font-size: 22px;
+        line-height: 1.1;
+        font-weight: 700;
+      }
+
+      .hint {
+        margin-top: 8px;
+        color: var(--muted-2);
+        font-size: 12px;
+        line-height: 1.3;
+      }
+
+      .positive {
+        color: var(--green);
+      }
+
+      .negative {
+        color: var(--red);
+      }
+
+      .neutral {
+        color: var(--blue);
+      }
+
+      .amber {
+        color: var(--amber);
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(390px, 0.42fr);
+        gap: 14px;
+        margin-top: 14px;
+      }
+
+      .column {
+        display: grid;
+        gap: 14px;
+        min-width: 0;
+      }
+
+      .panel {
+        min-width: 0;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        min-height: 48px;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--border-soft);
+        background: var(--panel-2);
+      }
+
+      .panel-title {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.2;
+      }
+
+      .panel-meta {
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .chart-box {
+        height: 310px;
+        padding: 12px;
+      }
+
+      .chart-box.small {
+        height: 235px;
+      }
+
+      .side-analytics {
+        display: grid;
+        gap: 10px;
+      }
+
+      .side-analytics .panel-head {
+        min-height: 40px;
+        padding: 9px 12px;
+      }
+
+      .side-analytics .panel-title {
+        font-size: 13px;
+      }
+
+      .mini-stat-list {
+        display: grid;
+        gap: 9px;
+        padding: 10px 12px 12px;
+      }
+
+      .mini-stat-row {
+        display: grid;
+        grid-template-columns: 64px minmax(0, 1fr) 72px;
+        align-items: center;
+        gap: 10px;
+        min-height: 26px;
+      }
+
+      .mini-stat-label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .mini-stat-track {
+        height: 8px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #242b3a;
+      }
+
+      .mini-stat-fill {
+        display: block;
+        height: 100%;
+        min-width: 3px;
+        border-radius: inherit;
+      }
+
+      .mini-stat-value {
+        color: var(--text);
+        font-size: 12px;
+        font-weight: 700;
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      .mini-stat-summary {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        padding: 0 12px 12px;
+      }
+
+      .mini-stat-chip {
+        min-width: 0;
+        border: 1px solid var(--border-soft);
+        border-radius: 7px;
+        background: var(--panel-3);
+        padding: 9px 10px;
+      }
+
+      .mini-stat-chip span {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.2;
+      }
+
+      .mini-stat-chip strong {
+        display: block;
+        margin-top: 5px;
+        color: var(--text);
+        font-size: 14px;
+        line-height: 1.1;
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      .split {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .exposure-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        padding: 12px;
+      }
+
+      .metric {
+        min-height: 76px;
+        border: 1px solid var(--border-soft);
+        border-radius: 8px;
+        background: var(--panel-3);
+        padding: 12px;
+      }
+
+      .metric .value {
+        font-size: 18px;
+      }
+
+      .risk-list {
+        display: grid;
+        gap: 8px;
+        padding: 0 12px 12px;
+      }
+
+      .risk-row {
+        display: grid;
+        grid-template-columns: 94px 1fr 72px;
+        align-items: center;
+        gap: 10px;
+        min-height: 28px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .bar {
+        height: 7px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #242b3a;
+      }
+
+      .bar span {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+      }
+
+      .bar.green span {
+        background: var(--green);
+      }
+
+      .bar.red span {
+        background: var(--red);
+      }
+
+      .bar.amber span {
+        background: var(--amber);
+      }
+
+      .bar.blue span {
+        background: var(--blue);
+      }
+
+      .table-wrap {
+        overflow: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 920px;
+      }
+
+      th,
+      td {
+        padding: 11px 12px;
+        border-bottom: 1px solid var(--border-soft);
+        text-align: right;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        color: var(--muted);
+        background: var(--panel-2);
+        font-weight: 600;
+      }
+
+      th:first-child,
+      td:first-child,
+      th:nth-child(2),
+      td:nth-child(2) {
+        text-align: left;
+      }
+
+      tbody tr:hover {
+        background: rgba(255, 255, 255, 0.025);
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 54px;
+        min-height: 24px;
+        padding: 0 8px;
+        border-radius: 999px;
+        font-weight: 700;
+        font-size: 11px;
+      }
+
+      .badge.long {
+        color: var(--green);
+        background: var(--green-soft);
+      }
+
+      .badge.short {
+        color: var(--red);
+        background: var(--red-soft);
+      }
+
+      .badge.tp {
+        color: var(--green);
+        background: var(--green-soft);
+      }
+
+      .badge.sl {
+        color: var(--red);
+        background: var(--red-soft);
+      }
+
+      .badge.manual {
+        color: var(--amber);
+        background: var(--amber-soft);
+      }
+
+      .empty {
+        padding: 34px 14px;
+        color: var(--muted);
+        text-align: center;
+      }
+
+      @media (max-width: 1280px) {
+        .kpi-grid {
+          grid-template-columns: repeat(4, minmax(140px, 1fr));
+        }
+
+        .layout {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .topbar {
+          align-items: stretch;
+          flex-direction: column;
+          padding: 12px;
+        }
+
+        .title {
+          min-width: 0;
+        }
+
+        .subtitle {
+          display: none;
+        }
+
+        .toolbar {
+          justify-content: flex-start;
+        }
+
+        main {
+          padding: 12px;
+        }
+
+        .kpi-grid,
+        .split,
+        .exposure-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .segmented {
+          width: 100%;
+        }
+
+        .segmented button {
+          flex: 1;
+        }
+
+        .select,
+        .toggle {
+          flex: 1;
+          justify-content: center;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="title">
+          <h1>Trade Analytics</h1>
+          <span id="scopeSubtitle" class="subtitle">Все монеты · Месяц</span>
+        </div>
+        <div class="toolbar">
+          <select id="symbolSelect" class="select" aria-label="Монета">
+            <option value="ALL">Все монеты</option>
+          </select>
+          <div class="segmented" aria-label="Период">
+            <button type="button" data-period="TODAY">Сегодня</button>
+            <button type="button" data-period="WEEK">Неделя</button>
+            <button type="button" class="active" data-period="MONTH">Месяц</button>
+          </div>
+          <div class="segmented" aria-label="Сторона сделки">
+            <button type="button" class="active" data-side="ALL">Все</button>
+            <button type="button" data-side="LONG">Long</button>
+            <button type="button" data-side="SHORT">Short</button>
+          </div>
+          <div class="segmented" aria-label="Результат сделки">
+            <button type="button" class="active" data-outcome="ALL">Все выходы</button>
+            <button type="button" data-outcome="TP">TP</button>
+            <button type="button" data-outcome="SL">SL</button>
+            <button type="button" data-outcome="MANUAL">Manual</button>
+          </div>
+          <button type="button" id="openToggle" class="toggle active">
+            <span class="dot"></span>
+            Открытые
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <section id="kpiGrid" class="kpi-grid" aria-label="Ключевые метрики"></section>
+
+        <section class="layout">
+          <div class="column">
+            <article class="panel">
+              <div class="panel-head">
+                <h2 class="panel-title">Equity / Drawdown</h2>
+                <span id="equityMeta" class="panel-meta"></span>
+              </div>
+              <div class="chart-box">
+                <canvas id="equityChart"></canvas>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <h2 class="panel-title">Закрытые сделки</h2>
+                <span id="tableMeta" class="panel-meta"></span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Дата входа</th>
+                      <th>Символ</th>
+                      <th>Side</th>
+                      <th>Вход</th>
+                      <th>Выход</th>
+                      <th>Size</th>
+                      <th>Result</th>
+                      <th>R</th>
+                      <th>Fees</th>
+                      <th>Выход</th>
+                      <th>Длительность</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tradeRows"></tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+
+          <aside class="column">
+            <div class="side-analytics">
+              <article class="panel">
+                <div class="panel-head">
+                  <h2 class="panel-title">PnL по направлению</h2>
+                  <span id="sideMeta" class="panel-meta"></span>
+                </div>
+                <div id="sidePanel"></div>
+              </article>
+
+              <article class="panel">
+                <div class="panel-head">
+                  <h2 class="panel-title">R-multiple</h2>
+                  <span id="rMeta" class="panel-meta"></span>
+                </div>
+                <div id="rPanel"></div>
+              </article>
+
+              <article class="panel">
+                <div class="panel-head">
+                  <h2 class="panel-title">Выходы из сделок</h2>
+                  <span id="outcomeMeta" class="panel-meta"></span>
+                </div>
+                <div id="outcomePanel"></div>
+              </article>
+            </div>
+
+            <article class="panel">
+              <div class="panel-head">
+                <h2 class="panel-title">Открытая экспозиция</h2>
+                <span id="openMeta" class="panel-meta"></span>
+              </div>
+              <div id="exposureGrid" class="exposure-grid"></div>
+              <div id="riskList" class="risk-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <h2 class="panel-title">Качество торговли</h2>
+                <span id="qualityMeta" class="panel-meta"></span>
+              </div>
+              <div id="qualityGrid" class="exposure-grid"></div>
+            </article>
+
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const startingBalance = 10000;
+      const trades = [
+        closed("2024-12-06T09:00:00", "2024-12-06T16:00:00", "DOGEUSDT", "LONG", 0.1012, 0.1088, 26000, 0.0984, 0.109, "TP", 18.7),
+        closed("2024-12-07T03:00:00", "2024-12-07T18:00:00", "ADAUSDT", "SHORT", 0.1121, 0.107, 18000, 0.1152, 0.1068, "TP", 16.4),
+        closed("2024-12-08T11:00:00", "2024-12-08T15:00:00", "SOLUSDT", "LONG", 0.1082, 0.1054, 22000, 0.1056, 0.114, "SL", 14.6),
+        closed("2024-12-09T07:00:00", "2024-12-10T02:00:00", "DOGEUSDT", "LONG", 0.1047, 0.1136, 32000, 0.1018, 0.1145, "TP", 26.8),
+        closed("2024-12-10T08:00:00", "2024-12-10T21:00:00", "ADAUSDT", "SHORT", 0.116, 0.1181, 24000, 0.1184, 0.111, "SL", 21.3),
+        closed("2024-12-11T04:00:00", "2024-12-11T20:00:00", "SOLUSDT", "LONG", 0.1194, 0.1238, 21000, 0.1165, 0.127, "MANUAL", 18.1),
+        closed("2024-12-12T10:00:00", "2024-12-12T23:00:00", "ADAUSDT", "SHORT", 0.1261, 0.1212, 26000, 0.129, 0.119, "TP", 22.1),
+        closed("2024-12-13T06:00:00", "2024-12-13T14:00:00", "DOGEUSDT", "LONG", 0.1218, 0.1192, 28000, 0.1196, 0.128, "SL", 20.2),
+        closed("2024-12-14T01:00:00", "2024-12-15T05:00:00", "DOGEUSDT", "LONG", 0.1186, 0.132, 30000, 0.1158, 0.1324, "TP", 30.1),
+        closed("2024-12-15T09:00:00", "2024-12-15T22:00:00", "ADAUSDT", "SHORT", 0.1305, 0.1278, 19000, 0.1331, 0.124, "MANUAL", 15.7),
+        closed("2024-12-16T05:00:00", "2024-12-16T19:00:00", "DOGEUSDT", "LONG", 0.1281, 0.1362, 34000, 0.1245, 0.137, "TP", 31.5),
+        closed("2024-12-17T10:00:00", "2024-12-17T18:00:00", "ADAUSDT", "SHORT", 0.1388, 0.141, 25000, 0.1407, 0.134, "SL", 22.5),
+        closed("2024-12-18T08:00:00", "2024-12-18T23:00:00", "SOLUSDT", "LONG", 0.143, 0.1486, 23000, 0.1398, 0.151, "MANUAL", 22.6),
+        closed("2024-12-19T03:00:00", "2024-12-19T13:00:00", "DOGEUSDT", "LONG", 0.1502, 0.1468, 27000, 0.1471, 0.157, "SL", 25.9),
+        closed("2024-12-20T06:00:00", "2024-12-20T18:00:00", "ADAUSDT", "SHORT", 0.1474, 0.1398, 29000, 0.151, 0.1395, "TP", 25.6),
+        closed("2024-12-21T08:00:00", "2024-12-21T22:00:00", "DOGEUSDT", "LONG", 0.1412, 0.1549, 36000, 0.1378, 0.155, "TP", 39.8),
+        closed("2024-12-22T04:00:00", "2024-12-22T20:00:00", "DOGEUSDT", "LONG", 0.1552, 0.1513, 31000, 0.1518, 0.163, "SL", 34.2),
+        closed("2024-12-23T11:00:00", "2024-12-24T02:00:00", "ADAUSDT", "SHORT", 0.152, 0.1464, 33000, 0.1552, 0.1452, "TP", 30.4),
+        open("2024-12-24T08:00:00", "DOGEUSDT", "LONG", 0.1471, 0.1538, 38000, 0.1432, 0.1598, 4, 42.2),
+        open("2024-12-24T15:00:00", "ADAUSDT", "SHORT", 0.1564, 0.1538, 21000, 0.1596, 0.1492, 3, 24.4),
+        open("2024-12-24T17:00:00", "SOLUSDT", "LONG", 0.1511, 0.1547, 16000, 0.148, 0.161, 3, 18.6),
+        pending("2024-12-24T20:00:00", "DOGEUSDT", "LONG", 0.1508, 24000, 0.1465, 0.1604),
+      ];
+
+      const state = {
+        symbol: "ALL",
+        period: "MONTH",
+        side: "ALL",
+        outcome: "ALL",
+        includeOpen: true,
+      };
+
+      function closed(entryTime, exitTime, symbol, side, entry, exit, size, sl, tp, outcome, fees) {
+        const grossResult = side === "LONG" ? (exit - entry) * size : (entry - exit) * size;
+        return {
+          status: "CLOSED",
+          entryTime,
+          exitTime,
+          symbol,
+          side,
+          entry,
+          exit,
+          size,
+          sl,
+          tp,
+          outcome,
+          fees,
+          result: grossResult - fees,
+        };
+      }
+
+      function open(entryTime, symbol, side, entry, current, size, sl, tp, leverage, fees) {
+        const grossResult = side === "LONG" ? (current - entry) * size : (entry - current) * size;
+        return {
+          status: "OPEN",
+          entryTime,
+          symbol,
+          side,
+          entry,
+          current,
+          size,
+          sl,
+          tp,
+          leverage,
+          fees,
+          unrealized: grossResult - fees,
+        };
+      }
+
+      function pending(entryTime, symbol, side, entry, size, sl, tp) {
+        return { status: "PENDING", entryTime, symbol, side, entry, size, sl, tp };
+      }
+
+      const money = new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 0,
+      });
+      const number = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+      const compact = new Intl.NumberFormat("en-US", {
+        notation: "compact",
+        maximumFractionDigits: 1,
+      });
+      const dateFmt = new Intl.DateTimeFormat("ru-RU", {
+        day: "2-digit",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+      function sum(items, selector) {
+        return items.reduce((total, item) => total + selector(item), 0);
+      }
+
+      function riskAmount(trade) {
+        return Math.abs(trade.entry - trade.sl) * trade.size;
+      }
+
+      function rewardAmount(trade) {
+        return Math.abs(trade.tp - trade.entry) * trade.size;
+      }
+
+      function rMultiple(trade) {
+        const risk = riskAmount(trade);
+        return risk > 0 ? trade.result / risk : 0;
+      }
+
+      function duration(entryTime, exitTime) {
+        const hours = Math.max(1, Math.round((new Date(exitTime) - new Date(entryTime)) / 36e5));
+        return hours >= 24 ? `${number.format(hours / 24)} д` : `${hours} ч`;
+      }
+
+      function formatDate(value) {
+        return dateFmt.format(new Date(value)).replace(".", "");
+      }
+
+      function formatPrice(value) {
+        return value.toFixed(4);
+      }
+
+      function signedClass(value) {
+        return value > 0 ? "positive" : value < 0 ? "negative" : "neutral";
+      }
+
+      function signedMoney(value) {
+        return `${value > 0 ? "+" : ""}${money.format(value)}`;
+      }
+
+      function referenceTime() {
+        return new Date(
+          Math.max(
+            ...trades.map((trade) => new Date(trade.exitTime || trade.entryTime).getTime()),
+          ),
+        );
+      }
+
+      function periodStart() {
+        const end = referenceTime();
+
+        if (state.period === "TODAY") {
+          return new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
+        }
+
+        const days = state.period === "WEEK" ? 7 : 30;
+        return end.getTime() - days * 24 * 60 * 60 * 1000;
+      }
+
+      function isInScope(trade) {
+        const time = new Date(trade.exitTime || trade.entryTime).getTime();
+        return time >= periodStart() && time <= referenceTime().getTime();
+      }
+
+      function matchesSymbol(trade) {
+        return state.symbol === "ALL" || trade.symbol === state.symbol;
+      }
+
+      function activeClosedTrades() {
+        return trades
+          .filter((trade) => trade.status === "CLOSED")
+          .filter(matchesSymbol)
+          .filter(isInScope)
+          .filter((trade) => state.side === "ALL" || trade.side === state.side)
+          .filter((trade) => state.outcome === "ALL" || trade.outcome === state.outcome)
+          .sort((a, b) => new Date(a.exitTime) - new Date(b.exitTime));
+      }
+
+      function activeOpenTrades() {
+        if (!state.includeOpen) {
+          return [];
+        }
+
+        return trades
+          .filter((trade) => trade.status === "OPEN")
+          .filter(matchesSymbol)
+          .filter(isInScope)
+          .filter((trade) => state.side === "ALL" || trade.side === state.side);
+      }
+
+      function computeAnalytics(closedTrades, openTrades) {
+        const wins = closedTrades.filter((trade) => trade.result > 0);
+        const losses = closedTrades.filter((trade) => trade.result < 0);
+        const net = sum(closedTrades, (trade) => trade.result);
+        const grossProfit = sum(wins, (trade) => trade.result);
+        const grossLoss = Math.abs(sum(losses, (trade) => trade.result));
+        const fees = sum(closedTrades, (trade) => trade.fees);
+        const rs = closedTrades.map(rMultiple);
+        const avgR = rs.length ? sum(rs, (value) => value) / rs.length : 0;
+        const avgWin = wins.length ? grossProfit / wins.length : 0;
+        const avgLoss = losses.length ? grossLoss / losses.length : 0;
+        const winRate = closedTrades.length ? (wins.length / closedTrades.length) * 100 : 0;
+        const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? Infinity : 0;
+        const expectancy = closedTrades.length ? net / closedTrades.length : 0;
+        const equity = buildEquity(closedTrades);
+        const streaks = buildStreaks(closedTrades);
+        const openPnl = sum(openTrades, (trade) => trade.unrealized);
+        const openRisk = sum(openTrades, riskAmount);
+        const openReward = sum(openTrades, rewardAmount);
+        const notional = sum(openTrades, (trade) => trade.entry * trade.size);
+        const margin = sum(openTrades, (trade) => (trade.entry * trade.size) / trade.leverage);
+
+        return {
+          net,
+          fees,
+          winRate,
+          profitFactor,
+          expectancy,
+          avgR,
+          avgWin,
+          avgLoss,
+          equity,
+          streaks,
+          openPnl,
+          openRisk,
+          openReward,
+          notional,
+          margin,
+          maxDrawdown: equity.maxDrawdown,
+        };
+      }
+
+      function buildEquity(closedTrades) {
+        let balance = startingBalance;
+        let peak = startingBalance;
+        let maxDrawdown = 0;
+        const points = [{ label: "Start", equity: balance, drawdown: 0 }];
+
+        closedTrades.forEach((trade, index) => {
+          balance += trade.result;
+          peak = Math.max(peak, balance);
+          const drawdown = balance - peak;
+          maxDrawdown = Math.min(maxDrawdown, drawdown);
+          points.push({
+            label: String(index + 1),
+            equity: balance,
+            drawdown,
+          });
+        });
+
+        return { points, maxDrawdown };
+      }
+
+      function buildStreaks(closedTrades) {
+        let win = 0;
+        let loss = 0;
+        let maxWin = 0;
+        let maxLoss = 0;
+
+        closedTrades.forEach((trade) => {
+          if (trade.result > 0) {
+            win += 1;
+            loss = 0;
+          } else if (trade.result < 0) {
+            loss += 1;
+            win = 0;
+          } else {
+            win = 0;
+            loss = 0;
+          }
+
+          maxWin = Math.max(maxWin, win);
+          maxLoss = Math.max(maxLoss, loss);
+        });
+
+        return { maxWin, maxLoss };
+      }
+
+      function render() {
+        const closedTrades = activeClosedTrades();
+        const openTrades = activeOpenTrades();
+        const analytics = computeAnalytics(closedTrades, openTrades);
+
+        renderKpis(closedTrades, analytics);
+        renderExposure(openTrades, analytics);
+        renderQuality(closedTrades, analytics);
+        renderSideAnalytics(closedTrades, analytics);
+        renderTable(closedTrades);
+        drawEquityChart(document.getElementById("equityChart"), analytics.equity.points);
+
+        document.getElementById("equityMeta").textContent = `${closedTrades.length} closed`;
+        document.getElementById("sideMeta").textContent = signedMoney(sum(closedTrades, (trade) => trade.result));
+        document.getElementById("rMeta").textContent = `Avg ${number.format(analytics.avgR)}R`;
+        document.getElementById("tableMeta").textContent = `${closedTrades.length} rows`;
+        document.getElementById("openMeta").textContent = `${openTrades.length} active`;
+        document.getElementById("qualityMeta").textContent = `${number.format(analytics.winRate)}% WR`;
+        document.getElementById("outcomeMeta").textContent = `${closedTrades.length} exits`;
+        document.getElementById("scopeSubtitle").textContent = `${currentSymbolLabel()} · ${currentPeriodLabel()}`;
+      }
+
+      function renderKpis(closedTrades, analytics) {
+        const cards = [
+          ["Net PnL", signedMoney(analytics.net), `${money.format(startingBalance + analytics.net)} equity`, signedClass(analytics.net)],
+          ["Win Rate", `${number.format(analytics.winRate)}%`, `${closedTrades.filter((trade) => trade.result > 0).length}/${closedTrades.length} winning`, "neutral"],
+          ["Profit Factor", analytics.profitFactor === Infinity ? "∞" : number.format(analytics.profitFactor), "gross profit / gross loss", analytics.profitFactor >= 1.5 ? "positive" : analytics.profitFactor >= 1 ? "amber" : "negative"],
+          ["Expectancy", signedMoney(analytics.expectancy), "average per trade", signedClass(analytics.expectancy)],
+          ["Max Drawdown", money.format(analytics.maxDrawdown), "closed equity only", "negative"],
+          ["Fees", money.format(analytics.fees), `${number.format((analytics.fees / Math.max(1, Math.abs(analytics.net))) * 100)}% of net`, "amber"],
+          ["Trades", String(closedTrades.length), "filtered closed deals", "neutral"],
+          ["Avg R", `${number.format(analytics.avgR)}R`, "risk-normalized result", signedClass(analytics.avgR)],
+        ];
+
+        document.getElementById("kpiGrid").innerHTML = cards
+          .map(
+            ([label, value, hint, tone]) => `
+              <article class="card">
+                <div class="label">${label}</div>
+                <div class="value ${tone}">${value}</div>
+                <div class="hint">${hint}</div>
+              </article>
+            `,
+          )
+          .join("");
+      }
+
+      function renderExposure(openTrades, analytics) {
+        const pendingCount = trades
+          .filter((trade) => trade.status === "PENDING")
+          .filter(matchesSymbol)
+          .filter(isInScope).length;
+        const exposureCards = [
+          ["Open PnL", signedMoney(analytics.openPnl), "unrealized", signedClass(analytics.openPnl)],
+          ["Notional", money.format(analytics.notional), "position value", "neutral"],
+          ["Margin Used", money.format(analytics.margin), "by leverage", "amber"],
+          ["Pending", String(pendingCount), "waiting orders", "neutral"],
+          ["Risk to SL", money.format(analytics.openRisk), "if stops hit", "negative"],
+          ["Reward to TP", money.format(analytics.openReward), "if targets hit", "positive"],
+        ];
+
+        document.getElementById("exposureGrid").innerHTML = exposureCards
+          .map(
+            ([label, value, hint, tone]) => `
+              <div class="metric">
+                <div class="label">${label}</div>
+                <div class="value ${tone}">${value}</div>
+                <div class="hint">${hint}</div>
+              </div>
+            `,
+          )
+          .join("");
+
+        const maxRisk = Math.max(1, ...openTrades.map(riskAmount));
+        document.getElementById("riskList").innerHTML =
+          openTrades
+            .map((trade) => {
+              const risk = riskAmount(trade);
+              const width = Math.max(4, (risk / maxRisk) * 100);
+              const tone = trade.side === "LONG" ? "green" : "red";
+              return `
+                <div class="risk-row">
+                  <span>${trade.side} ${formatPrice(trade.entry)}</span>
+                  <div class="bar ${tone}"><span style="width:${width}%"></span></div>
+                  <strong class="${trade.unrealized >= 0 ? "positive" : "negative"}">${signedMoney(trade.unrealized)}</strong>
+                </div>
+              `;
+            })
+            .join("") || `<div class="empty">Нет открытых сделок в выбранном фильтре</div>`;
+      }
+
+      function renderQuality(closedTrades, analytics) {
+        const best = closedTrades.reduce((acc, trade) => Math.max(acc, trade.result), 0);
+        const worst = closedTrades.reduce((acc, trade) => Math.min(acc, trade.result), 0);
+        const cards = [
+          ["Avg Win", money.format(analytics.avgWin), "positive trades", "positive"],
+          ["Avg Loss", money.format(-analytics.avgLoss), "negative trades", "negative"],
+          ["Best Trade", signedMoney(best), "max closed result", "positive"],
+          ["Worst Trade", signedMoney(worst), "min closed result", "negative"],
+          ["Win Streak", String(analytics.streaks.maxWin), "max sequence", "positive"],
+          ["Loss Streak", String(analytics.streaks.maxLoss), "max sequence", "negative"],
+        ];
+
+        document.getElementById("qualityGrid").innerHTML = cards
+          .map(
+            ([label, value, hint, tone]) => `
+              <div class="metric">
+                <div class="label">${label}</div>
+                <div class="value ${tone}">${value}</div>
+                <div class="hint">${hint}</div>
+              </div>
+            `,
+          )
+          .join("");
+      }
+
+      function renderSideAnalytics(closedTrades, analytics) {
+        const sideRows = ["LONG", "SHORT"].map((side) => {
+          const sideTrades = closedTrades.filter((trade) => trade.side === side);
+          return {
+            label: side,
+            value: sum(sideTrades, (trade) => trade.result),
+            tone: side === "LONG" ? "green" : "red",
+          };
+        });
+
+        const rBuckets = [
+          { label: "< -1R", min: -Infinity, max: -1, count: 0 },
+          { label: "-1..0", min: -1, max: 0, count: 0 },
+          { label: "0..1", min: 0, max: 1, count: 0 },
+          { label: "1..2", min: 1, max: 2, count: 0 },
+          { label: "> 2R", min: 2, max: Infinity, count: 0 },
+        ];
+
+        closedTrades.forEach((trade) => {
+          const value = rMultiple(trade);
+          const bucket = rBuckets.find((item) => value >= item.min && value < item.max);
+          if (bucket) {
+            bucket.count += 1;
+          }
+        });
+
+        const outcomeRows = ["TP", "SL", "MANUAL"].map((outcome) => ({
+          label: outcome,
+          value: closedTrades.filter((trade) => trade.outcome === outcome).length,
+          tone: outcome === "TP" ? "green" : outcome === "SL" ? "red" : "amber",
+        }));
+
+        renderMiniPanel("sidePanel", sideRows, {
+          formatter: signedMoney,
+          summary: [
+            ["Long", signedMoney(sideRows[0].value)],
+            ["Short", signedMoney(sideRows[1].value)],
+          ],
+        });
+        renderMiniPanel(
+          "rPanel",
+          rBuckets.map((bucket) => ({ label: bucket.label, value: bucket.count, tone: "blue" })),
+          {
+            formatter: (value) => `${value}`,
+            summary: [
+              ["Avg R", `${number.format(analytics.avgR)}R`],
+              ["Best", `${number.format(Math.max(0, ...closedTrades.map(rMultiple)))}R`],
+            ],
+          },
+        );
+        renderMiniPanel("outcomePanel", outcomeRows, {
+          formatter: (value) => `${value}`,
+          summary: [
+            ["TP", `${outcomeRows[0].value}`],
+            ["SL", `${outcomeRows[1].value}`],
+          ],
+        });
+      }
+
+      function renderMiniPanel(targetId, rows, options) {
+        const maxValue = Math.max(1, ...rows.map((row) => Math.abs(row.value)));
+        const colorByTone = {
+          green: "var(--green)",
+          red: "var(--red)",
+          amber: "var(--amber)",
+          blue: "var(--blue)",
+        };
+
+        document.getElementById(targetId).innerHTML = `
+          <div class="mini-stat-list">
+            ${rows
+              .map((row) => {
+                const width = Math.max(4, (Math.abs(row.value) / maxValue) * 100);
+                return `
+                  <div class="mini-stat-row">
+                    <span class="mini-stat-label">${row.label}</span>
+                    <span class="mini-stat-track">
+                      <span class="mini-stat-fill" style="width:${width}%; background:${colorByTone[row.tone]}"></span>
+                    </span>
+                    <span class="mini-stat-value" style="color:${colorByTone[row.tone]}">${options.formatter(row.value)}</span>
+                  </div>
+                `;
+              })
+              .join("")}
+          </div>
+          <div class="mini-stat-summary">
+            ${options.summary
+              .map(
+                ([label, value]) => `
+                  <div class="mini-stat-chip">
+                    <span>${label}</span>
+                    <strong>${value}</strong>
+                  </div>
+                `,
+              )
+              .join("")}
+          </div>
+        `;
+      }
+
+      function renderTable(closedTrades) {
+        document.getElementById("tradeRows").innerHTML =
+          closedTrades
+            .slice()
+            .reverse()
+            .map(
+              (trade) => `
+                <tr>
+                  <td>${formatDate(trade.entryTime)}</td>
+                  <td>${trade.symbol}</td>
+                  <td><span class="badge ${trade.side.toLowerCase()}">${trade.side}</span></td>
+                  <td>${formatPrice(trade.entry)}</td>
+                  <td>${formatPrice(trade.exit)}</td>
+                  <td>${compact.format(trade.size)}</td>
+                  <td class="${signedClass(trade.result)}">${signedMoney(trade.result)}</td>
+                  <td class="${signedClass(rMultiple(trade))}">${number.format(rMultiple(trade))}R</td>
+                  <td>${money.format(trade.fees)}</td>
+                  <td><span class="badge ${trade.outcome.toLowerCase()}">${trade.outcome}</span></td>
+                  <td>${duration(trade.entryTime, trade.exitTime)}</td>
+                </tr>
+              `,
+            )
+            .join("") || `<tr><td colspan="11"><div class="empty">Нет сделок под выбранные фильтры</div></td></tr>`;
+      }
+
+      function setupCanvas(canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+        canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+        const ctx = canvas.getContext("2d");
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        return { ctx, width: rect.width, height: rect.height };
+      }
+
+      function drawGrid(ctx, width, height, padding) {
+        ctx.strokeStyle = "#202838";
+        ctx.lineWidth = 1;
+        for (let index = 0; index <= 4; index += 1) {
+          const y = padding.top + ((height - padding.top - padding.bottom) / 4) * index;
+          ctx.beginPath();
+          ctx.moveTo(padding.left, y);
+          ctx.lineTo(width - padding.right, y);
+          ctx.stroke();
+        }
+      }
+
+      function drawEquityChart(canvas, points) {
+        const { ctx, width, height } = setupCanvas(canvas);
+        const padding = { top: 20, right: 18, bottom: 28, left: 46 };
+        const plotW = width - padding.left - padding.right;
+        const plotH = height - padding.top - padding.bottom;
+        ctx.clearRect(0, 0, width, height);
+        drawGrid(ctx, width, height, padding);
+
+        if (points.length < 2) {
+          return;
+        }
+
+        const equities = points.map((point) => point.equity);
+        const drawdowns = points.map((point) => point.drawdown);
+        const minEquity = Math.min(...equities, startingBalance - 300);
+        const maxEquity = Math.max(...equities, startingBalance + 300);
+        const minDrawdown = Math.min(...drawdowns, -1);
+        const x = (index) => padding.left + (plotW / (points.length - 1)) * index;
+        const yEquity = (value) => padding.top + (1 - (value - minEquity) / Math.max(1, maxEquity - minEquity)) * plotH * 0.74;
+        const yDrawdown = (value) => height - padding.bottom - (Math.abs(value) / Math.max(1, Math.abs(minDrawdown))) * plotH * 0.18;
+
+        ctx.beginPath();
+        points.forEach((point, index) => {
+          const px = x(index);
+          const py = yEquity(point.equity);
+          index === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        });
+        ctx.strokeStyle = "#28d69f";
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        ctx.beginPath();
+        points.forEach((point, index) => {
+          const px = x(index);
+          const py = yDrawdown(point.drawdown);
+          index === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        });
+        ctx.strokeStyle = "#ff5b74";
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
+
+        ctx.fillStyle = "#8f9aaf";
+        ctx.font = "12px Inter, sans-serif";
+        ctx.fillText(money.format(maxEquity), 8, padding.top + 4);
+        ctx.fillText(money.format(minEquity), 8, padding.top + plotH * 0.74);
+        ctx.fillStyle = "#ff5b74";
+        ctx.fillText("DD", padding.left, height - 10);
+      }
+
+      function setActiveButtons(selector, value, attr) {
+        document.querySelectorAll(selector).forEach((button) => {
+          button.classList.toggle("active", button.dataset[attr] === value);
+        });
+      }
+
+      function currentSymbolLabel() {
+        return state.symbol === "ALL" ? "Все монеты" : state.symbol;
+      }
+
+      function currentPeriodLabel() {
+        const labels = {
+          TODAY: "Сегодня",
+          WEEK: "Последняя неделя",
+          MONTH: "Последний месяц",
+        };
+        return labels[state.period];
+      }
+
+      function initSymbolSelect() {
+        const select = document.getElementById("symbolSelect");
+        const symbols = [...new Set(trades.map((trade) => trade.symbol))].sort();
+        select.innerHTML = [
+          `<option value="ALL">Все монеты</option>`,
+          ...symbols.map((symbol) => `<option value="${symbol}">${symbol}</option>`),
+        ].join("");
+      }
+
+      document.querySelectorAll("[data-side]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.side = button.dataset.side;
+          setActiveButtons("[data-side]", state.side, "side");
+          render();
+        });
+      });
+
+      document.querySelectorAll("[data-outcome]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.outcome = button.dataset.outcome;
+          setActiveButtons("[data-outcome]", state.outcome, "outcome");
+          render();
+        });
+      });
+
+      document.querySelectorAll("[data-period]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.period = button.dataset.period;
+          setActiveButtons("[data-period]", state.period, "period");
+          render();
+        });
+      });
+
+      document.getElementById("symbolSelect").addEventListener("change", (event) => {
+        state.symbol = event.target.value;
+        render();
+      });
+
+      document.getElementById("openToggle").addEventListener("click", () => {
+        state.includeOpen = !state.includeOpen;
+        document.getElementById("openToggle").classList.toggle("active", state.includeOpen);
+        render();
+      });
+
+      window.addEventListener("resize", render);
+      initSymbolSelect();
+      render();
+    </script>
+  </body>
+</html>
