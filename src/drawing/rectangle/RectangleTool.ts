@@ -224,7 +224,11 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     el.classList.add("is-editing");
     el.contentEditable = "true";
     el.focus({ preventScroll: true });
-    restoreLabelCaret(el);
+    if (hasText) {
+      restoreLabelCaret(el);
+    } else {
+      requestAnimationFrame(() => requestAnimationFrame(() => placeLabelCaret(el, false)));
+    }
   }
 
   function visibleBoundsCenter(rect: Rectangle) {
@@ -416,6 +420,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
 
     el = document.createElement("div");
     el.className = "rectangle-label";
+    el.dataset.placeholder = PLACEHOLDER;
     el.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
       if (!manager.canEditExistingDrawings()) return;
