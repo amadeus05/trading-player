@@ -118,6 +118,7 @@ export function TradingSidebar({
     ticketNotional,
     ticketMargin,
     riskStats,
+    liquidationStats,
     selectedRiskPct,
     riskSizingCapped,
     longLiquidation,
@@ -143,6 +144,17 @@ export function TradingSidebar({
   const riskAboveLimit = riskStats != null && riskStats.riskPct > 2;
   const limitStatus = insufficientMargin ? "No margin" : riskSizingCapped ? "Capped" : riskAboveLimit ? "Above 2%" : "OK";
   const limitStatusClass = insufficientMargin || riskSizingCapped || riskAboveLimit ? "warn" : "ok";
+  const liquidationText = liquidationStats
+    ? `${formatPrice(liquidationStats.liquidationPrice, pricePrecision)} (${liquidationStats.entryDistancePct.toFixed(2)}% from entry)`
+    : "—";
+  const liquidationBufferText = liquidationStats?.stopLossBufferPct != null
+    ? `${liquidationStats.stopLossBufferPct.toFixed(2)}%`
+    : "—";
+  const liquidationStatus = liquidationStats?.warning === "after"
+    ? "SL after liq"
+    : liquidationStats?.warning === "near"
+      ? "SL near liq"
+      : "OK";
 
   return (
     <aside>
@@ -283,6 +295,22 @@ export function TradingSidebar({
                     : limitStatus
               }>
                 <b className={limitStatusClass}>{limitStatus}</b>
+              </Tooltip>
+            </div>
+            <div>
+              <span>Liq. distance</span>
+              <Tooltip title={liquidationText}>
+                <b className={liquidationStats?.warning === "after" || liquidationStats?.warning === "near" ? "warn" : "ok"}>
+                  {liquidationStats ? `${liquidationStats.entryDistancePct.toFixed(2)}%` : "—"}
+                </b>
+              </Tooltip>
+            </div>
+            <div>
+              <span>SL buffer</span>
+              <Tooltip title={liquidationStats ? `${liquidationStatus} · ${liquidationBufferText} before liquidation` : "—"}>
+                <b className={liquidationStats?.warning === "after" || liquidationStats?.warning === "near" ? "warn" : "ok"}>
+                  {liquidationStats ? `${liquidationStatus} (${liquidationBufferText})` : "—"}
+                </b>
               </Tooltip>
             </div>
           </div>

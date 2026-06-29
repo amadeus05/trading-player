@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateOrderRisk, calculateRiskBasedSizing } from "../../src/features/trading/lib/calculateOrderRisk";
+import { calculateLiquidationRisk, calculateOrderRisk, calculateRiskBasedSizing } from "../../src/features/trading/lib/calculateOrderRisk";
+
+const assertClose = (actual: number | null | undefined, expected: number) => {
+  assert.ok(actual != null);
+  assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} !== ${expected}`);
+};
 
 test("calculates long order risk, reward and R/R", () => {
   const risk = calculateOrderRisk({
@@ -116,4 +121,46 @@ test("caps risk based sizing by available margin", () => {
     riskAmount: 3,
     capped: true,
   });
+});
+
+test("calculates liquidation distance and safe stop buffer", () => {
+  const stats = calculateLiquidationRisk({
+    side: "LONG",
+    entry: 100,
+    stopLoss: 95,
+    leverage: 10,
+    takerFeePct: 0.04,
+  });
+
+  assertClose(stats?.liquidationPrice, 90.04);
+  assertClose(stats?.entryDistancePct, 9.96);
+  assertClose(stats?.stopLossBufferPct, 4.96);
+  assert.equal(stats?.stopLossBeforeLiquidation, true);
+  assert.equal(stats?.warning, "none");
+});
+
+test("warns when stop loss is close to liquidation", () => {
+  const stats = calculateLiquidationRisk({
+    side: "LONG",
+    entry: 100,
+    stopLoss: 90.1,
+    leverage: 10,
+    takerFeePct: 0.04,
+  });
+
+  assert.equal(stats?.warning, "near");
+});
+
+test("warns when liquidation would happen before stop loss", () => {
+  const stats = calculateLiquidationRisk({
+    side: "SHORT",
+    entry: 100,
+    stopLoss: 110,
+    leverage: 10,
+    takerFeePct: 0.04,
+  });
+
+  assertClose(stats?.liquidationPrice, 109.96);
+  assert.equal(stats?.stopLossBeforeLiquidation, false);
+  assert.equal(stats?.warning, "after");
 });

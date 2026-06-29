@@ -17,6 +17,22 @@ export interface OrderRiskStats {
   riskReward: number | null;
 }
 
+export interface LiquidationRiskInput {
+  side: Trade["side"] | null;
+  entry: number;
+  stopLoss: number;
+  leverage: number;
+  takerFeePct: number;
+}
+
+export interface LiquidationRiskStats {
+  liquidationPrice: number;
+  entryDistancePct: number;
+  stopLossBufferPct: number | null;
+  stopLossBeforeLiquidation: boolean | null;
+  warning: "none" | "near" | "after";
+}
+
 export interface RiskSizingInput {
   side: Trade["side"];
   entry: number;
@@ -107,5 +123,48 @@ export function calculateRiskBasedSizing({
     notional,
     riskAmount: effectiveRiskAmount,
     capped,
+  };
+}
+
+export function calculateLiquidationRisk({
+  side,
+  entry,
+  stopLoss,
+  leverage,
+  takerFeePct,
+}: LiquidationRiskInput): LiquidationRiskStats | null {
+  if (!side || entry <= 0 || leverage <= 1) return null;
+  const feeBuffer = Math.max(0, takerFeePct) / 100;
+  const liquidationPrice = side === "LONG"
+    ? entry * (1 - 1 / leverage + feeBuffer)
+    : entry * (1 + 1 / leverage - feeBuffer);
+  if (!Number.isFinite(liquidationPrice) || liquidationPrice <= 0) return null;
+
+  const entryDistancePct = Math.abs(entry - liquidationPrice) / entry * 100;
+  const validStop = side === "LONG"
+    ? stopLoss > 0 && stopLoss < entry
+    : stopLoss > entry;
+  const stopLossBufferPct = validStop
+    ? side === "LONG"
+      ? (stopLoss - liquidationPrice) / entry * 100
+      : (liquidationPrice - stopLoss) / entry * 100
+    : null;
+  const stopLossBeforeLiquidation = stopLossBufferPct == null
+    ? null
+    : stopLossBufferPct > 0;
+  const warning = stopLossBufferPct == null
+    ? "none"
+    : stopLossBufferPct <= 0
+      ? "after"
+      : stopLossBufferPct < Math.max(0.15, Math.max(0, takerFeePct) * 2)
+        ? "near"
+        : "none";
+
+  return {
+    liquidationPrice,
+    entryDistancePct,
+    stopLossBufferPct,
+    stopLossBeforeLiquidation,
+    warning,
   };
 }

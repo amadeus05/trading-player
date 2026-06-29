@@ -168,6 +168,7 @@ export function PlayerPage() {
   const orderForm = useOrderForm({
     currentCandle: cur,
     pricePrecision,
+    settings: simulationSettings,
     balance: accountStats.balance,
     availableBalance: accountStats.availableBalance,
   });

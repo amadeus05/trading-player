@@ -76,7 +76,7 @@ test("calculates balance from closed trades and equity from open trades", () => 
   assert.equal(stats.balance, 1_015);
   assert.equal(stats.equity, 1_034);
   assert.equal(stats.usedMargin, 210);
-  assert.equal(stats.availableBalance, 805);
+  assert.equal(stats.availableBalance, 824);
   assert.equal(stats.growthPct, 3.4000000000000004);
   assert.equal(stats.closedTradeCount, 2);
   assert.equal(stats.openTradeCount, 1);

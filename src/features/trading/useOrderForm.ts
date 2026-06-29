@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
-import type { Candle, Trade } from "../../types";
+import type { Candle, SimulationSettings, Trade } from "../../types";
 import type { AmountUnit, OrderType } from "./types";
-import { calculateOrderRisk, calculateRiskBasedSizing } from "./lib/calculateOrderRisk";
+import { calculateLiquidationRisk, calculateOrderRisk, calculateRiskBasedSizing } from "./lib/calculateOrderRisk";
 
 interface UseOrderFormOptions {
   currentCandle?: Candle;
   pricePrecision: number;
+  settings: SimulationSettings;
   balance: number;
   availableBalance: number;
 }
@@ -13,6 +14,7 @@ interface UseOrderFormOptions {
 export function useOrderForm({
   currentCandle,
   pricePrecision,
+  settings,
   balance,
   availableBalance,
 }: UseOrderFormOptions) {
@@ -47,12 +49,20 @@ export function useOrderForm({
       quantity: ticketQuantity,
       balance,
     });
+    const liquidationStats = calculateLiquidationRisk({
+      side: orderDraftSide,
+      entry: ticketPrice,
+      stopLoss,
+      leverage,
+      takerFeePct: settings.takerFeePct,
+    });
     return {
       ticketPrice,
       ticketQuantity,
       ticketNotional,
       ticketMargin,
       riskStats,
+      liquidationStats,
       longLiquidation: ticketPrice > 0 && leverage > 1
         ? ticketPrice * (1 - 1 / leverage)
         : null,
@@ -60,7 +70,7 @@ export function useOrderForm({
         ? ticketPrice * (1 + 1 / leverage)
         : null,
     };
-  }, [amountUnit, balance, currentCandle?.close, leverage, limitPrice, orderDraftSide, orderType, orderValue, stopLoss, takeProfit]);
+  }, [amountUnit, balance, currentCandle?.close, leverage, limitPrice, orderDraftSide, orderType, orderValue, settings.takerFeePct, stopLoss, takeProfit]);
 
   const changeOrderType = (nextOrderType: OrderType) => {
     setSelectedRiskPct(null);
