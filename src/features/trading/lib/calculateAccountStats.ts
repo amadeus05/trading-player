@@ -41,7 +41,7 @@ export function calculateAccountStats(
   const balance = initialBalance + realizedPnl;
   const equity = balance + unrealizedPnl;
   const usedMargin = trades.reduce((total, trade) => total + tradeMargin(trade), 0);
-  const availableBalance = Math.max(0, balance - usedMargin);
+  const availableBalance = Math.max(0, equity - usedMargin);
   const growthPct = initialBalance > 0
     ? (equity - initialBalance) / initialBalance * 100
     : 0;

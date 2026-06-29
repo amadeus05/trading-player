@@ -1151,6 +1151,88 @@ aside {
   color: #ff687d;
 }
 
+.riskPanel {
+  display: grid;
+  gap: 9px;
+  margin: 0 0 12px;
+  padding: 10px;
+  border: 1px solid #242934;
+  border-radius: 7px;
+  background: #11151d;
+}
+
+.riskPresets {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.riskPresets span,
+.riskGrid span {
+  color: #7b8497;
+  font-size: 10px;
+}
+
+.riskPresets div {
+  display: flex;
+  gap: 5px;
+}
+
+.riskPresets button {
+  min-width: 38px;
+  height: 24px;
+  border: 1px solid #323747;
+  border-radius: 5px;
+  background: #171b25;
+  color: #d9dde8;
+  font: 600 11px Inter, system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.riskPresets button:hover {
+  border-color: #7c6cf2;
+  color: #fff;
+}
+
+.riskPresets button.active {
+  border-color: #7c6cf2;
+  background: #272345;
+  color: #fff;
+}
+
+.riskGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.riskGrid div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  padding: 7px 8px;
+  border-radius: 5px;
+  background: #0d1017;
+}
+
+.riskGrid b {
+  overflow: hidden;
+  color: #e2e6ef;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.riskGrid .ok {
+  color: #2bd9a8;
+}
+
+.riskGrid .warn {
+  color: #ffca5c;
+}
+
 .ticketTopRow {
   display: grid;
   grid-template-columns: 1fr 1fr;

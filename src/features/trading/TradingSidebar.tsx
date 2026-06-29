@@ -117,18 +117,32 @@ export function TradingSidebar({
     ticketQuantity,
     ticketNotional,
     ticketMargin,
+    riskStats,
+    selectedRiskPct,
+    riskSizingCapped,
     longLiquidation,
     shortLiquidation,
     changeAllocation: onAllocationChange,
     changeAmountUnit: onAmountUnitChange,
     changeOrderType: onOrderTypeChange,
     changeOrderValue: onOrderValueChange,
+    changeRiskPercent: onRiskPercentChange,
     setLeverage: onLeverageChange,
     setLimitPrice: onLimitPriceChange,
     setTakeProfit: onTakeProfitChange,
     setStopLoss: onStopLossChange,
   } = orderForm;
   const orderActionsDisabled = !currentCandle || editingTradeId != null;
+  const riskText = riskStats
+    ? `${formatNumber(riskStats.riskAmount)} ${quoteAsset} (${riskStats.riskPct.toFixed(2)}%)`
+    : "—";
+  const rewardText = riskStats
+    ? `${formatNumber(riskStats.rewardAmount)} ${quoteAsset} (${riskStats.rewardPct.toFixed(2)}%)`
+    : "—";
+  const insufficientMargin = ticketMargin > accountStats.availableBalance + 0.000001;
+  const riskAboveLimit = riskStats != null && riskStats.riskPct > 2;
+  const limitStatus = insufficientMargin ? "No margin" : riskSizingCapped ? "Capped" : riskAboveLimit ? "Above 2%" : "OK";
+  const limitStatusClass = insufficientMargin || riskSizingCapped || riskAboveLimit ? "warn" : "ok";
 
   return (
     <aside>
@@ -225,13 +239,62 @@ export function TradingSidebar({
         <div><span>Notional</span><b>{ticketNotional ? `${formatNumber(ticketNotional)} ${quoteAsset}` : "—"}</b></div>
         <div><span>Liq. Price</span><b><em>{longLiquidation != null ? formatPrice(longLiquidation, pricePrecision) : "—"}</em> / <strong>{shortLiquidation != null ? formatPrice(shortLiquidation, pricePrecision) : "—"}</strong></b></div>
       </div>
+      {orderDraftSide && (
+        <div className="riskPanel">
+          <div className="riskPresets">
+            <span>Risk size</span>
+            <div>
+              {[0.5, 1, 2].map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={selectedRiskPct === value ? "active" : ""}
+                  onClick={() => onRiskPercentChange(value)}
+                >
+                  {value}%
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="riskGrid">
+            <div>
+              <span>Risk</span>
+              <Tooltip title={riskText}>
+                <b className={riskStats && riskStats.riskPct > 2 ? "warn" : ""}>{riskText}</b>
+              </Tooltip>
+            </div>
+            <div>
+              <span>Reward</span>
+              <Tooltip title={rewardText}>
+                <b>{rewardText}</b>
+              </Tooltip>
+            </div>
+            <div>
+              <span>R/R</span>
+              <b>{riskStats?.riskReward != null ? `1:${riskStats.riskReward.toFixed(2)}` : "—"}</b>
+            </div>
+            <div>
+              <span>Limit</span>
+              <Tooltip title={
+                insufficientMargin
+                  ? `Need ${formatNumber(ticketMargin)} ${quoteAsset}, available ${formatNumber(accountStats.availableBalance)} ${quoteAsset}`
+                  : riskSizingCapped && selectedRiskPct != null
+                    ? `Target ${selectedRiskPct}% needs more margin. Using max available size.`
+                    : limitStatus
+              }>
+                <b className={limitStatusClass}>{limitStatus}</b>
+              </Tooltip>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="tradeBtns">
         <OrderSideButton
           side="LONG"
           className="long"
           label="Long"
           orderDraftSide={orderDraftSide}
-          disabled={orderActionsDisabled}
+          disabled={orderActionsDisabled || insufficientMargin}
           takeProfit={takeProfit}
           stopLoss={stopLoss}
           onBeginOrderDraft={onBeginOrderDraft}
@@ -243,7 +306,7 @@ export function TradingSidebar({
           className="short"
           label="Short"
           orderDraftSide={orderDraftSide}
-          disabled={orderActionsDisabled}
+          disabled={orderActionsDisabled || insufficientMargin}
           takeProfit={takeProfit}
           stopLoss={stopLoss}
           onBeginOrderDraft={onBeginOrderDraft}
