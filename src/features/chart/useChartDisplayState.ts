@@ -41,6 +41,11 @@ export function useChartDisplayState({
   } = orderForm;
 
   return useMemo(() => {
+    const currentTime = currentCandle?.time ?? 0;
+    const replayVisibleTrades = trades.filter((trade) => {
+      if (trade.status !== "CLOSED" || trade.exitTime == null) return true;
+      return trade.entryTime <= currentTime && trade.exitTime <= currentTime;
+    });
     const focusedTrade = workingTrades.find((trade) => trade.id === focusedTradeId);
     const editedTrade = focusedTrade && tradeEditDraft?.id === focusedTrade.id
       ? {
@@ -76,10 +81,10 @@ export function useChartDisplayState({
       ? editedTrade
       : draftProtectionTrade;
     const displayedTrades = displayedTrade?.id === "__draft_protection__"
-      ? [...trades, displayedTrade]
+      ? [...replayVisibleTrades, displayedTrade]
       : tradeEditDraft && editedTrade
-        ? trades.map((trade) => trade.id === editedTrade.id ? editedTrade : trade)
-        : trades;
+        ? replayVisibleTrades.map((trade) => trade.id === editedTrade.id ? editedTrade : trade)
+        : replayVisibleTrades;
     const barriers: Barrier[] = tradeEditDraft && editedTrade
       ? activeBarriers
       : draftProtectionTrade

@@ -314,8 +314,9 @@ export function ReplayChart({
       });
       unregisterClosedTradeSync = drawingManager.registerOverlaySync(closedTradeOverlay.sync);
       unregisterPriceMarkerSync = drawingManager.registerOverlaySync(priceMarkers.sync);
-      // Sync immediately so markers are positioned before the browser paints,
-      // preventing a one-frame flash to the wrong position on every rebuild.
+      // Sync both overlays immediately so they are positioned/hidden before the
+      // browser paints, preventing a flash to the wrong position on rebuild.
+      closedTradeOverlay.sync();
       priceMarkers.sync();
       drawingManager.scheduleOverlaySync();
     };
