@@ -314,6 +314,9 @@ export function ReplayChart({
       });
       unregisterClosedTradeSync = drawingManager.registerOverlaySync(closedTradeOverlay.sync);
       unregisterPriceMarkerSync = drawingManager.registerOverlaySync(priceMarkers.sync);
+      // Sync immediately so markers are positioned before the browser paints,
+      // preventing a one-frame flash to the wrong position on every rebuild.
+      priceMarkers.sync();
       drawingManager.scheduleOverlaySync();
     };
     rebuildTradeOverlays();
@@ -562,7 +565,15 @@ export function ReplayChart({
     };
   }, [candles, selectingStart, focusRevision, pricePrecision, datasetId]);
 
+  const prevOverlayKeyRef = useRef("");
   useLayoutEffect(() => {
+    // Compute a key from display-relevant fields only; ignores barrier.entryTime so
+    // that every replay step does not trigger a full rebuild when TP/SL are unchanged.
+    const barriersKey = barriers.map((b) => `${b.id}:${b.upper ?? ""}:${b.lower ?? ""}`).join("|");
+    const tradesKey = trades.map((t) => `${t.id}:${t.status}:${t.entry}:${t.tp ?? ""}:${t.sl ?? ""}:${t.exitTime ?? ""}:${t.exit ?? ""}`).join("|");
+    const key = [barriersKey, tradesKey, entryMarker?.price ?? "", markersEditable, showClosedTradeOverlays].join(";");
+    if (key === prevOverlayKeyRef.current) return;
+    prevOverlayKeyRef.current = key;
     chartRuntimeRef.current?.rebuildTradeOverlays();
   }, [barriers, trades, entryMarker, markersEditable, showClosedTradeOverlays]);
 

@@ -91,7 +91,7 @@ export function useChartDisplayState({
             timeLimit: Number.MAX_SAFE_INTEGER,
           }]
         : NO_BARRIERS;
-    const entryMarker = editedTrade?.status === "PENDING"
+    const entryMarker = editedTrade?.status === "PENDING" && tradeEditDraft?.id === editedTrade.id
       ? { id: editedTrade.id, price: editedTrade.entry }
       : protectionEnabled && orderType === "LIMIT" && ticketPrice > 0
         ? { id: "__draft_limit_entry__", price: limitPrice || ticketPrice }
