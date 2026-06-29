@@ -23,7 +23,12 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           fontFamily: "Inter, system-ui, sans-serif",
         },
         components: {
-          Button: { controlHeight: 36 },
+          Button: {
+            controlHeight: 36,
+            controlHeightSM: 28,
+            contentLineHeight: 1,
+            contentLineHeightSM: 1,
+          },
           Card: { colorBgContainer: "#11131a" },
           Modal: { contentBg: "#11131a", headerBg: "#11131a" },
           Table: { headerBg: "#171a22", colorBgContainer: "#11131a" },

@@ -264,9 +264,10 @@ export function PlayerModals({
     {
       title: "Действия",
       render: (_value: unknown, trade: Trade) => (
-        <Space size={6}>
+        <Space size={6} align="center" className="journalActions">
           {(trade.status === "OPEN" || trade.status === "PENDING") && (
             <Button
+              className="journalActionBtn"
               size="small"
               onClick={() => trade.status === "PENDING"
                 ? onCancelOrder(trade.id)
@@ -283,7 +284,7 @@ export function PlayerModals({
             okButtonProps={{ danger: true }}
             onConfirm={() => onDeleteTrade(trade.id)}
           >
-            <Button danger size="small" icon={<Trash2 size={14} />}>
+            <Button className="journalActionBtn" danger size="small" icon={<Trash2 size={14} />}>
               Удалить
             </Button>
           </Popconfirm>
@@ -461,13 +462,15 @@ export function PlayerModals({
             </svg>
           </div>
         </div>
-        <Table<Trade>
-          rowKey="id"
-          dataSource={filteredTrades}
-          columns={columns}
-          pagination={{ pageSize: 12, showSizeChanger: false }}
-          size="small"
-        />
+        <div className="journalTable">
+          <Table<Trade>
+            rowKey="id"
+            dataSource={filteredTrades}
+            columns={columns}
+            pagination={{ pageSize: 12, showSizeChanger: false }}
+            size="small"
+          />
+        </div>
       </Modal>
     </>
   );

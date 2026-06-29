@@ -41,6 +41,44 @@ body {
   font-family: Inter, system-ui, sans-serif;
 }
 
+.ant-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.ant-btn > span:not(.ant-btn-icon) {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.ant-btn .ant-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.ant-btn .ant-btn-icon svg {
+  display: block;
+}
+
+.ant-popconfirm-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ant-popconfirm-buttons .ant-btn {
+  min-width: 72px;
+  height: 28px;
+  margin-inline-start: 0 !important;
+  padding-inline: 12px;
+}
+
 .app {
   min-height: 100vh;
 }
@@ -982,6 +1020,50 @@ g[data-channel-id].selected .pc-edge-line {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2;
+}
+
+.journalTable {
+  margin-top: 18px;
+}
+
+.journalTable .ant-table-cell {
+  vertical-align: middle;
+}
+
+.journalActions.ant-space {
+  display: inline-flex;
+  align-items: center;
+}
+
+.journalTable .journalActionBtn.ant-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding-inline: 10px;
+  line-height: 1;
+  font-size: 13px;
+}
+
+.journalTable .journalActionBtn.ant-btn > span:not(.ant-btn-icon) {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.journalTable .journalActionBtn.ant-btn .ant-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin: 0 !important;
+  line-height: 0;
+}
+
+.journalTable .journalActionBtn.ant-btn .ant-btn-icon svg {
+  display: block;
 }
 
 @media (max-width: 900px) {
