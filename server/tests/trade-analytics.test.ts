@@ -12,6 +12,7 @@ const trades: Trade[] = [
   {
     id: "win-long",
     datasetId: "binance-futures:BTCUSDT",
+    timeframeMinutes: 15,
     side: "LONG",
     entryTime: 10,
     exitTime: 20,
@@ -29,6 +30,7 @@ const trades: Trade[] = [
   {
     id: "loss-short",
     datasetId: "binance-futures:BTCUSDT",
+    timeframeMinutes: 15,
     side: "SHORT",
     entryTime: 30,
     exitTime: 40,
@@ -46,6 +48,7 @@ const trades: Trade[] = [
   {
     id: "manual-short",
     datasetId: "binance-futures:ETHUSDT",
+    timeframeMinutes: 60,
     side: "SHORT",
     entryTime: 50,
     exitTime: 60,
@@ -62,6 +65,7 @@ const trades: Trade[] = [
   {
     id: "open",
     datasetId: "binance-futures:ETHUSDT",
+    timeframeMinutes: 60,
     side: "LONG",
     entryTime: 70,
     entry: 100,
@@ -77,6 +81,12 @@ test("calculates closed trade analytics", () => {
   const analytics = calculateTradeAnalytics(account, trades);
 
   assert.equal(analytics.totalTrades, 4);
+  assert.deepEqual(analytics.equityCurve, [
+    { time: 0, equity: 1_000 },
+    { time: 20, equity: 1_030 },
+    { time: 40, equity: 1_010 },
+    { time: 60, equity: 1_020 },
+  ]);
   assert.equal(analytics.closedTrades, 3);
   assert.equal(analytics.openTrades, 1);
   assert.equal(analytics.pendingTrades, 0);
@@ -103,6 +113,7 @@ test("calculates closed trade analytics", () => {
 test("filters trades by dataset, period, side and outcome", () => {
   const filtered = filterTradesForAnalytics(trades, {
     datasetId: "binance-futures:BTCUSDT",
+    timeframeMinutes: 15,
     fromTime: 20,
     toTime: 45,
     side: "SHORT",

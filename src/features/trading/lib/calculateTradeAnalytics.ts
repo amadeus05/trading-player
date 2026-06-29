@@ -2,6 +2,7 @@ import type { AccountSettings, Trade } from "../../../types";
 
 export interface AnalyticsFilters {
   datasetId?: string;
+  timeframeMinutes?: number;
   fromTime?: number;
   toTime?: number;
   side?: Trade["side"];
@@ -9,6 +10,7 @@ export interface AnalyticsFilters {
 }
 
 export interface TradeAnalytics {
+  equityCurve: Array<{ time: number; equity: number }>;
   totalTrades: number;
   closedTrades: number;
   openTrades: number;
@@ -37,6 +39,7 @@ export interface TradeAnalytics {
 }
 
 const EMPTY_ANALYTICS: TradeAnalytics = {
+  equityCurve: [],
   totalTrades: 0,
   closedTrades: 0,
   openTrades: 0,
@@ -73,6 +76,7 @@ function matchesFilters(trade: Trade, filters: AnalyticsFilters): boolean {
   return (filters.datasetId == null || trade.datasetId === filters.datasetId)
     && (filters.fromTime == null || time >= filters.fromTime)
     && (filters.toTime == null || time <= filters.toTime)
+    && (filters.timeframeMinutes == null || trade.timeframeMinutes === filters.timeframeMinutes)
     && (filters.side == null || trade.side === filters.side)
     && (filters.outcome == null || trade.outcome === filters.outcome);
 }
@@ -115,10 +119,12 @@ export function calculateTradeAnalytics(
   });
 
   let equity = Math.max(0, account.initialBalance);
+  const equityCurve: TradeAnalytics["equityCurve"] = [{ time: 0, equity }];
   let peak = equity;
   let maxDrawdown = 0;
   closedTrades.forEach((trade) => {
     equity += trade.result ?? 0;
+    equityCurve.push({ time: tradeTime(trade), equity });
     peak = Math.max(peak, equity);
     maxDrawdown = Math.max(maxDrawdown, peak - equity);
   });
@@ -131,6 +137,7 @@ export function calculateTradeAnalytics(
     : null;
 
   return {
+    equityCurve,
     totalTrades: filteredTrades.length,
     closedTrades: closedTrades.length,
     openTrades: filteredTrades.filter((trade) => trade.status === "OPEN").length,

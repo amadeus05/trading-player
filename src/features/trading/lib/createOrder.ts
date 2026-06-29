@@ -34,6 +34,7 @@ export function createOrder({
   datasetId,
   side,
   candle,
+  timeframeMinutes,
   settings,
   orderType,
   leverage,
@@ -70,6 +71,7 @@ export function createOrder({
   const trade: Trade = {
     id,
     datasetId,
+    timeframeMinutes,
     side,
     entryTime: candle.time,
     createdTime: candle.time,

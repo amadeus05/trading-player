@@ -857,9 +857,31 @@ g[data-channel-id].selected .pc-edge-line {
   margin-bottom: 14px;
 }
 
+.journalTopBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.journalTopBar>div {
+  display: grid;
+  gap: 3px;
+}
+
+.journalTopBar b {
+  color: #eef0f6;
+  font-size: 14px;
+}
+
+.journalTopBar span {
+  color: #7b8497;
+  font-size: 11px;
+}
+
 .journalFilters {
   display: grid;
-  grid-template-columns: 150px minmax(170px, 1fr) minmax(190px, 1fr) 140px 140px;
+  grid-template-columns: 140px minmax(170px, 1fr) minmax(170px, 1fr) 110px 130px 130px;
   gap: 8px;
   align-items: center;
 }
@@ -907,6 +929,59 @@ g[data-channel-id].selected .pc-edge-line {
 
 .journalMetrics .neg {
   color: #ff687d;
+}
+
+.journalChart {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #242934;
+  border-radius: 7px;
+  background: #10141c;
+}
+
+.journalChartHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.journalChartHeader span {
+  color: #8c95a8;
+  font-size: 11px;
+}
+
+.journalChartHeader b {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.journalChart .pos {
+  color: #2bd9a8;
+}
+
+.journalChart .neg {
+  color: #ff687d;
+}
+
+.journalChart svg {
+  width: 100%;
+  height: 116px;
+  overflow: visible;
+}
+
+.journalChart line {
+  stroke: #242934;
+  stroke-width: 1;
+}
+
+.journalChart path {
+  fill: none;
+  stroke: #2bd9a8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 
 @media (max-width: 900px) {
