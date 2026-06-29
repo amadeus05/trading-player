@@ -14,6 +14,7 @@ export type CreateOrderResult =
 
 interface CreateOrderOptions {
   id: string;
+  datasetId?: string;
   side: Trade["side"];
   candle: Candle;
   timeframeMinutes: number;
@@ -30,6 +31,7 @@ interface CreateOrderOptions {
 
 export function createOrder({
   id,
+  datasetId,
   side,
   candle,
   settings,
@@ -67,6 +69,7 @@ export function createOrder({
   const entryFee = entry * size * entryFeePct / 100;
   const trade: Trade = {
     id,
+    datasetId,
     side,
     entryTime: candle.time,
     createdTime: candle.time,

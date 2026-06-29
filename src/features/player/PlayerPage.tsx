@@ -382,6 +382,7 @@ export function PlayerPage() {
         candles={candles}
         replayDateRange={activeDataset ? { from: activeDataset.from, to: activeDataset.to } : undefined}
         trades={state.trades}
+        datasetOptions={datasetOptions}
         onSettingsClose={() => setSettingsOpen(false)}
         onSettingsReset={() => setState((current) => ({
           ...current,

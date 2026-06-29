@@ -851,6 +851,74 @@ g[data-channel-id].selected .pc-edge-line {
   grid-column: 1 / -1;
 }
 
+.journalAnalytics {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.journalFilters {
+  display: grid;
+  grid-template-columns: 150px minmax(170px, 1fr) minmax(190px, 1fr) 140px 140px;
+  gap: 8px;
+  align-items: center;
+}
+
+.journalFilters .ant-select,
+.journalFilters .ant-picker {
+  width: 100%;
+}
+
+.journalMetrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.journalMetrics div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid #242934;
+  border-radius: 7px;
+  background: #11151d;
+}
+
+.journalMetrics span {
+  color: #7b8497;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.journalMetrics b {
+  overflow: hidden;
+  color: #e8ebf2;
+  font-size: 12px;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.journalMetrics .pos {
+  color: #2bd9a8;
+}
+
+.journalMetrics .neg {
+  color: #ff687d;
+}
+
+@media (max-width: 900px) {
+  .journalFilters {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .journalMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .symbol {
   position: absolute;
   top: 20px;

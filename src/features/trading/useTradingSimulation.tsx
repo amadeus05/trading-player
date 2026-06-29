@@ -136,6 +136,7 @@ export function useTradingSimulation({
     }
     const created = createOrder({
       id: crypto.randomUUID(),
+      datasetId,
       side,
       candle: currentCandle,
       timeframeMinutes: timeframe,
