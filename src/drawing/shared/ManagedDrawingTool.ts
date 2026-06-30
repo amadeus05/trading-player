@@ -30,6 +30,7 @@ export interface ClipboardBridgeOptions<T extends { id: string; datasetId: strin
   select: (id: string) => void;
   deleteSelected: () => void;
   createFromClipboard: (data: ClipboardData<K>) => T;
+  syncAll: () => void;
   cancelDrawing?: () => boolean;
 }
 
@@ -53,6 +54,7 @@ export function createClipboardBridge<T extends { id: string; datasetId: string 
       const created = options.createFromClipboard(data);
       options.append(created);
       options.onCreate(created);
+      options.syncAll();
       options.select(created.id);
     },
     cancelDrawing: options.cancelDrawing,

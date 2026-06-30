@@ -344,6 +344,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       select: (id) => selectFib(id),
       deleteSelected: () => { if (selectedId) deleteFib(selectedId); },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
+      syncAll,
       cancelDrawing: () => {
         if (!drawPoint1 && !drawPoint2) return false;
         drawPoint1 = null;

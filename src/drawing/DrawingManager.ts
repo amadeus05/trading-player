@@ -222,7 +222,7 @@ export class DrawingManager {
 
     const mod = event.ctrlKey || event.metaKey;
 
-    if (mod && event.key.toLowerCase() === "c") {
+    if (mod && (event.code === "KeyC" || event.key.toLowerCase() === "c")) {
       if (!this.activeKind) return;
       const item = this.bridgesByKind.get(this.activeKind)?.getSelected();
       if (!item) return;
@@ -231,7 +231,7 @@ export class DrawingManager {
       return;
     }
 
-    if (mod && event.key.toLowerCase() === "v") {
+    if (mod && (event.code === "KeyV" || event.key.toLowerCase() === "v")) {
       if (this.isDrawing() || !this.clipboard) return;
       event.preventDefault();
       this.bridgesByKind.get(this.clipboard.kind)?.paste(this.clipboard);

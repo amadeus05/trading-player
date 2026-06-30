@@ -331,6 +331,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       select: (id) => selectLine(id),
       deleteSelected: () => { if (selectedId) deleteLine(selectedId); },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
+      syncAll,
       cancelDrawing: () => {
         if (!drawPoint1) return false;
         drawPoint1 = null;

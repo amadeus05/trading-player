@@ -378,6 +378,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       select: (id) => selectRect(id),
       deleteSelected: () => { if (selectedId) deleteRect(selectedId); },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
+      syncAll,
       cancelDrawing: () => {
         if (!drawPoint1) return false;
         drawPoint1 = null;

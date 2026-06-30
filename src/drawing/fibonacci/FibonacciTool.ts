@@ -310,6 +310,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
       select: (id) => selectFib(id),
       deleteSelected: () => { if (selectedId) deleteFib(selectedId); },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
+      syncAll,
       cancelDrawing: () => {
         if (!drawPoint1) return false;
         drawPoint1 = null;
