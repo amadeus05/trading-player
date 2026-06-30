@@ -320,6 +320,7 @@ export function PlayerPage() {
                 drawingMode={drawingMode}
                 datasetId={dataset}
                 drawingsVisible={drawingsVisible}
+                followCandle={simulationSettings.followCandle}
                 deleteAllDrawingsRef={deleteAllDrawingsRef}
                 onDrawingComplete={() => setDrawingMode("none")}
                 onInteractionChange={(active) => { chartInteractionActive.current = active; }}
@@ -400,6 +401,14 @@ export function PlayerPage() {
             ...DEFAULT_SIMULATION_SETTINGS,
             ...current.settings,
             showClosedTradeOverlays: checked,
+          },
+        }))}
+        onFollowCandleChange={(checked) => setState((current) => ({
+          ...current,
+          settings: {
+            ...DEFAULT_SIMULATION_SETTINGS,
+            ...current.settings,
+            followCandle: checked,
           },
         }))}
         onDatePickerClose={() => setDatePickerOpen(false)}

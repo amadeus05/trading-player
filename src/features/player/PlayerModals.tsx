@@ -120,6 +120,7 @@ interface PlayerModalsProps {
   onInitialBalanceChange: (value: number | null) => void;
   onAmbiguousExitPolicyChange: (value: AmbiguousExitPolicy) => void;
   onClosedTradeOverlaysChange: (checked: boolean) => void;
+  onFollowCandleChange: (checked: boolean) => void;
   onDatePickerClose: () => void;
   onReplayTimeSelect: (time: number) => void;
   onJournalClose: () => void;
@@ -144,6 +145,7 @@ export function PlayerModals({
   onInitialBalanceChange,
   onAmbiguousExitPolicyChange,
   onClosedTradeOverlaysChange,
+  onFollowCandleChange,
   onDatePickerClose,
   onReplayTimeSelect,
   onJournalClose,
@@ -337,6 +339,7 @@ export function PlayerModals({
             <small>Used only when TP and SL order cannot be resolved from lower candles</small>
           </label>
           <label className="settingsToggle"><span>Разметка закрытых сделок</span><Switch checked={settings.showClosedTradeOverlays} onChange={onClosedTradeOverlaysChange} /><small>Зоны TP/SL и линия фактического выхода на графике</small></label>
+          <label className="settingsToggle"><span>Следовать за свечой</span><Switch checked={settings.followCandle} onChange={onFollowCandleChange} /><small>График центрируется и автоматически прокручивается за текущей свечой во время replay</small></label>
         </div>
       </Modal>
 

@@ -11,6 +11,7 @@ const settings: SimulationSettings = {
   slippagePct: 0.02,
   stopSlippagePct: 0.05,
   showClosedTradeOverlays: true,
+  followCandle: false,
   ambiguousExitPolicy: "conservative",
 };
 

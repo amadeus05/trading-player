@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type MutableRefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, type MutableRefObject } from "react";
 import {
   CandlestickSeries,
   CrosshairMode,
@@ -70,6 +70,7 @@ interface ReplayChartProps {
   drawingMode: DrawingMode;
   datasetId: string;
   drawingsVisible: boolean;
+  followCandle: boolean;
   onDrawingComplete: () => void;
   deleteAllDrawingsRef?: MutableRefObject<(() => void) | null>;
 }
@@ -94,10 +95,15 @@ export function ReplayChart({
   drawingMode,
   datasetId,
   drawingsVisible,
+  followCandle,
   onDrawingComplete,
   deleteAllDrawingsRef,
 }: ReplayChartProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const candlesRef = useRef(candles);
+  candlesRef.current = candles;
+  const followCandleRef = useRef(followCandle);
+  followCandleRef.current = followCandle;
   const selectedTrendLineId = useRef<string | null>(null);
   const savedLogicalRange = useRef<LogicalRange | null>(null);
   const savedCandleInterval = useRef<number | null>(null);
@@ -110,6 +116,7 @@ export function ReplayChart({
     setDrawingsVisible: (visible: boolean) => void;
     setDrawingMode: (mode: DrawingMode) => void;
     rebuildTradeOverlays: () => void;
+    lockPriceScale: () => void;
   } | null>(null);
   const overlayPropsRef = useRef({
     barriers,
@@ -140,11 +147,17 @@ export function ReplayChart({
     drawingActions,
     onDrawingComplete,
   };
+  // Stable primitive so prefetch-driven candle appends (same array identity
+  // semantics aside, new reference / same interval) don't recreate the chart.
+  const candleInterval = useMemo(
+    () => (candles.length > 1 ? candles[1].time - candles[0].time : null),
+    [candles],
+  );
   useEffect(() => {
-    if (!ref.current || !candles.length) return;
-    const safeIndex = Math.max(0, Math.min(index, candles.length - 1));
-    const visible = candles.slice(0, safeIndex + 1);
-    const candleInterval = candles.length > 1 ? candles[1].time - candles[0].time : null;
+    const liveCandles = candlesRef.current;
+    if (!ref.current || !liveCandles.length) return;
+    const safeIndex = Math.max(0, Math.min(index, liveCandles.length - 1));
+    const visible = liveCandles.slice(0, safeIndex + 1);
     const timeframeChanged = savedCandleInterval.current != null
       && candleInterval != null
       && savedCandleInterval.current !== candleInterval;
@@ -209,6 +222,29 @@ export function ReplayChart({
       cs.priceScale().applyOptions({ autoScale: false });
       cs.priceScale().setVisibleRange(range);
     };
+    // Fits the price scale to whatever candles are on screen, like autoScale would,
+    // but keeps autoScale itself off — lightweight-charts refuses to start a vertical
+    // price-axis drag while autoScale is on, so toggling it on/off for follow mode
+    // left dragging permanently stuck once follow mode was turned off.
+    const fitPriceScaleToVisible = () => {
+      const all = candleStore.candles;
+      if (!all.length) return;
+      const logicalRange = chart.timeScale().getVisibleLogicalRange();
+      let candlesInView = all;
+      if (logicalRange) {
+        const from = Math.max(0, Math.floor(logicalRange.from));
+        const to = Math.min(all.length - 1, Math.ceil(logicalRange.to));
+        if (to >= from) candlesInView = all.slice(from, to + 1);
+      }
+      if (!candlesInView.length) return;
+      const low = Math.min(...candlesInView.map((c) => c.low));
+      const high = Math.max(...candlesInView.map((c) => c.high));
+      if (!Number.isFinite(low) || !Number.isFinite(high)) return;
+      const span = high - low;
+      const padding = span > 0 ? span * 0.08 : Math.max(Math.abs(high) * 0.01, 1);
+      cs.priceScale().applyOptions({ autoScale: false });
+      cs.priceScale().setVisibleRange({ from: low - padding, to: high + padding });
+    };
     const applyReplayIndex = (
       nextIndex: number,
       allCandles: Candle[],
@@ -217,12 +253,12 @@ export function ReplayChart({
       if (!allCandles.length) return;
       const nextSafeIndex = Math.max(0, Math.min(nextIndex, allCandles.length - 1));
       const nextVisible = allCandles.slice(0, nextSafeIndex + 1);
-      const shouldFollowRealtime = followRealtime.current;
+      const shouldFollowRealtime = followCandleRef.current || followRealtime.current;
+      const previousVisible = candleStore.candles;
+      const delta = renderedIndex.current == null ? 0 : nextSafeIndex - renderedIndex.current;
       const preservedRange = forcedRange ?? (shouldFollowRealtime
         ? null
         : savedLogicalRange.current ?? chart.timeScale().getVisibleLogicalRange());
-      const previousVisible = candleStore.candles;
-      const delta = renderedIndex.current == null ? 0 : nextSafeIndex - renderedIndex.current;
       const canAppendOneBar = delta === 1
         && nextVisible.length === previousVisible.length + 1
         && previousVisible.length > 0
@@ -243,7 +279,10 @@ export function ReplayChart({
         if (preservedRange) {
           chart.timeScale().setVisibleLogicalRange(preservedRange);
         } else if (shouldFollowRealtime && nextVisible.length > 1) {
-          chart.timeScale().scrollToRealTime();
+          // scrollToRealTime() is always animated, which keeps firing visible-range
+          // change events for ~1s and starves the overlay sync (each event reschedules
+          // it 2 frames out). scrollToPosition(0, false) reaches the same edge instantly.
+          chart.timeScale().scrollToPosition(0, false);
         } else {
           chart.timeScale().setVisibleLogicalRange(defaultFocusRange(nextSafeIndex));
         }
@@ -251,7 +290,9 @@ export function ReplayChart({
         savedLogicalRange.current = chart.timeScale().getVisibleLogicalRange() ?? preservedRange;
         followRealtime.current = shouldFollowRealtime;
         renderedIndex.current = nextIndex;
-        if (!canAppendOneBar && !forcedRange) {
+        if (followCandleRef.current) {
+          fitPriceScaleToVisible();
+        } else if (!canAppendOneBar && !forcedRange) {
           primePriceScaleInteraction();
         }
         drawingManager.scheduleOverlaySync();
@@ -332,7 +373,7 @@ export function ReplayChart({
       initialRange = defaultFocusRange(safeIndex);
       if (forceFocus) followRealtime.current = false;
     }
-    applyReplayIndex(safeIndex, candles, initialRange);
+    applyReplayIndex(safeIndex, liveCandles, initialRange);
     if (timeframeChanged && initialRange) {
       deferredTimeRangeFrame = requestAnimationFrame(() => {
         chart.timeScale().setVisibleLogicalRange(initialRange!);
@@ -434,6 +475,7 @@ export function ReplayChart({
         });
       },
       rebuildTradeOverlays,
+      lockPriceScale: primePriceScaleInteraction,
     };
     prevReplayIndexRef.current = index;
     const cleanupTrendLines = attachTrendLineTool({
@@ -564,7 +606,7 @@ export function ReplayChart({
       chart.remove();
       chartRuntimeRef.current = null;
     };
-  }, [candles, selectingStart, focusRevision, pricePrecision, datasetId]);
+  }, [candleInterval, selectingStart, focusRevision, pricePrecision, datasetId]);
 
   const prevOverlayKeyRef = useRef("");
   useLayoutEffect(() => {
@@ -591,6 +633,16 @@ export function ReplayChart({
     prevReplayIndexRef.current = index;
     chartRuntimeRef.current?.applyReplayIndex(index, candles);
   }, [index, candles]);
+
+  useLayoutEffect(() => {
+    if (!followCandle) {
+      // Leaving follow mode: autoScale was forced on every step; lock the price
+      // scale back to manual so vertical drag/pan works again immediately.
+      chartRuntimeRef.current?.lockPriceScale();
+      return;
+    }
+    chartRuntimeRef.current?.applyReplayIndex(index, candles);
+  }, [followCandle]);
   return <div
     className={`chart ${selectingStart ? "selecting-replay-start" : ""}`}
     ref={ref}
