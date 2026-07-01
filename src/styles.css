@@ -222,14 +222,20 @@ main {
 }
 
 .drawing-tool-btn {
-  display: flex;
+  display: inline-flex !important;
   align-items: center;
   justify-content: center;
   width: 36px;
   height: 36px;
-  padding: 0;
+  padding: 0 !important;
   border-radius: 4px;
   color: #d1d4dc;
+  line-height: 0;
+}
+
+.drawing-tool-btn svg {
+  display: block;
+  flex-shrink: 0;
 }
 
 .drawing-tool-btn:hover {
@@ -556,11 +562,19 @@ g[data-channel-id].selected .pc-edge-line {
   justify-content: center;
   width: 28px;
   height: 28px;
+  padding: 0;
   border: none;
   background: transparent;
   color: #a3a6af;
   border-radius: 4px;
   cursor: pointer;
+  line-height: 0;
+}
+
+.trend-toolbar button svg,
+.rect-toolbar button svg {
+  display: block;
+  flex-shrink: 0;
 }
 
 .trend-toolbar button:hover,
@@ -2469,6 +2483,7 @@ aside {
   cursor: pointer;
   flex-shrink: 0;
   padding: 0;
+  line-height: 0;
 }
 
 .rect-toolbar .rect-tb-style-btn {
@@ -2516,6 +2531,15 @@ aside {
   width: 28px;
   height: 28px;
   padding: 0;
+  line-height: 0;
+}
+
+.rect-toolbar .rect-tb-lock svg,
+.rect-toolbar .rect-tb-del svg,
+.trend-toolbar .rect-tb-lock svg,
+.trend-toolbar .rect-tb-del svg {
+  width: 18px;
+  height: 18px;
 }
 
 .rect-tb-del:hover {
