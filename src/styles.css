@@ -1563,7 +1563,7 @@ aside {
 .amountInput .ant-select-selection-item {
   line-height: 22px !important;
   color: #fff;
-  font-weight: 650;
+  font-weight: 600;
   text-align: right;
 }
 
@@ -2512,6 +2512,15 @@ aside {
   color: #2962ff;
 }
 
+.vp-toolbar .rect-tb-settings svg {
+  width: 28px;
+  height: 28px;
+}
+
+.vp-toolbar [data-toolbar-slot="settings"] + .rect-toolbar-sep + .rect-toolbar-sep {
+  display: none;
+}
+
 /* Shared DrawingToolbar wins over legacy trend-toolbar button sizing. */
 .trend-toolbar.drawing-toolbar .rect-tb-color-btn {
   width: 30px;
@@ -2834,4 +2843,284 @@ aside {
   width: 14px;
   height: 14px;
   cursor: pointer;
+}
+
+.drawing-settings-panel.vp-panel {
+  width: 360px;
+  max-height: min(430px, calc(100% - 24px));
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #1f1f1f;
+  border: 1px solid #2b2b2b;
+  border-radius: 6px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55);
+  color: #d6d6d6;
+  font: 500 13px/1.35 Inter, system-ui, sans-serif;
+}
+
+.drawing-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 10px;
+  flex-shrink: 0;
+  cursor: grab;
+}
+
+.drawing-settings-header:active {
+  cursor: grabbing;
+}
+
+.drawing-settings-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.drawing-settings-title {
+  color: #e8e8e8;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.drawing-settings-edit,
+.drawing-settings-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: #d6d6d6;
+  cursor: pointer;
+  padding: 0;
+  cursor: pointer;
+}
+
+.drawing-settings-edit {
+  width: 20px;
+  height: 20px;
+}
+
+.drawing-settings-close {
+  width: 26px;
+  height: 26px;
+  color: #e0e0e0;
+}
+
+.drawing-settings-edit:hover,
+.drawing-settings-close:hover {
+  color: #ffffff;
+}
+
+.drawing-settings-tabs {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  height: 40px;
+  padding: 0 18px;
+  flex-shrink: 0;
+}
+
+.drawing-settings-tabs::before {
+  content: "";
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 3px;
+  background: #585858;
+}
+
+.drawing-settings-tab {
+  position: relative;
+  z-index: 1;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #d6d6d6;
+  font: 600 14px/40px Inter, system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.drawing-settings-tab::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  border-radius: 3px;
+  background: transparent;
+}
+
+.drawing-settings-tab.is-active {
+  color: #f2f2f2;
+}
+
+.drawing-settings-tab.is-active::after {
+  background: #f2f2f2;
+}
+
+.drawing-settings-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  overflow-y: auto;
+}
+
+.drawing-settings-body .vp-panel-row {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+}
+
+.drawing-settings-body .vp-panel-label {
+  color: #dedede;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.drawing-settings-body .vp-panel-control {
+  justify-content: flex-start;
+}
+
+.drawing-settings-body .vp-panel-control input[type="number"],
+.drawing-settings-body .vp-panel-control select {
+  min-width: 176px;
+  height: 34px;
+  padding: 0 34px 0 12px;
+  background: #202020;
+  border: 1px solid #555555;
+  border-radius: 6px;
+  color: #ededed;
+  font: 600 13px/1 Inter, system-ui, sans-serif;
+  outline: none;
+}
+
+.drawing-settings-body .vp-panel-control input[type="number"]:focus,
+.drawing-settings-body .vp-panel-control select:focus {
+  border-color: #787b86;
+}
+
+.drawing-settings-body .vp-panel-control input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.drawing-settings-body .vp-panel-control input[type="number"]::-webkit-outer-spin-button,
+.drawing-settings-body .vp-panel-control input[type="number"]::-webkit-inner-spin-button {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.drawing-settings-body .vp-panel-control select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23d6d6d6' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-position: right 10px center;
+  background-repeat: no-repeat;
+  background-size: 16px 16px;
+}
+
+.drawing-settings-body .vp-panel-control input[type="color"] {
+  width: 38px;
+  height: 34px;
+  padding: 3px;
+  background: #202020;
+  border: 1px solid #555555;
+  border-radius: 6px;
+  outline: none;
+}
+
+.drawing-settings-body .vp-panel-control input[type="color"]:focus {
+  border-color: #787b86;
+}
+
+.drawing-settings-body .vp-panel-control input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.drawing-settings-body .vp-panel-control input[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: 4px;
+}
+
+.drawing-settings-body .vp-panel-control input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #ffffff;
+}
+
+.drawing-settings-placeholder {
+  min-height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #464646;
+  border-radius: 6px;
+  color: #8f8f8f;
+  font: 700 13px/1.4 Inter, system-ui, sans-serif;
+}
+
+.drawing-settings-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-top: 1px solid #3b3b3b;
+  flex-shrink: 0;
+}
+
+.drawing-settings-template,
+.drawing-settings-action {
+  height: 34px;
+  border-radius: 6px;
+  font: 600 13px/1 Inter, system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.drawing-settings-template {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border: 1px solid #545454;
+  background: #202020;
+  color: #e4e4e4;
+}
+
+.drawing-settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.drawing-settings-action {
+  min-width: 58px;
+  padding: 0 12px;
+}
+
+.drawing-settings-action-secondary {
+  border: 1px solid #dedede;
+  background: transparent;
+  color: #f2f2f2;
+}
+
+.drawing-settings-action-primary {
+  border: 1px solid #f2f2f2;
+  background: #f2f2f2;
+  color: #202020;
 }

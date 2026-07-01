@@ -8,14 +8,17 @@ import type { Candle, VolumeProfile } from "../../types";
 import { snapXToNearestCandle, timeToX, xToSnappedTime } from "../shared/coordinates";
 import { attachManagedDrawingLifecycle, createClipboardBridge, getPlotWidth, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import { createDrawingOverlay } from "../shared/overlay";
-import { forgetFloatingPanelPosition, mountFloatingPanel } from "../shared/floatingPanel";
+import { forgetFloatingPanelPosition } from "../shared/floatingPanel";
 import { bindDrawingPointerClick, type DrawingPointerClickEvent } from "../shared/drawingPointerClick";
 import type { DrawingCrudCallbacks, ManagedDrawingToolOptions, ChartCandleStore, DrawingMode } from "../shared/types";
+import { DrawingToolbarController, type DrawingToolbarPatch } from "../shared/DrawingToolbarController";
+import { mountDrawingSettingsPanel, type DrawingSettingsPanelController, type DrawingSettingsTabId } from "../shared/DrawingSettingsPanel";
 import { computeVolumeProfile, type VolumeProfileResult } from "./computeVolumeProfile";
 
 export type VolumeProfileCallbacks = DrawingCrudCallbacks<VolumeProfile>;
 
 const SVG_NS = "http://www.w3.org/2000/svg";
+const SETTINGS_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M18 14a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm-1 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"></path><path fill-rule="evenodd" d="M8.5 5h11l5 9-5 9h-11l-5-9 5-9Zm-3.86 9L9.1 6h9.82l4.45 8-4.45 8H9.1l-4.45-8Z"></path></svg>`;
 
 export const VOLUME_PROFILE_DEFAULTS: Omit<VolumeProfile, "id" | "datasetId" | "timeLeft" | "timeRight"> = {
   rows: 60,
@@ -107,7 +110,8 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
   let selectedId: string | null = null;
   let dragActive = false;
   let panelEl: HTMLDivElement | null = null;
-  let panelUnmount: (() => void) | null = null;
+  let settingsPanel: DrawingSettingsPanelController | null = null;
+  let toolbarController: DrawingToolbarController<VolumeProfile>;
 
   let drawPoint1Time: number | null = null;
   let ghostEl: SVGRectElement | null = null;
@@ -367,12 +371,14 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
   function deleteProfile(id: string) {
     profiles = profiles.filter((p) => p.id !== id);
     forgetFloatingPanelPosition(`volumeprofile:${id}`);
+    forgetFloatingPanelPosition(`volumeprofile-toolbar:${id}`);
     invalidate(id);
     const els = elMap.get(id);
     if (els) { els.group.remove(); elMap.delete(id); }
     if (selectedId === id) {
       selectedId = null;
       removePanel();
+      toolbarController.hide();
       manager.clearSelection("volumeprofile");
     }
     callbacks.onDelete(id);
@@ -381,6 +387,7 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
   function purgeAll() {
     for (const [id, els] of elMap) {
       forgetFloatingPanelPosition(`volumeprofile:${id}`);
+      forgetFloatingPanelPosition(`volumeprofile-toolbar:${id}`);
       els.group.remove();
     }
     elMap.clear();
@@ -389,6 +396,7 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
     if (selectedId !== null) {
       selectedId = null;
       removePanel();
+      toolbarController.hide();
     }
     manager.clearSelection("volumeprofile");
     syncAll();
@@ -402,15 +410,30 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
     callbacks.onUpdate(profiles[idx]);
     syncAll();
     if (selectedId === vp.id) refreshPanelValues(profiles[idx]);
+    toolbarController.refresh();
   }
 
   // ---- selection + settings panel ----
 
   function removePanel() {
-    panelUnmount?.();
-    panelUnmount = null;
-    panelEl?.remove();
+    settingsPanel?.destroy();
+    settingsPanel = null;
     panelEl = null;
+  }
+
+  function toggleSettingsPanel(vp: VolumeProfile) {
+    if (panelEl) {
+      removePanel();
+      return;
+    }
+    createPanel(vp);
+  }
+
+  function patchProfileFromToolbar(vp: VolumeProfile, patch: DrawingToolbarPatch) {
+    const nextPatch: Partial<VolumeProfile> = {};
+    if (patch.locked != null) nextPatch.locked = patch.locked;
+    if (Object.keys(nextPatch).length === 0) return;
+    patchProfile(vp, nextPatch);
   }
 
   function positionPanel(id: string) {
@@ -452,36 +475,16 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
     set('[data-f="pocColor"]', vp.pocColor);
     set('[data-f="vaBgColor"]', vp.valueAreaBgColor);
     set('[data-f="vaLineColor"]', vp.valueAreaLineColor);
-    set('[data-f="locked"]', Boolean(vp.locked));
   }
 
-  function createPanel(vp: VolumeProfile) {
-    removePanel();
-    const panel = document.createElement("div");
-    panel.className = "vp-panel";
+  function renderPanelPlaceholder(tabId: DrawingSettingsTabId, body: HTMLDivElement) {
+    const placeholder = document.createElement("div");
+    placeholder.className = "drawing-settings-placeholder";
+    placeholder.textContent = `${tabId[0].toUpperCase()}${tabId.slice(1)} settings will be configured here.`;
+    body.appendChild(placeholder);
+  }
 
-    const header = document.createElement("div");
-    header.className = "vp-panel-header";
-    const grip = document.createElement("div");
-    grip.className = "vp-panel-grip";
-    grip.textContent = "⠿";
-    const title = document.createElement("span");
-    title.className = "vp-panel-title";
-    title.textContent = "Volume Profile";
-    const deleteBtn = document.createElement("button");
-    deleteBtn.className = "vp-panel-delete";
-    deleteBtn.type = "button";
-    deleteBtn.title = "Удалить";
-    deleteBtn.textContent = "✕";
-    deleteBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
-    deleteBtn.addEventListener("click", () => deleteProfile(vp.id));
-    header.append(grip, title, deleteBtn);
-    panel.appendChild(header);
-
-    const body = document.createElement("div");
-    body.className = "vp-panel-body";
-    panel.appendChild(body);
-
+  function renderStylePanel(vp: VolumeProfile, body: HTMLDivElement) {
     const current = () => profiles.find((p) => p.id === vp.id) ?? vp;
 
     const rowsField = field("Rows");
@@ -564,16 +567,32 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
     toggleField("Show POC", "showPoc", (v) => patchProfile(current(), { showPoc: v }), vp.showPoc);
     toggleField("Show VA background", "showVaBg", (v) => patchProfile(current(), { showValueAreaBg: v }), vp.showValueAreaBg);
     toggleField("Show VA lines", "showVaLines", (v) => patchProfile(current(), { showValueAreaLines: v }), vp.showValueAreaLines);
-    toggleField("Lock", "locked", (v) => patchProfile(current(), { locked: v }), Boolean(vp.locked));
+  }
 
-    container.appendChild(panel);
-    panelEl = panel;
-    panelUnmount = mountFloatingPanel({
+  function createPanel(vp: VolumeProfile) {
+    removePanel();
+    settingsPanel = mountDrawingSettingsPanel({
       container,
-      panel,
-      grip,
       persistenceKey: `volumeprofile:${vp.id}`,
+      title: "Volume Profile",
+      initialTab: "style",
+      tabs: [
+        { id: "style", label: "Style" },
+        { id: "coordinates", label: "Coordinates" },
+        { id: "visibility", label: "Visibility" },
+      ],
+      renderTab: (tabId, body) => {
+        if (tabId === "style") {
+          renderStylePanel(vp, body);
+          return;
+        }
+        renderPanelPlaceholder(tabId, body);
+      },
+      onClose: removePanel,
+      onCancel: removePanel,
+      onOk: removePanel,
     });
+    panelEl = settingsPanel.panel;
   }
 
   function selectProfile(id: string | null) {
@@ -581,6 +600,7 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
       if (selectedId !== null) {
         selectedId = null;
         removePanel();
+        toolbarController.hide();
         syncAll();
       }
       manager.clearSelection("volumeprofile");
@@ -588,10 +608,46 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
     }
     selectedId = id;
     const vp = profiles.find((item) => item.id === id);
-    if (vp) createPanel(vp);
+    if (vp) toolbarController.show(vp);
     manager.activateSelection("volumeprofile", elMap.get(id)?.group ?? null, id);
     syncAll();
   }
+
+  toolbarController = new DrawingToolbarController({
+    container,
+    preset: "actions",
+    className: "vp-toolbar",
+    templateKind: "trendline",
+    persistenceKey: (vp) => `volumeprofile-toolbar:${vp.id}`,
+    getState: (vp) => ({
+      lineColor: vp.pocColor,
+      width: 1,
+      style: "solid",
+      locked: Boolean(vp.locked),
+    }),
+    onPatch: patchProfileFromToolbar,
+    onDelete: (vp) => deleteProfile(vp.id),
+    onSync: syncAll,
+    slots: [{
+      id: "settings",
+      anchor: "after-grip",
+      mount: () => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "rect-tb-settings rect-tb-icon-btn";
+        button.title = "Настройки";
+        button.innerHTML = SETTINGS_ICON;
+        return button;
+      },
+      bind: (element, ctx) => {
+        element.addEventListener("click", (event) => {
+          event.stopPropagation();
+          ctx.closePopups();
+          toggleSettingsPanel(ctx.drawing);
+        });
+      },
+    }],
+  });
 
   const unregisterLifecycle = attachManagedDrawingLifecycle({
     manager,
@@ -622,6 +678,7 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
       if (selectedId === null) return;
       selectedId = null;
       removePanel();
+      toolbarController.hide();
       syncAll();
     },
     purgeAll,
@@ -785,6 +842,7 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
     const t = e.target as Element;
     if (
       t.closest(".vp-panel") ||
+      t.closest(".rect-toolbar") ||
       t.classList.contains("vp-hit-el") ||
       t.classList.contains("vp-handle-el")
     ) return;
@@ -798,6 +856,7 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
     try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(refreshGhostAfterViewportChange); } catch { }
     container.removeEventListener("mousemove", handleMouseMove);
     container.removeEventListener("pointerdown", onBgPointerDown);
+    toolbarController.destroy();
     removePanel();
     overlay.remove();
     clearGhost();

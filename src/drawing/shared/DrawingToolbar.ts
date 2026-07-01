@@ -32,6 +32,8 @@ export interface DrawingToolbarOptions {
   showColor?: boolean;
   showLock?: boolean;
   showTemplates?: boolean;
+  showWidth?: boolean;
+  showStyle?: boolean;
 }
 
 export function createDrawingToolbar(options: DrawingToolbarOptions): HTMLDivElement {
@@ -47,12 +49,17 @@ export function createDrawingToolbar(options: DrawingToolbarOptions): HTMLDivEle
     ? `<div class="rect-toolbar-sep"></div><button type="button" class="rect-tb-templates rect-tb-icon-btn" title="Шаблоны">${TEMPLATES_ICON}</button>`
     : "";
   const afterGrip = showColor || options.showFill || options.showText ? `<div class="rect-toolbar-sep"></div>` : "";
+  const width = options.showWidth !== false
+    ? `<button type="button" class="rect-tb-width-btn">${LINE}<span class="rect-tb-width-label">${options.width}px</span></button>`
+    : "";
+  const style = options.showStyle !== false
+    ? `<button type="button" class="rect-tb-style-btn">${drawingStyleIcon(options.style)}</button>`
+    : "";
+  const lineControls = width || style ? `<div class="rect-toolbar-sep"></div>${width}${style}` : "";
   div.innerHTML = `<div class="rect-toolbar-row">
     <div class="rect-tb-grip" title="Переместить панель"><svg width="8" height="14" viewBox="0 0 8 14" fill="currentColor"><circle cx="2" cy="2" r="1.5"/><circle cx="6" cy="2" r="1.5"/><circle cx="2" cy="7" r="1.5"/><circle cx="6" cy="7" r="1.5"/><circle cx="2" cy="12" r="1.5"/><circle cx="6" cy="12" r="1.5"/></svg></div>
     ${templates}${afterGrip}${color}${fill}${text}
-    <div class="rect-toolbar-sep"></div>
-    <button type="button" class="rect-tb-width-btn">${LINE}<span class="rect-tb-width-label">${options.width}px</span></button>
-    <button type="button" class="rect-tb-style-btn">${drawingStyleIcon(options.style)}</button>
+    ${lineControls}
     ${lock}
     <div class="rect-toolbar-sep"></div>
     <button type="button" class="rect-tb-del rect-tb-icon-btn trend-toolbar-delete" title="Удалить">${DELETE}</button>

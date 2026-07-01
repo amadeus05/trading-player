@@ -37,7 +37,7 @@ export interface DrawingToolbarPatch {
   locked?: boolean;
 }
 
-export type DrawingToolbarPreset = "full" | "line-only" | "channel" | "none";
+export type DrawingToolbarPreset = "full" | "line-only" | "channel" | "actions" | "none";
 
 export type ToolbarSlotAnchor =
   | "after-grip"
@@ -94,6 +94,15 @@ const PRESET_OPTIONS: Record<Exclude<DrawingToolbarPreset, "none">, Partial<Draw
     showFill: true,
     showText: false,
     showLock: true,
+  },
+  actions: {
+    showColor: false,
+    showFill: false,
+    showText: false,
+    showLock: true,
+    showTemplates: false,
+    showWidth: false,
+    showStyle: false,
   },
 };
 
