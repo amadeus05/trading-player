@@ -149,9 +149,12 @@ function findAnchorElement(row: HTMLElement, anchor: ToolbarSlotAnchor): HTMLEle
 function insertSlot(row: HTMLElement, anchor: ToolbarSlotAnchor, element: HTMLElement) {
   const target = findAnchorElement(row, anchor);
   if (!target) return;
-  const insertBefore = anchor === "before-width" || anchor === "before-lock" || anchor === "before-delete";
-  if (insertBefore) {
-    row.insertBefore(createSeparator(), target);
+  const insertBeforeAnchor = anchor === "before-width" || anchor === "before-lock" || anchor === "before-delete";
+  if (insertBeforeAnchor) {
+    const prev = target.previousElementSibling;
+    if (!prev?.classList.contains("rect-toolbar-sep")) {
+      row.insertBefore(createSeparator(), target);
+    }
     row.insertBefore(element, target);
     return;
   }
