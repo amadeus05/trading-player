@@ -2668,3 +2668,146 @@ aside {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+.vp-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.vp-handle-el,
+.vp-hit-el {
+  pointer-events: fill;
+}
+
+.vp-overlay .vp-selected .vp-hit-el {
+  cursor: move;
+}
+
+.vp-selected .vp-handle-el {
+  fill: rgba(91, 138, 240, 0.15);
+}
+
+.vp-ghost {
+  pointer-events: none;
+}
+
+.vp-panel {
+  position: absolute;
+  z-index: 10;
+  width: 220px;
+  background: #1e222d;
+  border: 1px solid #2a2e39;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  user-select: none;
+  pointer-events: all;
+  font-size: 12px;
+  color: #d1d4dc;
+}
+
+.chart[data-drawings-visible="false"] .vp-panel {
+  display: none;
+}
+
+.vp-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-bottom: 1px solid #2a2e39;
+}
+
+.vp-panel-grip {
+  cursor: grab;
+  color: #4c525e;
+  flex-shrink: 0;
+}
+
+.vp-panel-grip:active {
+  cursor: grabbing;
+}
+
+.vp-panel-title {
+  flex: 1;
+  font-weight: 600;
+  color: #d1d4dc;
+}
+
+.vp-panel-delete {
+  border: none;
+  background: transparent;
+  color: #8a8f99;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.vp-panel-delete:hover {
+  background: #2a2e39;
+  color: #ff5c73;
+}
+
+.vp-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.vp-panel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vp-panel-label {
+  color: #8a8f99;
+  flex-shrink: 0;
+}
+
+.vp-panel-control {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.vp-panel-control input[type="number"] {
+  width: 64px;
+  background: #12141b;
+  border: 1px solid #2a2e39;
+  border-radius: 4px;
+  color: #d1d4dc;
+  padding: 2px 6px;
+}
+
+.vp-panel-control select {
+  background: #12141b;
+  border: 1px solid #2a2e39;
+  border-radius: 4px;
+  color: #d1d4dc;
+  padding: 2px 4px;
+}
+
+.vp-panel-control input[type="color"] {
+  width: 28px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid #2a2e39;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.vp-panel-control input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}

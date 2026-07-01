@@ -38,6 +38,7 @@ export function PlayerPage() {
       state.parallelChannels,
       state.rectangles,
       state.trendLines,
+      state.volumeProfiles,
     ],
   );
   const [dataset, setDataset] = useState(""),
@@ -303,6 +304,7 @@ export function PlayerPage() {
             {candles.length ? (
               <ReplayChart
                 candles={candles}
+                rawCandles={raw}
                 index={selectingStart ? lastIndex : replayIndex}
                 barriers={chartDisplay.barriers}
                 trades={chartDisplay.trades}

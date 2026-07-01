@@ -24,6 +24,7 @@ const IGNORED_TARGET_SELECTOR = [
   ".rect-templates-menu",
   ".drawing-inline-text-editor",
   ".measure-tooltip",
+  ".vp-panel",
 ].join(", ");
 
 const CLICK_TOLERANCE_PX = 7;

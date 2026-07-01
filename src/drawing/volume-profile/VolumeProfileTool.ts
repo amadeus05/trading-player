@@ -1,0 +1,759 @@
+/**
+ * VolumeProfileTool – draws a time-range volume profile (buy/sell histogram per price
+ * row, POC and value-area lines) similar to a TradingView "Session Volume Profile".
+ */
+
+import type { IChartApi, ISeriesApi } from "lightweight-charts";
+import type { Candle, VolumeProfile } from "../../types";
+import { snapXToNearestCandle, timeToX, xToSnappedTime } from "../shared/coordinates";
+import { attachManagedDrawingLifecycle, createClipboardBridge, getPlotWidth, runManagedDragSession } from "../shared/ManagedDrawingTool";
+import { createDrawingOverlay } from "../shared/overlay";
+import { forgetFloatingPanelPosition, mountFloatingPanel } from "../shared/floatingPanel";
+import { bindDrawingPointerClick, type DrawingPointerClickEvent } from "../shared/drawingPointerClick";
+import type { DrawingCrudCallbacks, ManagedDrawingToolOptions, ChartCandleStore, DrawingMode } from "../shared/types";
+import { computeVolumeProfile, type VolumeProfileResult } from "./computeVolumeProfile";
+
+export type VolumeProfileCallbacks = DrawingCrudCallbacks<VolumeProfile>;
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+export const VOLUME_PROFILE_DEFAULTS: Omit<VolumeProfile, "id" | "datasetId" | "timeLeft" | "timeRight"> = {
+  rows: 60,
+  valueAreaPct: 0.70,
+  side: "left",
+  splitMode: "candle",
+  profileWidthPct: 0.25,
+  showPoc: true,
+  showValueAreaBg: true,
+  showValueAreaLines: true,
+  buyColor: "#26C6DA",
+  sellColor: "#F06292",
+  pocColor: "#FFFFFF",
+  valueAreaBgColor: "#90CAF9",
+  valueAreaLineColor: "#42A5F5",
+};
+
+function hexToRgba(hex: string, opacityPct: number): string {
+  let h = hex.replace("#", "");
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return hex;
+  return `rgba(${r},${g},${b},${opacityPct / 100})`;
+}
+
+interface BinEls {
+  buy: SVGRectElement;
+  sell: SVGRectElement;
+}
+
+interface VpEls {
+  group: SVGGElement;
+  binsGroup: SVGGElement;
+  bins: BinEls[];
+  vaBg: SVGRectElement;
+  pocLine: SVGLineElement;
+  vaHighLine: SVGLineElement;
+  vaLowLine: SVGLineElement;
+  bodyHit: SVGRectElement;
+  leftHandle: SVGRectElement;
+  rightHandle: SVGRectElement;
+}
+
+interface PixelSpan { left: number; right: number; }
+
+export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
+  container: HTMLDivElement;
+  chart: IChartApi;
+  series: ISeriesApi<"Candlestick">;
+  candleStore: ChartCandleStore;
+  getRawCandles: () => Candle[];
+  volumeProfiles: VolumeProfile[];
+  drawingMode: DrawingMode;
+  datasetId: string;
+  callbacks: VolumeProfileCallbacks;
+}): () => void {
+  const { container, chart, series, candleStore, getRawCandles, datasetId, callbacks, manager } = opts;
+  let profiles = [...opts.volumeProfiles];
+
+  const getPlotWidthLocal = () => getPlotWidth(chart);
+  const overlay = createDrawingOverlay(container, chart, "vp-overlay");
+  const { svg } = overlay;
+
+  let selectedId: string | null = null;
+  let dragActive = false;
+  let panelEl: HTMLDivElement | null = null;
+  let panelUnmount: (() => void) | null = null;
+
+  let drawPoint1Time: number | null = null;
+  let ghostEl: SVGRectElement | null = null;
+  let lastGhostX: number | null = null;
+
+  const elMap = new Map<string, VpEls>();
+  const computedCache = new Map<string, { sig: string; result: VolumeProfileResult | null }>();
+
+  function getComputed(vp: VolumeProfile): VolumeProfileResult | null {
+    const raw = getRawCandles();
+    const sig = `${vp.timeLeft}|${vp.timeRight}|${vp.rows}|${vp.valueAreaPct}|${vp.splitMode}|${raw.length}|${raw.at(-1)?.time ?? 0}`;
+    const cached = computedCache.get(vp.id);
+    if (cached && cached.sig === sig) return cached.result;
+    const result = computeVolumeProfile(raw, vp.timeLeft, vp.timeRight, vp.rows, vp.valueAreaPct, vp.splitMode);
+    computedCache.set(vp.id, { sig, result });
+    return result;
+  }
+
+  function invalidate(id: string) {
+    computedCache.delete(id);
+  }
+
+  function getSpan(vp: VolumeProfile): PixelSpan | null {
+    const xLeft = timeToX(chart, vp.timeLeft, candleStore.candles);
+    const xRight = timeToX(chart, vp.timeRight, candleStore.candles);
+    if (xLeft == null || xRight == null) return null;
+    return { left: Math.min(xLeft, xRight), right: Math.max(xLeft, xRight) };
+  }
+
+  function buildEls(vp: VolumeProfile): VpEls {
+    const group = overlay.createClippedGroup();
+    group.dataset.vpId = vp.id;
+    const binsGroup = document.createElementNS(SVG_NS, "g");
+    const vaBg = document.createElementNS(SVG_NS, "rect");
+    vaBg.setAttribute("pointer-events", "none");
+    const pocLine = document.createElementNS(SVG_NS, "line");
+    pocLine.setAttribute("pointer-events", "none");
+    const vaHighLine = document.createElementNS(SVG_NS, "line");
+    vaHighLine.setAttribute("pointer-events", "none");
+    vaHighLine.setAttribute("stroke-dasharray", "4 3");
+    const vaLowLine = document.createElementNS(SVG_NS, "line");
+    vaLowLine.setAttribute("pointer-events", "none");
+    vaLowLine.setAttribute("stroke-dasharray", "4 3");
+    const bodyHit = document.createElementNS(SVG_NS, "rect");
+    bodyHit.setAttribute("class", "vp-hit-el");
+    bodyHit.setAttribute("fill", "transparent");
+    const leftHandle = document.createElementNS(SVG_NS, "rect");
+    leftHandle.setAttribute("class", "vp-handle-el");
+    leftHandle.setAttribute("fill", "transparent");
+    leftHandle.style.cursor = "ew-resize";
+    const rightHandle = document.createElementNS(SVG_NS, "rect");
+    rightHandle.setAttribute("class", "vp-handle-el");
+    rightHandle.setAttribute("fill", "transparent");
+    rightHandle.style.cursor = "ew-resize";
+
+    group.append(vaBg, binsGroup, pocLine, vaHighLine, vaLowLine, bodyHit, leftHandle, rightHandle);
+
+    bodyHit.addEventListener("pointerdown", (e) => {
+      if (!manager.canEditExistingDrawings()) return;
+      e.stopPropagation(); e.preventDefault();
+      const v = profiles.find((item) => item.id === vp.id);
+      if (!v) return;
+      selectProfile(vp.id);
+      if (v.locked) return;
+      startBodyDrag(vp.id, e as PointerEvent);
+    });
+    leftHandle.addEventListener("pointerdown", (e) => {
+      if (!manager.canEditExistingDrawings()) return;
+      e.stopPropagation(); e.preventDefault();
+      const v = profiles.find((item) => item.id === vp.id);
+      if (!v || v.locked) return;
+      selectProfile(vp.id);
+      startEdgeDrag(vp.id, "left", e as PointerEvent);
+    });
+    rightHandle.addEventListener("pointerdown", (e) => {
+      if (!manager.canEditExistingDrawings()) return;
+      e.stopPropagation(); e.preventDefault();
+      const v = profiles.find((item) => item.id === vp.id);
+      if (!v || v.locked) return;
+      selectProfile(vp.id);
+      startEdgeDrag(vp.id, "right", e as PointerEvent);
+    });
+
+    return { group, binsGroup, bins: [], vaBg, pocLine, vaHighLine, vaLowLine, bodyHit, leftHandle, rightHandle };
+  }
+
+  function ensureBinCount(els: VpEls, count: number) {
+    if (els.bins.length === count) return;
+    els.binsGroup.replaceChildren();
+    els.bins = Array.from({ length: count }, () => {
+      const buy = document.createElementNS(SVG_NS, "rect");
+      buy.setAttribute("pointer-events", "none");
+      const sell = document.createElementNS(SVG_NS, "rect");
+      sell.setAttribute("pointer-events", "none");
+      els.binsGroup.append(buy, sell);
+      return { buy, sell };
+    });
+  }
+
+  function setRect(el: SVGRectElement, x1: number, x2: number, y: number, h: number, color: string, opacityPct: number) {
+    el.setAttribute("x", String(Math.min(x1, x2)));
+    el.setAttribute("y", String(y));
+    el.setAttribute("width", String(Math.max(0, Math.abs(x2 - x1))));
+    el.setAttribute("height", String(Math.max(0, h)));
+    el.setAttribute("fill", hexToRgba(color, opacityPct));
+    el.style.display = "";
+  }
+
+  function hideRect(el: SVGRectElement) {
+    el.style.display = "none";
+  }
+
+  function setLine(el: SVGLineElement, x1: number, x2: number, y: number, color: string, width: number) {
+    el.setAttribute("x1", String(x1));
+    el.setAttribute("x2", String(x2));
+    el.setAttribute("y1", String(y));
+    el.setAttribute("y2", String(y));
+    el.setAttribute("stroke", color);
+    el.setAttribute("stroke-width", String(width));
+    el.style.display = "";
+  }
+
+  function hideEls(els: VpEls) {
+    els.group.setAttribute("visibility", "hidden");
+  }
+
+  function syncOne(vp: VolumeProfile) {
+    let els = elMap.get(vp.id);
+    if (!els) { els = buildEls(vp); elMap.set(vp.id, els); }
+    const span = getSpan(vp);
+    if (!span) { hideEls(els); return; }
+    const { left, right } = span;
+    const computed = getComputed(vp);
+    if (!computed) { hideEls(els); return; }
+    els.group.setAttribute("visibility", "visible");
+
+    ensureBinCount(els, computed.bins.length);
+    const maxProfilePx = Math.max(4, (right - left) * vp.profileWidthPct);
+    computed.bins.forEach((bin, i) => {
+      const binEls = els!.bins[i];
+      const yTop = series.priceToCoordinate(bin.high);
+      const yBottom = series.priceToCoordinate(bin.low);
+      const tv = bin.buyVolume + bin.sellVolume;
+      if (yTop == null || yBottom == null || tv <= 0 || computed.maxVolume <= 0) {
+        hideRect(binEls.buy);
+        hideRect(binEls.sell);
+        return;
+      }
+      const rowH = Math.abs(yBottom - yTop);
+      const inset = rowH * 0.1;
+      const y = Math.min(yTop, yBottom) + inset;
+      const h = Math.max(1, rowH - inset * 2);
+      const twPx = maxProfilePx * (tv / computed.maxVolume);
+      const bwPx = twPx * (bin.buyVolume / tv);
+      const swPx = twPx - bwPx;
+      if (vp.side === "left") {
+        setRect(binEls.buy, left, left + bwPx, y, h, vp.buyColor, 70);
+        setRect(binEls.sell, left + bwPx, left + bwPx + swPx, y, h, vp.sellColor, 70);
+      } else {
+        setRect(binEls.sell, right - bwPx - swPx, right - bwPx, y, h, vp.sellColor, 70);
+        setRect(binEls.buy, right - bwPx, right, y, h, vp.buyColor, 70);
+      }
+    });
+
+    if (vp.showValueAreaBg) {
+      const yHigh = series.priceToCoordinate(computed.valueAreaHigh);
+      const yLow = series.priceToCoordinate(computed.valueAreaLow);
+      if (yHigh != null && yLow != null) {
+        setRect(els.vaBg, left, right, Math.min(yHigh, yLow), Math.abs(yLow - yHigh), vp.valueAreaBgColor, 14);
+      } else hideRect(els.vaBg);
+    } else hideRect(els.vaBg);
+
+    if (vp.showPoc) {
+      const y = series.priceToCoordinate(computed.pocPrice);
+      if (y != null) setLine(els.pocLine, left, right, y, vp.pocColor, 2);
+      else els.pocLine.style.display = "none";
+    } else els.pocLine.style.display = "none";
+
+    if (vp.showValueAreaLines) {
+      const yHigh = series.priceToCoordinate(computed.valueAreaHigh);
+      const yLow = series.priceToCoordinate(computed.valueAreaLow);
+      if (yHigh != null) setLine(els.vaHighLine, left, right, yHigh, vp.valueAreaLineColor, 1);
+      else els.vaHighLine.style.display = "none";
+      if (yLow != null) setLine(els.vaLowLine, left, right, yLow, vp.valueAreaLineColor, 1);
+      else els.vaLowLine.style.display = "none";
+    } else {
+      els.vaHighLine.style.display = "none";
+      els.vaLowLine.style.display = "none";
+    }
+
+    // Keep the hit-box and edge handles within the profile's own price range
+    // (like TradingView) instead of the full chart height — otherwise they sit
+    // on top of empty space and block dragging/scrolling the chart there.
+    const yRangeTop = series.priceToCoordinate(computed.rangeHigh);
+    const yRangeBottom = series.priceToCoordinate(computed.rangeLow);
+    if (yRangeTop == null || yRangeBottom == null) {
+      els.bodyHit.style.display = "none";
+      els.leftHandle.style.display = "none";
+      els.rightHandle.style.display = "none";
+      els.group.classList.toggle("vp-selected", selectedId === vp.id);
+      return;
+    }
+    const top = Math.min(yRangeTop, yRangeBottom);
+    const rangeHeight = Math.abs(yRangeBottom - yRangeTop);
+
+    els.bodyHit.setAttribute("x", String(left));
+    els.bodyHit.setAttribute("y", String(top));
+    els.bodyHit.setAttribute("width", String(Math.max(0, right - left)));
+    els.bodyHit.setAttribute("height", String(rangeHeight));
+    els.bodyHit.style.display = "";
+    els.bodyHit.style.cursor = vp.locked ? "default" : "move";
+
+    const selected = selectedId === vp.id;
+    const handleW = 6;
+    els.leftHandle.setAttribute("x", String(left - handleW / 2));
+    els.leftHandle.setAttribute("y", String(top));
+    els.leftHandle.setAttribute("width", String(handleW));
+    els.leftHandle.setAttribute("height", String(rangeHeight));
+    els.leftHandle.style.display = selected && !vp.locked ? "" : "none";
+    els.rightHandle.setAttribute("x", String(right - handleW / 2));
+    els.rightHandle.setAttribute("y", String(top));
+    els.rightHandle.setAttribute("width", String(handleW));
+    els.rightHandle.setAttribute("height", String(rangeHeight));
+    els.rightHandle.style.display = selected && !vp.locked ? "" : "none";
+    els.group.classList.toggle("vp-selected", selected);
+  }
+
+  function syncAll() {
+    overlay.sync();
+    profiles.forEach(syncOne);
+    if (selectedId) positionPanel(selectedId);
+  }
+
+  function deleteProfile(id: string) {
+    profiles = profiles.filter((p) => p.id !== id);
+    forgetFloatingPanelPosition(`volumeprofile:${id}`);
+    invalidate(id);
+    const els = elMap.get(id);
+    if (els) { els.group.remove(); elMap.delete(id); }
+    if (selectedId === id) {
+      selectedId = null;
+      removePanel();
+      manager.clearSelection("volumeprofile");
+    }
+    callbacks.onDelete(id);
+  }
+
+  function purgeAll() {
+    for (const [id, els] of elMap) {
+      forgetFloatingPanelPosition(`volumeprofile:${id}`);
+      els.group.remove();
+    }
+    elMap.clear();
+    computedCache.clear();
+    profiles = [];
+    if (selectedId !== null) {
+      selectedId = null;
+      removePanel();
+    }
+    manager.clearSelection("volumeprofile");
+    syncAll();
+  }
+
+  function patchProfile(vp: VolumeProfile, patch: Partial<VolumeProfile>) {
+    const idx = profiles.findIndex((item) => item.id === vp.id);
+    if (idx < 0) return;
+    profiles[idx] = { ...profiles[idx], ...patch };
+    invalidate(vp.id);
+    callbacks.onUpdate(profiles[idx]);
+    syncAll();
+    if (selectedId === vp.id) refreshPanelValues(profiles[idx]);
+  }
+
+  // ---- selection + settings panel ----
+
+  function removePanel() {
+    panelUnmount?.();
+    panelUnmount = null;
+    panelEl?.remove();
+    panelEl = null;
+  }
+
+  function positionPanel(id: string) {
+    const span = elMap.has(id) ? getSpan(profiles.find((p) => p.id === id)!) : null;
+    if (!panelEl || !span) return;
+    // mountFloatingPanel already clamps/remembers position; nothing extra to do here.
+  }
+
+  function field(labelText: string): { row: HTMLDivElement; control: HTMLDivElement } {
+    const row = document.createElement("div");
+    row.className = "vp-panel-row";
+    const label = document.createElement("span");
+    label.className = "vp-panel-label";
+    label.textContent = labelText;
+    const control = document.createElement("div");
+    control.className = "vp-panel-control";
+    row.append(label, control);
+    return { row, control };
+  }
+
+  function refreshPanelValues(vp: VolumeProfile) {
+    if (!panelEl) return;
+    const set = (sel: string, value: string | number | boolean) => {
+      const el = panelEl!.querySelector<HTMLInputElement | HTMLSelectElement>(sel);
+      if (!el) return;
+      if (el instanceof HTMLInputElement && el.type === "checkbox") el.checked = Boolean(value);
+      else el.value = String(value);
+    };
+    set('[data-f="rows"]', vp.rows);
+    set('[data-f="va"]', Math.round(vp.valueAreaPct * 100));
+    set('[data-f="side"]', vp.side);
+    set('[data-f="split"]', vp.splitMode);
+    set('[data-f="width"]', Math.round(vp.profileWidthPct * 100));
+    set('[data-f="showPoc"]', vp.showPoc);
+    set('[data-f="showVaBg"]', vp.showValueAreaBg);
+    set('[data-f="showVaLines"]', vp.showValueAreaLines);
+    set('[data-f="buyColor"]', vp.buyColor);
+    set('[data-f="sellColor"]', vp.sellColor);
+    set('[data-f="pocColor"]', vp.pocColor);
+    set('[data-f="vaBgColor"]', vp.valueAreaBgColor);
+    set('[data-f="vaLineColor"]', vp.valueAreaLineColor);
+    set('[data-f="locked"]', Boolean(vp.locked));
+  }
+
+  function createPanel(vp: VolumeProfile) {
+    removePanel();
+    const panel = document.createElement("div");
+    panel.className = "vp-panel";
+
+    const header = document.createElement("div");
+    header.className = "vp-panel-header";
+    const grip = document.createElement("div");
+    grip.className = "vp-panel-grip";
+    grip.textContent = "⠿";
+    const title = document.createElement("span");
+    title.className = "vp-panel-title";
+    title.textContent = "Volume Profile";
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "vp-panel-delete";
+    deleteBtn.type = "button";
+    deleteBtn.title = "Удалить";
+    deleteBtn.textContent = "✕";
+    deleteBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    deleteBtn.addEventListener("click", () => deleteProfile(vp.id));
+    header.append(grip, title, deleteBtn);
+    panel.appendChild(header);
+
+    const body = document.createElement("div");
+    body.className = "vp-panel-body";
+    panel.appendChild(body);
+
+    const current = () => profiles.find((p) => p.id === vp.id) ?? vp;
+
+    const rowsField = field("Rows");
+    const rowsInput = document.createElement("input");
+    rowsInput.type = "number"; rowsInput.min = "10"; rowsInput.max = "200"; rowsInput.dataset.f = "rows";
+    rowsInput.value = String(vp.rows);
+    rowsInput.addEventListener("change", () => {
+      const n = Math.max(10, Math.min(200, Math.round(Number(rowsInput.value) || 10)));
+      patchProfile(current(), { rows: n });
+    });
+    rowsField.control.appendChild(rowsInput);
+    body.appendChild(rowsField.row);
+
+    const vaField = field("Value area %");
+    const vaInput = document.createElement("input");
+    vaInput.type = "number"; vaInput.min = "50"; vaInput.max = "95"; vaInput.step = "5"; vaInput.dataset.f = "va";
+    vaInput.value = String(Math.round(vp.valueAreaPct * 100));
+    vaInput.addEventListener("change", () => {
+      const n = Math.max(50, Math.min(95, Number(vaInput.value) || 70));
+      patchProfile(current(), { valueAreaPct: n / 100 });
+    });
+    vaField.control.appendChild(vaInput);
+    body.appendChild(vaField.row);
+
+    const sideField = field("Side");
+    const sideSelect = document.createElement("select");
+    sideSelect.dataset.f = "side";
+    [["left", "Left"], ["right", "Right"]].forEach(([value, label]) => {
+      const o = document.createElement("option"); o.value = value; o.textContent = label; sideSelect.appendChild(o);
+    });
+    sideSelect.value = vp.side;
+    sideSelect.addEventListener("change", () => patchProfile(current(), { side: sideSelect.value as VolumeProfile["side"] }));
+    sideField.control.appendChild(sideSelect);
+    body.appendChild(sideField.row);
+
+    const splitField = field("Split mode");
+    const splitSelect = document.createElement("select");
+    splitSelect.dataset.f = "split";
+    [["candle", "Candle direction"], ["close", "Close location"]].forEach(([value, label]) => {
+      const o = document.createElement("option"); o.value = value; o.textContent = label; splitSelect.appendChild(o);
+    });
+    splitSelect.value = vp.splitMode;
+    splitSelect.addEventListener("change", () => patchProfile(current(), { splitMode: splitSelect.value as VolumeProfile["splitMode"] }));
+    splitField.control.appendChild(splitSelect);
+    body.appendChild(splitField.row);
+
+    const widthField = field("Profile width %");
+    const widthInput = document.createElement("input");
+    widthInput.type = "number"; widthInput.min = "5"; widthInput.max = "100"; widthInput.step = "5"; widthInput.dataset.f = "width";
+    widthInput.value = String(Math.round(vp.profileWidthPct * 100));
+    widthInput.addEventListener("change", () => {
+      const n = Math.max(5, Math.min(100, Number(widthInput.value) || 25));
+      patchProfile(current(), { profileWidthPct: n / 100 });
+    });
+    widthField.control.appendChild(widthInput);
+    body.appendChild(widthField.row);
+
+    const colorField = (labelText: string, dataF: string, onChange: (value: string) => void, initial: string) => {
+      const f = field(labelText);
+      const input = document.createElement("input");
+      input.type = "color"; input.dataset.f = dataF; input.value = initial;
+      input.addEventListener("input", () => onChange(input.value));
+      f.control.appendChild(input);
+      body.appendChild(f.row);
+    };
+    colorField("Buy color", "buyColor", (v) => patchProfile(current(), { buyColor: v }), vp.buyColor);
+    colorField("Sell color", "sellColor", (v) => patchProfile(current(), { sellColor: v }), vp.sellColor);
+    colorField("POC color", "pocColor", (v) => patchProfile(current(), { pocColor: v }), vp.pocColor);
+    colorField("VA bg color", "vaBgColor", (v) => patchProfile(current(), { valueAreaBgColor: v }), vp.valueAreaBgColor);
+    colorField("VA line color", "vaLineColor", (v) => patchProfile(current(), { valueAreaLineColor: v }), vp.valueAreaLineColor);
+
+    const toggleField = (labelText: string, dataF: string, onChange: (value: boolean) => void, initial: boolean) => {
+      const f = field(labelText);
+      const input = document.createElement("input");
+      input.type = "checkbox"; input.dataset.f = dataF; input.checked = initial;
+      input.addEventListener("change", () => onChange(input.checked));
+      f.control.appendChild(input);
+      body.appendChild(f.row);
+    };
+    toggleField("Show POC", "showPoc", (v) => patchProfile(current(), { showPoc: v }), vp.showPoc);
+    toggleField("Show VA background", "showVaBg", (v) => patchProfile(current(), { showValueAreaBg: v }), vp.showValueAreaBg);
+    toggleField("Show VA lines", "showVaLines", (v) => patchProfile(current(), { showValueAreaLines: v }), vp.showValueAreaLines);
+    toggleField("Lock", "locked", (v) => patchProfile(current(), { locked: v }), Boolean(vp.locked));
+
+    container.appendChild(panel);
+    panelEl = panel;
+    panelUnmount = mountFloatingPanel({
+      container,
+      panel,
+      grip,
+      persistenceKey: `volumeprofile:${vp.id}`,
+    });
+  }
+
+  function selectProfile(id: string | null) {
+    if (!id) {
+      if (selectedId !== null) {
+        selectedId = null;
+        removePanel();
+        syncAll();
+      }
+      manager.clearSelection("volumeprofile");
+      return;
+    }
+    selectedId = id;
+    const vp = profiles.find((item) => item.id === id);
+    if (vp) createPanel(vp);
+    manager.activateSelection("volumeprofile", elMap.get(id)?.group ?? null, id);
+    syncAll();
+  }
+
+  const unregisterLifecycle = attachManagedDrawingLifecycle({
+    manager,
+    kind: "volumeprofile",
+    bridge: createClipboardBridge({
+      kind: "volumeprofile",
+      datasetId,
+      candleStore,
+      getSelectedId: () => selectedId,
+      findById: (id) => profiles.find((item) => item.id === id),
+      append: (vp) => { profiles.push(vp); },
+      onCreate: callbacks.onCreate,
+      select: (id) => selectProfile(id),
+      deleteSelected: () => { if (selectedId) deleteProfile(selectedId); },
+      createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
+      syncAll,
+      cancelDrawing: () => {
+        if (drawPoint1Time == null) return false;
+        drawPoint1Time = null;
+        clearGhost();
+        callbacks.onDrawingComplete();
+        return true;
+      },
+    }),
+    syncAll,
+    isDragActive: () => dragActive,
+    onDeselect: () => {
+      if (selectedId === null) return;
+      selectedId = null;
+      removePanel();
+      syncAll();
+    },
+    purgeAll,
+  });
+
+  // ---- drag: move whole window / resize one edge ----
+
+  function startBodyDrag(id: string, startEv: PointerEvent) {
+    const vp = profiles.find((p) => p.id === id);
+    if (!vp) return;
+    const span = getSpan(vp);
+    if (!span) return;
+    const cb = container.getBoundingClientRect();
+    const sx = startEv.clientX - cb.left;
+    runManagedDragSession(startEv, (active) => { dragActive = active; }, {
+      target: startEv.target as Element,
+      moveThreshold: 2,
+      onMove: (event) => {
+        const dx = (event.clientX - cb.left) - sx;
+        const newLeftX = snapXToNearestCandle(chart, span.left + dx);
+        const newRightX = snapXToNearestCandle(chart, span.right + dx);
+        const tL = xToSnappedTime(chart, newLeftX, candleStore.candles);
+        const tR = xToSnappedTime(chart, newRightX, candleStore.candles);
+        const v = profiles.find((item) => item.id === id);
+        if (!v || tL == null || tR == null) return;
+        // Recompute and redraw the whole profile (bins/POC/VA) live on every frame
+        // instead of only previewing the hit-box — otherwise it jumps on release.
+        v.timeLeft = tL;
+        v.timeRight = tR;
+        invalidate(id);
+        syncOne(v);
+      },
+      onEnd: (_event, moved) => {
+        if (!moved) return;
+        const v = profiles.find((item) => item.id === id);
+        if (!v) return;
+        if (v.timeLeft > v.timeRight) { const tmp = v.timeLeft; v.timeLeft = v.timeRight; v.timeRight = tmp; }
+        invalidate(id);
+        callbacks.onUpdate(v);
+        syncAll();
+      },
+    });
+  }
+
+  function startEdgeDrag(id: string, edge: "left" | "right", startEv: PointerEvent) {
+    const vp = profiles.find((p) => p.id === id);
+    if (!vp) return;
+    runManagedDragSession(startEv, (active) => { dragActive = active; }, {
+      target: startEv.target as Element,
+      onMove: (event) => {
+        const cb = container.getBoundingClientRect();
+        const x = snapXToNearestCandle(chart, event.clientX - cb.left);
+        const t = xToSnappedTime(chart, x, candleStore.candles);
+        const v = profiles.find((item) => item.id === id);
+        if (!v || t == null) return;
+        if (edge === "left") v.timeLeft = t; else v.timeRight = t;
+        invalidate(id);
+        syncOne(v);
+      },
+      onEnd: (_event, moved) => {
+        if (!moved) return;
+        const v = profiles.find((item) => item.id === id);
+        if (!v) return;
+        if (v.timeLeft > v.timeRight) { const tmp = v.timeLeft; v.timeLeft = v.timeRight; v.timeRight = tmp; }
+        invalidate(id);
+        callbacks.onUpdate(v);
+        syncAll();
+      },
+    });
+  }
+
+  // ---- create via two clicks ----
+
+  function clearGhost() {
+    ghostEl?.remove();
+    ghostEl = null;
+    lastGhostX = null;
+  }
+
+  function updateGhost(x2: number) {
+    if (!ghostEl || drawPoint1Time == null) return;
+    const x1 = timeToX(chart, drawPoint1Time, candleStore.candles);
+    if (x1 == null) return;
+    const containerHeight = container.getBoundingClientRect().height;
+    ghostEl.setAttribute("x", String(Math.min(x1, x2)));
+    ghostEl.setAttribute("y", "0");
+    ghostEl.setAttribute("width", String(Math.abs(x2 - x1)));
+    ghostEl.setAttribute("height", String(containerHeight));
+  }
+
+  function handleDrawClick(event: DrawingPointerClickEvent) {
+    if (manager.getMode() !== "volumeprofile") return;
+    const bounds = container.getBoundingClientRect();
+    const sourceEvent = event.sourceEvent;
+    const rawX = sourceEvent.clientX - bounds.left;
+    const x = snapXToNearestCandle(chart, Math.max(0, Math.min(rawX, getPlotWidthLocal())));
+    const time = xToSnappedTime(chart, x, candleStore.candles);
+    if (time == null) return;
+
+    if (drawPoint1Time == null) {
+      drawPoint1Time = time;
+      ghostEl = document.createElementNS(SVG_NS, "rect");
+      ghostEl.setAttribute("class", "vp-ghost");
+      ghostEl.setAttribute("fill", "rgba(38,198,218,0.12)");
+      ghostEl.setAttribute("stroke", "#26C6DA");
+      ghostEl.setAttribute("stroke-width", "1");
+      ghostEl.setAttribute("stroke-dasharray", "4 3");
+      svg.appendChild(ghostEl);
+      lastGhostX = x;
+      updateGhost(x);
+      return;
+    }
+
+    if (Math.abs(time - drawPoint1Time) < 1) {
+      drawPoint1Time = null;
+      clearGhost();
+      return;
+    }
+
+    const newProfile: VolumeProfile = {
+      id: crypto.randomUUID(),
+      datasetId,
+      timeLeft: Math.min(drawPoint1Time, time),
+      timeRight: Math.max(drawPoint1Time, time),
+      ...VOLUME_PROFILE_DEFAULTS,
+    };
+    profiles.push(newProfile);
+    callbacks.onCreate(newProfile);
+    drawPoint1Time = null;
+    clearGhost();
+    selectProfile(newProfile.id);
+    syncAll();
+    callbacks.onDrawingComplete();
+  }
+
+  function handleMouseMove(event: MouseEvent) {
+    if (drawPoint1Time == null || !ghostEl) return;
+    const bounds = container.getBoundingClientRect();
+    const x = snapXToNearestCandle(chart, Math.max(0, Math.min(event.clientX - bounds.left, getPlotWidthLocal())));
+    lastGhostX = x;
+    updateGhost(x);
+  }
+
+  const refreshGhostAfterViewportChange = () => {
+    if (drawPoint1Time == null || !ghostEl || lastGhostX == null) return;
+    updateGhost(lastGhostX);
+  };
+
+  const cleanupDrawingClick = bindDrawingPointerClick({
+    container,
+    chart,
+    manager,
+    mode: "volumeprofile",
+    onClick: handleDrawClick,
+  });
+  chart.timeScale().subscribeVisibleLogicalRangeChange(refreshGhostAfterViewportChange);
+  container.addEventListener("mousemove", handleMouseMove);
+
+  const onBgPointerDown = (e: PointerEvent) => {
+    if (manager.getMode() !== "none") return;
+    const t = e.target as Element;
+    if (
+      t.closest(".vp-panel") ||
+      t.classList.contains("vp-hit-el") ||
+      t.classList.contains("vp-handle-el")
+    ) return;
+    if (selectedId) selectProfile(null);
+  };
+  container.addEventListener("pointerdown", onBgPointerDown);
+
+  return () => {
+    unregisterLifecycle();
+    cleanupDrawingClick();
+    try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(refreshGhostAfterViewportChange); } catch { }
+    container.removeEventListener("mousemove", handleMouseMove);
+    container.removeEventListener("pointerdown", onBgPointerDown);
+    removePanel();
+    overlay.remove();
+    clearGhost();
+  };
+}

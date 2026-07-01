@@ -1,4 +1,4 @@
-export type DrawingMode = "none" | "trendline" | "measure" | "rectangle" | "fibonacci" | "fibtrendext" | "parallelchannel";
+export type DrawingMode = "none" | "trendline" | "measure" | "rectangle" | "fibonacci" | "fibtrendext" | "parallelchannel" | "volumeprofile";
 
 export interface DrawingCrudCallbacks<T extends { id: string }> {
   onCreate: (drawing: T) => void;

@@ -23,6 +23,7 @@ import {
   attachParallelChannelTool,
   attachRectangleTool,
   attachTrendLineTool,
+  attachVolumeProfileTool,
   DrawingManager,
   type DrawingMode,
 } from "../../drawing";
@@ -52,6 +53,7 @@ const defaultFocusRange = (barIndex: number) => ({
 
 interface ReplayChartProps {
   candles: Candle[];
+  rawCandles: Candle[];
   index: number;
   barriers: Barrier[];
   trades: Trade[];
@@ -77,6 +79,7 @@ interface ReplayChartProps {
 
 export function ReplayChart({
   candles,
+  rawCandles,
   index,
   barriers,
   trades,
@@ -102,6 +105,8 @@ export function ReplayChart({
   const ref = useRef<HTMLDivElement>(null);
   const candlesRef = useRef(candles);
   candlesRef.current = candles;
+  const rawCandlesRef = useRef(rawCandles);
+  rawCandlesRef.current = rawCandles;
   const followCandleRef = useRef(followCandle);
   followCandleRef.current = followCandle;
   const selectedTrendLineId = useRef<string | null>(null);
@@ -572,6 +577,23 @@ export function ReplayChart({
         onDrawingComplete: () => callbacksRef.current.onDrawingComplete(),
       },
     });
+    const cleanupVolumeProfile = attachVolumeProfileTool({
+      manager: drawingManager,
+      container: ref.current!,
+      chart,
+      series: cs,
+      candleStore,
+      getRawCandles: () => rawCandlesRef.current,
+      volumeProfiles: drawings.volumeProfiles.filter((vp) => vp.datasetId === datasetId),
+      drawingMode,
+      datasetId,
+      callbacks: {
+        onCreate: (vp) => callbacksRef.current.drawingActions.volumeProfiles.onCreate(vp),
+        onUpdate: (vp) => callbacksRef.current.drawingActions.volumeProfiles.onUpdate(vp),
+        onDelete: (id) => callbacksRef.current.drawingActions.volumeProfiles.onDelete(id),
+        onDrawingComplete: () => callbacksRef.current.onDrawingComplete(),
+      },
+    });
     drawingManager.scheduleOverlaySync();
     if (deleteAllDrawingsRef) {
       deleteAllDrawingsRef.current = () => { drawingManager.deleteAllDrawings(); };
@@ -602,6 +624,7 @@ export function ReplayChart({
       cleanupFibonacci();
       cleanupFibonacciTrendExtensions();
       cleanupParallelChannels();
+      cleanupVolumeProfile();
       drawingManager.destroy();
       chart.remove();
       chartRuntimeRef.current = null;

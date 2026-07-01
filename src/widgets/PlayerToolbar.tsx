@@ -79,6 +79,9 @@ export function PlayerToolbar({
         <Button type="text" className={`drawing-tool-btn ${drawingMode === "measure" ? "is-active" : ""}`} onClick={() => toggleDrawingMode("measure")} title="Линейка">
           <DrawingToolIcon mode="measure" />
         </Button>
+        <Button type="text" className={`drawing-tool-btn ${drawingMode === "volumeprofile" ? "is-active" : ""}`} onClick={() => toggleDrawingMode("volumeprofile")} title="Volume Profile (диапазон по двум кликам)">
+          <DrawingToolIcon mode="volumeprofile" />
+        </Button>
         <Button
           type="text"
           className={`drawing-tool-btn ${drawingsVisible ? "" : "is-active"}`}

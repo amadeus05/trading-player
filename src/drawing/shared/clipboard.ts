@@ -4,6 +4,7 @@ import type {
   ParallelChannel,
   Rectangle,
   TrendLine,
+  VolumeProfile,
 } from "../../types";
 import type { DrawingSelectionKind } from "../DrawingManager";
 
@@ -12,7 +13,8 @@ export type DrawingClipboardItem =
   | { kind: "rectangle"; data: Omit<Rectangle, "id" | "datasetId"> }
   | { kind: "fibonacci"; data: Omit<FibonacciRetracement, "id" | "datasetId"> }
   | { kind: "fibtrendext"; data: Omit<FibonacciTrendExtension, "id" | "datasetId"> }
-  | { kind: "parallelchannel"; data: Omit<ParallelChannel, "id" | "datasetId"> };
+  | { kind: "parallelchannel"; data: Omit<ParallelChannel, "id" | "datasetId"> }
+  | { kind: "volumeprofile"; data: Omit<VolumeProfile, "id" | "datasetId"> };
 
 export function drawingKindFromClipboard(item: DrawingClipboardItem): DrawingSelectionKind {
   return item.kind;
@@ -68,6 +70,10 @@ export function offsetClipboardItem<T extends DrawingClipboardItem>(item: T, off
       cloned.data.point1 = offsetPoint(cloned.data.point1, offset);
       cloned.data.point2 = offsetPoint(cloned.data.point2, offset);
       cloned.data.widthPoint = offsetPoint(cloned.data.widthPoint, offset);
+      break;
+    case "volumeprofile":
+      cloned.data.timeLeft += offset.timeDelta;
+      cloned.data.timeRight += offset.timeDelta;
       break;
   }
   return cloned;

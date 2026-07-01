@@ -4,6 +4,7 @@ export { attachMeasureTool } from "./measure/MeasureTool";
 export { attachParallelChannelTool, type ParallelChannelCallbacks } from "./channels/ParallelChannelTool";
 export { attachRectangleTool, type RectangleCallbacks } from "./rectangle/RectangleTool";
 export { attachTrendLineTool, type DrawingMode, type TrendLineCallbacks } from "./trend-line/TrendLineTool";
+export { attachVolumeProfileTool, type VolumeProfileCallbacks } from "./volume-profile/VolumeProfileTool";
 export {
   attachManagedDrawingLifecycle,
   attachScaleInteractionSync,

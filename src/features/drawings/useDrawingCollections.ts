@@ -6,6 +6,7 @@ import type {
   Persisted,
   Rectangle,
   TrendLine,
+  VolumeProfile,
 } from "../../types";
 
 export interface DrawingCollections {
@@ -14,6 +15,7 @@ export interface DrawingCollections {
   fibonacciRetracements: FibonacciRetracement[];
   fibonacciTrendExtensions: FibonacciTrendExtension[];
   parallelChannels: ParallelChannel[];
+  volumeProfiles: VolumeProfile[];
 }
 
 type DrawingCollectionKey = keyof DrawingCollections;
@@ -75,6 +77,7 @@ export function useDrawingCollections(
     fibonacciRetracements: createCollectionMutations(setState, "fibonacciRetracements"),
     fibonacciTrendExtensions: createCollectionMutations(setState, "fibonacciTrendExtensions"),
     parallelChannels: createCollectionMutations(setState, "parallelChannels"),
+    volumeProfiles: createCollectionMutations(setState, "volumeProfiles"),
     deleteAllForDataset: (datasetId) => {
       setState((current) => ({
         ...current,
@@ -83,6 +86,7 @@ export function useDrawingCollections(
         fibonacciRetracements: filterByDataset(current.fibonacciRetracements ?? [], datasetId, false),
         fibonacciTrendExtensions: filterByDataset(current.fibonacciTrendExtensions ?? [], datasetId, false),
         parallelChannels: filterByDataset(current.parallelChannels ?? [], datasetId, false),
+        volumeProfiles: filterByDataset(current.volumeProfiles ?? [], datasetId, false),
       }));
     },
   };
@@ -96,6 +100,7 @@ export function countDrawingsForDataset(collections: DrawingCollections, dataset
     + collections.fibonacciRetracements.filter(match).length
     + collections.fibonacciTrendExtensions.filter(match).length
     + collections.parallelChannels.filter(match).length
+    + collections.volumeProfiles.filter(match).length
   );
 }
 
@@ -106,5 +111,6 @@ export function selectDrawingCollections(state: Persisted): DrawingCollections {
     fibonacciRetracements: state.fibonacciRetracements ?? [],
     fibonacciTrendExtensions: state.fibonacciTrendExtensions ?? [],
     parallelChannels: state.parallelChannels ?? [],
+    volumeProfiles: state.volumeProfiles ?? [],
   };
 }

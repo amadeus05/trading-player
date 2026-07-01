@@ -6,6 +6,8 @@ import trendLineIcon from "./lines/trend-line.svg?raw";
 import rectangleIcon from "./shapes/rectangle.svg?raw";
 import measureRulerIcon from "./ui/measure-ruler.svg?raw";
 
+const volumeProfileIcon = `<svg viewBox="0 0 28 28"><g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M5 4v20"/><path d="M5 7h9M5 11h13M5 15h7M5 19h11"/><path d="M21 4v20" stroke-dasharray="2 2"/></g></svg>`;
+
 const ICONS: Record<Exclude<DrawingMode, "none">, string> = {
   trendline: trendLineIcon,
   rectangle: rectangleIcon,
@@ -13,6 +15,7 @@ const ICONS: Record<Exclude<DrawingMode, "none">, string> = {
   fibonacci: fibRetracementIcon,
   fibtrendext: trendBasedFibExtensionIcon,
   parallelchannel: parallelChannelIcon,
+  volumeprofile: volumeProfileIcon,
 };
 
 function normalizeTradingViewIcon(svg: string): string {
