@@ -51,6 +51,11 @@ const defaultFocusRange = (barIndex: number) => ({
   to: barIndex + 20,
 } as LogicalRange);
 
+interface PriceRange {
+  from: number;
+  to: number;
+}
+
 interface ReplayChartProps {
   candles: Candle[];
   rawCandles: Candle[];
@@ -69,6 +74,7 @@ interface ReplayChartProps {
   markersEditable: boolean;
   drawings: DrawingCollections;
   drawingActions: DrawingActions;
+  drawingRestoreRevision: number;
   drawingMode: DrawingMode;
   datasetId: string;
   drawingsVisible: boolean;
@@ -95,6 +101,7 @@ export function ReplayChart({
   markersEditable,
   drawings,
   drawingActions,
+  drawingRestoreRevision,
   drawingMode,
   datasetId,
   drawingsVisible,
@@ -111,10 +118,12 @@ export function ReplayChart({
   followCandleRef.current = followCandle;
   const selectedTrendLineId = useRef<string | null>(null);
   const savedLogicalRange = useRef<LogicalRange | null>(null);
+  const savedPriceRange = useRef<PriceRange | null>(null);
   const savedCandleInterval = useRef<number | null>(null);
   const renderedIndex = useRef<number | null>(null);
   const followRealtime = useRef(true);
   const appliedFocusRevision = useRef(focusRevision);
+  const appliedDrawingRestoreRevision = useRef(drawingRestoreRevision);
   const chartRuntimeRef = useRef<{
     applyReplayIndex: (nextIndex: number, allCandles: Candle[]) => void;
     syncOverlays: () => void;
@@ -167,8 +176,12 @@ export function ReplayChart({
       && candleInterval != null
       && savedCandleInterval.current !== candleInterval;
     const forceFocus = appliedFocusRevision.current !== focusRevision;
+    const restoreDrawings = appliedDrawingRestoreRevision.current !== drawingRestoreRevision;
+    const restoreViewportRange = restoreDrawings ? savedLogicalRange.current : null;
+    const restorePriceRange = restoreDrawings ? savedPriceRange.current : null;
     if (!visible.length) return;
     const candleStore = { candles: visible as Candle[] };
+    const drawingCandleStore = { candles: liveCandles as Candle[] };
     const chart = createChart(ref.current, {
       autoSize: true,
       layout: { background: { color: "#0d0f15" }, textColor: "#7f8494" },
@@ -214,6 +227,10 @@ export function ReplayChart({
       priceFormat: { type: "price", precision: pricePrecision, minMove: 10 ** -pricePrecision },
     });
     cs.setData(candleStore.candles.map(toCandlestickData));
+    if (restorePriceRange) {
+      cs.priceScale().applyOptions({ autoScale: false });
+      cs.priceScale().setVisibleRange(restorePriceRange);
+    }
     const vs = chart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
       priceScaleId: "vol",
@@ -254,6 +271,7 @@ export function ReplayChart({
       nextIndex: number,
       allCandles: Candle[],
       forcedRange: LogicalRange | null = null,
+      preserveViewport = false,
     ) => {
       if (!allCandles.length) return;
       const nextSafeIndex = Math.max(0, Math.min(nextIndex, allCandles.length - 1));
@@ -261,9 +279,12 @@ export function ReplayChart({
       const shouldFollowRealtime = followCandleRef.current || followRealtime.current;
       const previousVisible = candleStore.candles;
       const delta = renderedIndex.current == null ? 0 : nextSafeIndex - renderedIndex.current;
-      const preservedRange = forcedRange ?? (shouldFollowRealtime
-        ? null
-        : savedLogicalRange.current ?? chart.timeScale().getVisibleLogicalRange());
+      const preservedRange = forcedRange
+        ?? (preserveViewport
+          ? savedLogicalRange.current ?? chart.timeScale().getVisibleLogicalRange()
+          : shouldFollowRealtime
+            ? null
+            : savedLogicalRange.current ?? chart.timeScale().getVisibleLogicalRange());
       const canAppendOneBar = delta === 1
         && nextVisible.length === previousVisible.length + 1
         && previousVisible.length > 0
@@ -272,6 +293,7 @@ export function ReplayChart({
       replayUpdateInProgress = true;
       try {
         candleStore.candles = nextVisible;
+        drawingCandleStore.candles = allCandles;
         if (canAppendOneBar) {
           const appended = nextVisible[nextVisible.length - 1];
           cs.update(toCandlestickData(appended));
@@ -283,16 +305,17 @@ export function ReplayChart({
 
         if (preservedRange) {
           chart.timeScale().setVisibleLogicalRange(preservedRange);
-        } else if (shouldFollowRealtime && nextVisible.length > 1) {
+        } else if (!preserveViewport && shouldFollowRealtime && nextVisible.length > 1) {
           // scrollToRealTime() is always animated, which keeps firing visible-range
           // change events for ~1s and starves the overlay sync (each event reschedules
           // it 2 frames out). scrollToPosition(0, false) reaches the same edge instantly.
           chart.timeScale().scrollToPosition(0, false);
-        } else {
+        } else if (!preserveViewport) {
           chart.timeScale().setVisibleLogicalRange(defaultFocusRange(nextSafeIndex));
         }
 
         savedLogicalRange.current = chart.timeScale().getVisibleLogicalRange() ?? preservedRange;
+        savedPriceRange.current = cs.priceScale().getVisibleRange();
         followRealtime.current = shouldFollowRealtime;
         renderedIndex.current = nextIndex;
         if (followCandleRef.current) {
@@ -310,6 +333,7 @@ export function ReplayChart({
       const range = chart.timeScale().getVisibleLogicalRange();
       if (!range) return;
       savedLogicalRange.current = range;
+      savedPriceRange.current = cs.priceScale().getVisibleRange();
       followRealtime.current = Math.abs(range.to - (candleStore.candles.length - 1)) < 0.75;
     };
     const onVisibleRangeChange = () => {
@@ -317,7 +341,7 @@ export function ReplayChart({
       if (!replayUpdateInProgress) drawingManager.scheduleOverlaySync();
     };
     chart.timeScale().subscribeVisibleLogicalRangeChange(onVisibleRangeChange);
-    syncViewportState();
+    if (!restoreDrawings) syncViewportState();
     let closedTradeOverlay: ReturnType<typeof attachClosedTradeOverlay> | null = null;
     let priceMarkers: ReturnType<typeof attachPriceMarkers> | null = null;
     let unregisterClosedTradeSync = () => {};
@@ -377,8 +401,11 @@ export function ReplayChart({
       // Keep a stable bar density when jumping to a bar or switching timeframe.
       initialRange = defaultFocusRange(safeIndex);
       if (forceFocus) followRealtime.current = false;
+    } else if (restoreDrawings) {
+      initialRange = restoreViewportRange;
+      followRealtime.current = false;
     }
-    applyReplayIndex(safeIndex, liveCandles, initialRange);
+    applyReplayIndex(safeIndex, liveCandles, initialRange, restoreDrawings);
     if (timeframeChanged && initialRange) {
       deferredTimeRangeFrame = requestAnimationFrame(() => {
         chart.timeScale().setVisibleLogicalRange(initialRange!);
@@ -390,6 +417,7 @@ export function ReplayChart({
       });
     }
     appliedFocusRevision.current = focusRevision;
+    appliedDrawingRestoreRevision.current = drawingRestoreRevision;
     const priceScaleWidth = Math.max(70, chart.priceScale("right").width());
     const timeScaleHeight = Math.max(28, chart.timeScale().height());
     let chartAlive = true;
@@ -488,7 +516,7 @@ export function ReplayChart({
       container: ref.current!,
       chart,
       series: cs,
-      candleStore,
+      candleStore: drawingCandleStore,
       trendLines: drawings.trendLines.filter((line) => line.datasetId === datasetId),
       drawingMode,
       datasetId,
@@ -506,7 +534,7 @@ export function ReplayChart({
       container: ref.current!,
       chart,
       series: cs,
-      candleStore,
+      candleStore: drawingCandleStore,
       active: drawingMode === "measure",
       pricePrecision,
       onComplete: () => callbacksRef.current.onDrawingComplete(),
@@ -516,7 +544,7 @@ export function ReplayChart({
       container: ref.current!,
       chart,
       series: cs,
-      candleStore,
+      candleStore: drawingCandleStore,
       rectangles: drawings.rectangles.filter((rectangle) => rectangle.datasetId === datasetId),
       drawingMode,
       datasetId,
@@ -532,7 +560,7 @@ export function ReplayChart({
       container: ref.current!,
       chart,
       series: cs,
-      candleStore,
+      candleStore: drawingCandleStore,
       fibonacciRetracements: drawings.fibonacciRetracements.filter((fibonacci) => fibonacci.datasetId === datasetId),
       drawingMode,
       datasetId,
@@ -549,7 +577,7 @@ export function ReplayChart({
       container: ref.current!,
       chart,
       series: cs,
-      candleStore,
+      candleStore: drawingCandleStore,
       fibonacciTrendExtensions: drawings.fibonacciTrendExtensions.filter((extension) => extension.datasetId === datasetId),
       drawingMode,
       datasetId,
@@ -566,7 +594,7 @@ export function ReplayChart({
       container: ref.current!,
       chart,
       series: cs,
-      candleStore,
+      candleStore: drawingCandleStore,
       parallelChannels: drawings.parallelChannels.filter((channel) => channel.datasetId === datasetId),
       drawingMode,
       datasetId,
@@ -582,7 +610,7 @@ export function ReplayChart({
       container: ref.current!,
       chart,
       series: cs,
-      candleStore,
+      candleStore: drawingCandleStore,
       getRawCandles: () => rawCandlesRef.current,
       volumeProfiles: drawings.volumeProfiles.filter((vp) => vp.datasetId === datasetId),
       drawingMode,
@@ -603,6 +631,7 @@ export function ReplayChart({
       chartAlive = false;
       const range = chart.timeScale().getVisibleLogicalRange();
       savedLogicalRange.current = range;
+      savedPriceRange.current = cs.priceScale().getVisibleRange();
       savedCandleInterval.current = candleInterval;
       if (range) followRealtime.current = Math.abs(range.to - (candleStore.candles.length - 1)) < 0.75;
       ref.current?.removeEventListener("pointerdown", startChartInteractionOverlayLoop, { capture: true });
@@ -629,7 +658,7 @@ export function ReplayChart({
       chart.remove();
       chartRuntimeRef.current = null;
     };
-  }, [candleInterval, selectingStart, focusRevision, pricePrecision, datasetId]);
+  }, [candleInterval, selectingStart, focusRevision, pricePrecision, datasetId, drawingRestoreRevision]);
 
   const prevOverlayKeyRef = useRef("");
   useLayoutEffect(() => {

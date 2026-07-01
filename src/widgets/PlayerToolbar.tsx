@@ -1,4 +1,5 @@
 import { Button, Popconfirm, Select } from "antd";
+import { Redo2, Undo2 } from "lucide-react";
 import { DrawingToolIcon } from "../drawing/icons/DrawingToolIcon";
 import type { DrawingMode } from "../drawing";
 import type { MarketDatasetOption } from "../features/datasets/useMarketCatalog";
@@ -13,10 +14,14 @@ interface PlayerToolbarProps {
   drawingMode: DrawingMode;
   drawingsVisible: boolean;
   drawingCount: number;
+  canUndoDrawings: boolean;
+  canRedoDrawings: boolean;
   onDatasetChange: (datasetId: string) => void;
   onTimeframeChange: (timeframe: number) => void;
   onDrawingModeChange: (mode: DrawingMode) => void;
   onDrawingsVisibleChange: (visible: boolean) => void;
+  onUndoDrawings: () => void;
+  onRedoDrawings: () => void;
   onDeleteAllDrawings: () => void;
 }
 
@@ -28,10 +33,14 @@ export function PlayerToolbar({
   drawingMode,
   drawingsVisible,
   drawingCount,
+  canUndoDrawings,
+  canRedoDrawings,
   onDatasetChange,
   onTimeframeChange,
   onDrawingModeChange,
   onDrawingsVisibleChange,
+  onUndoDrawings,
+  onRedoDrawings,
   onDeleteAllDrawings,
 }: PlayerToolbarProps) {
   const toggleDrawingMode = (mode: DrawingMode) => {
@@ -82,6 +91,22 @@ export function PlayerToolbar({
         <Button type="text" className={`drawing-tool-btn ${drawingMode === "volumeprofile" ? "is-active" : ""}`} onClick={() => toggleDrawingMode("volumeprofile")} title="Volume Profile (диапазон по двум кликам)">
           <DrawingToolIcon mode="volumeprofile" />
         </Button>
+        <Button
+          type="text"
+          className="drawing-tool-btn"
+          disabled={!canUndoDrawings}
+          icon={<Undo2 size={18} />}
+          title="Undo drawing · Ctrl+Z"
+          onClick={onUndoDrawings}
+        />
+        <Button
+          type="text"
+          className="drawing-tool-btn"
+          disabled={!canRedoDrawings}
+          icon={<Redo2 size={18} />}
+          title="Redo drawing · Ctrl+Y / Ctrl+Shift+Z"
+          onClick={onRedoDrawings}
+        />
         <Button
           type="text"
           className={`drawing-tool-btn ${drawingsVisible ? "" : "is-active"}`}

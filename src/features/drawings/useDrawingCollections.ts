@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type {
   FibonacciRetracement,
   FibonacciTrendExtension,
@@ -31,7 +31,34 @@ export type DrawingActions = {
   [Key in DrawingCollectionKey]: CollectionMutations<DrawingItem<Key>>;
 } & {
   deleteAllForDataset: (datasetId: string) => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  restoreRevision: number;
 };
+
+const HISTORY_LIMIT = 80;
+const HISTORY_MERGE_WINDOW_MS = 250;
+
+const cloneCollections = (state: Persisted): DrawingCollections => ({
+  trendLines: structuredClone(state.trendLines ?? []),
+  rectangles: structuredClone(state.rectangles ?? []),
+  fibonacciRetracements: structuredClone(state.fibonacciRetracements ?? []),
+  fibonacciTrendExtensions: structuredClone(state.fibonacciTrendExtensions ?? []),
+  parallelChannels: structuredClone(state.parallelChannels ?? []),
+  volumeProfiles: structuredClone(state.volumeProfiles ?? []),
+});
+
+const applyCollections = (state: Persisted, collections: DrawingCollections): Persisted => ({
+  ...state,
+  trendLines: collections.trendLines,
+  rectangles: collections.rectangles,
+  fibonacciRetracements: collections.fibonacciRetracements,
+  fibonacciTrendExtensions: collections.fibonacciTrendExtensions,
+  parallelChannels: collections.parallelChannels,
+  volumeProfiles: collections.volumeProfiles,
+});
 
 const filterByDataset = <Item extends { datasetId: string }>(
   items: Item[],
@@ -40,7 +67,7 @@ const filterByDataset = <Item extends { datasetId: string }>(
 ): Item[] => items.filter((item) => (item.datasetId === datasetId) === keep);
 
 const createCollectionMutations = <Key extends DrawingCollectionKey>(
-  setState: Dispatch<SetStateAction<Persisted>>,
+  updateWithHistory: (recipe: (current: Persisted) => Persisted, historyKey?: string) => void,
   key: Key,
 ): CollectionMutations<DrawingItem<Key>> => {
   const read = (state: Persisted) => (state[key] ?? []) as DrawingCollections[Key];
@@ -51,16 +78,16 @@ const createCollectionMutations = <Key extends DrawingCollectionKey>(
 
   return {
     onCreate: (item) => {
-      setState((current) => write(current, [...read(current), item] as DrawingCollections[Key]));
+      updateWithHistory((current) => write(current, [...read(current), item] as DrawingCollections[Key]));
     },
     onUpdate: (item) => {
-      setState((current) => write(
+      updateWithHistory((current) => write(
         current,
         read(current).map((currentItem) => currentItem.id === item.id ? item : currentItem) as DrawingCollections[Key],
-      ));
+      ), `${key}:${item.id}:update`);
     },
     onDelete: (id) => {
-      setState((current) => write(
+      updateWithHistory((current) => write(
         current,
         read(current).filter((item) => item.id !== id) as DrawingCollections[Key],
       ));
@@ -71,15 +98,71 @@ const createCollectionMutations = <Key extends DrawingCollectionKey>(
 export function useDrawingCollections(
   setState: Dispatch<SetStateAction<Persisted>>,
 ): DrawingActions {
+  const undoStackRef = useRef<DrawingCollections[]>([]);
+  const redoStackRef = useRef<DrawingCollections[]>([]);
+  const lastHistoryKeyRef = useRef<string | null>(null);
+  const lastHistoryAtRef = useRef(0);
+  const [, setHistoryRevision] = useState(0);
+  const [restoreRevision, setRestoreRevision] = useState(0);
+  const refreshHistoryState = useCallback(() => setHistoryRevision((current) => current + 1), []);
+
+  const updateWithHistory = useCallback((recipe: (current: Persisted) => Persisted, historyKey?: string) => {
+    setState((current) => {
+      const previous = cloneCollections(current);
+      const next = recipe(current);
+      const now = Date.now();
+      const canMerge = historyKey
+        && historyKey === lastHistoryKeyRef.current
+        && now - lastHistoryAtRef.current < HISTORY_MERGE_WINDOW_MS
+        && undoStackRef.current.length > 0;
+      if (!canMerge) {
+        undoStackRef.current = [...undoStackRef.current.slice(-(HISTORY_LIMIT - 1)), previous];
+      }
+      lastHistoryKeyRef.current = historyKey ?? null;
+      lastHistoryAtRef.current = now;
+      redoStackRef.current = [];
+      return next;
+    });
+    refreshHistoryState();
+  }, [refreshHistoryState, setState]);
+
+  const undo = useCallback(() => {
+    const previous = undoStackRef.current.at(-1);
+    if (!previous) return;
+    undoStackRef.current = undoStackRef.current.slice(0, -1);
+    lastHistoryKeyRef.current = null;
+    lastHistoryAtRef.current = 0;
+    setState((current) => {
+      redoStackRef.current = [...redoStackRef.current.slice(-(HISTORY_LIMIT - 1)), cloneCollections(current)];
+      return applyCollections(current, previous);
+    });
+    setRestoreRevision((current) => current + 1);
+    refreshHistoryState();
+  }, [refreshHistoryState, setState]);
+
+  const redo = useCallback(() => {
+    const next = redoStackRef.current.at(-1);
+    if (!next) return;
+    redoStackRef.current = redoStackRef.current.slice(0, -1);
+    lastHistoryKeyRef.current = null;
+    lastHistoryAtRef.current = 0;
+    setState((current) => {
+      undoStackRef.current = [...undoStackRef.current.slice(-(HISTORY_LIMIT - 1)), cloneCollections(current)];
+      return applyCollections(current, next);
+    });
+    setRestoreRevision((current) => current + 1);
+    refreshHistoryState();
+  }, [refreshHistoryState, setState]);
+
   return {
-    trendLines: createCollectionMutations(setState, "trendLines"),
-    rectangles: createCollectionMutations(setState, "rectangles"),
-    fibonacciRetracements: createCollectionMutations(setState, "fibonacciRetracements"),
-    fibonacciTrendExtensions: createCollectionMutations(setState, "fibonacciTrendExtensions"),
-    parallelChannels: createCollectionMutations(setState, "parallelChannels"),
-    volumeProfiles: createCollectionMutations(setState, "volumeProfiles"),
+    trendLines: createCollectionMutations(updateWithHistory, "trendLines"),
+    rectangles: createCollectionMutations(updateWithHistory, "rectangles"),
+    fibonacciRetracements: createCollectionMutations(updateWithHistory, "fibonacciRetracements"),
+    fibonacciTrendExtensions: createCollectionMutations(updateWithHistory, "fibonacciTrendExtensions"),
+    parallelChannels: createCollectionMutations(updateWithHistory, "parallelChannels"),
+    volumeProfiles: createCollectionMutations(updateWithHistory, "volumeProfiles"),
     deleteAllForDataset: (datasetId) => {
-      setState((current) => ({
+      updateWithHistory((current) => ({
         ...current,
         trendLines: filterByDataset(current.trendLines ?? [], datasetId, false),
         rectangles: filterByDataset(current.rectangles ?? [], datasetId, false),
@@ -89,6 +172,11 @@ export function useDrawingCollections(
         volumeProfiles: filterByDataset(current.volumeProfiles ?? [], datasetId, false),
       }));
     },
+    undo,
+    redo,
+    canUndo: undoStackRef.current.length > 0,
+    canRedo: redoStackRef.current.length > 0,
+    restoreRevision,
   };
 }
 

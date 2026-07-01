@@ -51,6 +51,26 @@ export function PlayerPage() {
     [drawings, dataset],
   );
   useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (target instanceof Element) {
+        const tag = target.tagName;
+        const editable = target instanceof HTMLElement && target.isContentEditable;
+        if (tag === "INPUT" || tag === "TEXTAREA" || editable) return;
+      }
+      const mod = event.ctrlKey || event.metaKey;
+      if (!mod) return;
+      const shouldUndo = event.code === "KeyZ" && !event.shiftKey;
+      const shouldRedo = event.code === "KeyY" || (event.code === "KeyZ" && event.shiftKey);
+      if (!shouldUndo && !shouldRedo) return;
+      event.preventDefault();
+      if (shouldUndo) drawingActions.undo();
+      if (shouldRedo) drawingActions.redo();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [drawingActions]);
+  useEffect(() => {
     const release = () => { chartInteractionActive.current = false; };
     window.addEventListener("pointerup", release);
     window.addEventListener("pointercancel", release);
@@ -291,6 +311,8 @@ export function PlayerPage() {
             drawingMode={drawingMode}
             drawingsVisible={drawingsVisible}
             drawingCount={drawingCount}
+            canUndoDrawings={drawingActions.canUndo}
+            canRedoDrawings={drawingActions.canRedo}
             onDatasetChange={(nextDataset) => {
               setDataset(nextDataset);
               setState((current) => ({ ...current, lastDatasetId: nextDataset }));
@@ -299,6 +321,8 @@ export function PlayerPage() {
             onTimeframeChange={handleTimeframeChange}
             onDrawingModeChange={setDrawingMode}
             onDrawingsVisibleChange={setDrawingsVisible}
+            onUndoDrawings={drawingActions.undo}
+            onRedoDrawings={drawingActions.redo}
             onDeleteAllDrawings={() => deleteAllDrawingsRef.current?.()}
           />
           <div className="chartWrap">
@@ -320,6 +344,7 @@ export function PlayerPage() {
                 markersEditable={chartDisplay.markersEditable}
                 drawings={drawings}
                 drawingActions={drawingActions}
+                drawingRestoreRevision={drawingActions.restoreRevision}
                 drawingMode={drawingMode}
                 datasetId={dataset}
                 drawingsVisible={drawingsVisible}
