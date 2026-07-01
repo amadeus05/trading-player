@@ -63,18 +63,41 @@ interface VpEls {
 
 interface PixelSpan { left: number; right: number; }
 
+function upperBoundByTime(candles: Candle[], time: number): number {
+  let low = 0;
+  let high = candles.length;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (candles[mid].time <= time) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+}
+
+function lowerBoundByTime(candles: Candle[], time: number): number {
+  let low = 0;
+  let high = candles.length;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (candles[mid].time < time) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+}
+
 export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
   container: HTMLDivElement;
   chart: IChartApi;
   series: ISeriesApi<"Candlestick">;
   candleStore: ChartCandleStore;
   getRawCandles: () => Candle[];
+  getReplayEndTime: () => number | null;
   volumeProfiles: VolumeProfile[];
   drawingMode: DrawingMode;
   datasetId: string;
   callbacks: VolumeProfileCallbacks;
 }): () => void {
-  const { container, chart, series, candleStore, getRawCandles, datasetId, callbacks, manager } = opts;
+  const { container, chart, series, candleStore, getRawCandles, getReplayEndTime, datasetId, callbacks, manager } = opts;
   let profiles = [...opts.volumeProfiles];
 
   const getPlotWidthLocal = () => getPlotWidth(chart);
@@ -93,12 +116,26 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
   const elMap = new Map<string, VpEls>();
   const computedCache = new Map<string, { sig: string; result: VolumeProfileResult | null }>();
 
+  function getAvailableWindow(vp: VolumeProfile): { left: number; right: number } | null {
+    const left = Math.min(vp.timeLeft, vp.timeRight);
+    const selectedRight = Math.max(vp.timeLeft, vp.timeRight);
+    const replayEndTime = getReplayEndTime();
+    const right = replayEndTime == null ? selectedRight : Math.min(selectedRight, replayEndTime);
+    if (right < left) return null;
+    return { left, right };
+  }
+
   function getComputed(vp: VolumeProfile): VolumeProfileResult | null {
+    const window = getAvailableWindow(vp);
+    if (!window) return null;
     const raw = getRawCandles();
-    const sig = `${vp.timeLeft}|${vp.timeRight}|${vp.rows}|${vp.valueAreaPct}|${vp.splitMode}|${raw.length}|${raw.at(-1)?.time ?? 0}`;
+    const fromIndex = lowerBoundByTime(raw, window.left);
+    const toIndex = upperBoundByTime(raw, window.right);
+    const windowCandles = fromIndex < toIndex ? raw.slice(fromIndex, toIndex) : [];
+    const sig = `${window.left}|${window.right}|${vp.rows}|${vp.valueAreaPct}|${vp.splitMode}|${windowCandles.length}|${windowCandles.at(-1)?.time ?? 0}`;
     const cached = computedCache.get(vp.id);
     if (cached && cached.sig === sig) return cached.result;
-    const result = computeVolumeProfile(raw, vp.timeLeft, vp.timeRight, vp.rows, vp.valueAreaPct, vp.splitMode);
+    const result = computeVolumeProfile(windowCandles, window.left, window.right, vp.rows, vp.valueAreaPct, vp.splitMode);
     computedCache.set(vp.id, { sig, result });
     return result;
   }
@@ -110,6 +147,15 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
   function getSpan(vp: VolumeProfile): PixelSpan | null {
     const xLeft = timeToX(chart, vp.timeLeft, candleStore.candles);
     const xRight = timeToX(chart, vp.timeRight, candleStore.candles);
+    if (xLeft == null || xRight == null) return null;
+    return { left: Math.min(xLeft, xRight), right: Math.max(xLeft, xRight) };
+  }
+
+  function getAvailableSpan(vp: VolumeProfile): PixelSpan | null {
+    const window = getAvailableWindow(vp);
+    if (!window) return null;
+    const xLeft = timeToX(chart, window.left, candleStore.candles);
+    const xRight = timeToX(chart, window.right, candleStore.candles);
     if (xLeft == null || xRight == null) return null;
     return { left: Math.min(xLeft, xRight), right: Math.max(xLeft, xRight) };
   }
@@ -214,7 +260,7 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
   function syncOne(vp: VolumeProfile) {
     let els = elMap.get(vp.id);
     if (!els) { els = buildEls(vp); elMap.set(vp.id, els); }
-    const span = getSpan(vp);
+    const span = getAvailableSpan(vp);
     if (!span) { hideEls(els); return; }
     const { left, right } = span;
     const computed = getComputed(vp);

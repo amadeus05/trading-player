@@ -612,6 +612,12 @@ export function ReplayChart({
       series: cs,
       candleStore: drawingCandleStore,
       getRawCandles: () => rawCandlesRef.current,
+      getReplayEndTime: () => {
+        const lastVisibleCandle = candleStore.candles.at(-1);
+        if (!lastVisibleCandle) return null;
+        if (candleInterval == null || candleInterval <= 0) return lastVisibleCandle.time;
+        return lastVisibleCandle.time + candleInterval - 1;
+      },
       volumeProfiles: drawings.volumeProfiles.filter((vp) => vp.datasetId === datasetId),
       drawingMode,
       datasetId,
