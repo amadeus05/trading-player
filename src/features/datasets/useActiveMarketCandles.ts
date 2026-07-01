@@ -10,6 +10,7 @@ import {
   buildNextMarketCandleRange,
   buildReplayStartMarketCandleRange,
   hasLoadedMarketCandleRange,
+  initialMarketCandleLimitForTimeframe,
 } from "./marketCandleRanges";
 
 const mergeCandles = (current: Candle[], incoming: Candle[]): Candle[] => {
@@ -24,6 +25,7 @@ export function useActiveMarketCandles(
   datasetId: string,
   catalog: MarketCatalogItem[],
   cacheRef: RefObject<Map<string, Candle[]>>,
+  initialTimeframeMinutes = 5,
 ) {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loading, setLoading] = useState(false);
@@ -80,7 +82,10 @@ export function useActiveMarketCandles(
       return;
     }
 
-    const range = buildInitialMarketCandleRange(catalogItem);
+    const range = buildInitialMarketCandleRange(
+      catalogItem,
+      initialMarketCandleLimitForTimeframe(initialTimeframeMinutes),
+    );
     if (!range) {
       setLoading(false);
       setLoadingMore(false);
@@ -109,7 +114,7 @@ export function useActiveMarketCandles(
     return () => {
       cancelled = true;
     };
-  }, [cacheRef, catalogItem, datasetId, parsedDataset]);
+  }, [cacheRef, catalogItem, datasetId, initialTimeframeMinutes, parsedDataset]);
 
   const loadMore = useCallback(async () => {
     if (!datasetId || !parsedDataset || !catalogItem || loading || loadingMoreRef.current) return;

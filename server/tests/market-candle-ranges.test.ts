@@ -5,7 +5,9 @@ import {
   buildNextMarketCandleRange,
   buildReplayStartMarketCandleRange,
   hasLoadedMarketCandleRange,
+  initialMarketCandleLimitForTimeframe,
   MARKET_CANDLE_INTERVAL_MS,
+  prefetchMarketCandleThresholdForTimeframe,
   shouldPrefetchMarketCandles,
 } from "../../src/features/datasets/marketCandleRanges";
 
@@ -42,6 +44,23 @@ test("initial market candle range does not extend past catalog end", () => {
   assert.deepEqual(range, {
     from: START,
     to: START + 7 * MARKET_CANDLE_INTERVAL_MS,
+  });
+});
+
+test("initial market candle range expands for high timeframes", () => {
+  const oneDayLimit = initialMarketCandleLimitForTimeframe(1_440);
+  const range = buildInitialMarketCandleRange(
+    {
+      from: START,
+      to: START + 100_000 * MARKET_CANDLE_INTERVAL_MS,
+    },
+    oneDayLimit,
+  );
+
+  assert.equal(oneDayLimit, 17_280);
+  assert.deepEqual(range, {
+    from: START,
+    to: START + 17_280 * MARKET_CANDLE_INTERVAL_MS,
   });
 });
 
@@ -156,4 +175,13 @@ test("prefetch trigger uses candle time, not the visible timeframe index", () =>
   assert.equal(shouldPrefetchMarketCandles(loaded, candle(90).time, 10), true);
   assert.equal(shouldPrefetchMarketCandles([], candle(90).time, 10), false);
   assert.equal(shouldPrefetchMarketCandles(loaded, undefined, 10), false);
+});
+
+test("prefetch threshold expands for high timeframes", () => {
+  const oneDayThreshold = prefetchMarketCandleThresholdForTimeframe(1_440);
+  const loaded = Array.from({ length: 30_000 }, (_, index) => candle(index));
+
+  assert.equal(oneDayThreshold, 5_760);
+  assert.equal(shouldPrefetchMarketCandles(loaded, candle(20_000).time, oneDayThreshold), false);
+  assert.equal(shouldPrefetchMarketCandles(loaded, candle(25_000).time, oneDayThreshold), true);
 });

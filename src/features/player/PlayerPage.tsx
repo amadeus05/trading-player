@@ -20,7 +20,7 @@ import { useChartDisplayState } from "../chart/useChartDisplayState";
 import { calculateAccountStats } from "../trading/lib/calculateAccountStats";
 import { useMarketCatalog } from "../datasets/useMarketCatalog";
 import { useActiveMarketCandles } from "../datasets/useActiveMarketCandles";
-import { shouldPrefetchMarketCandles } from "../datasets/marketCandleRanges";
+import { prefetchMarketCandleThresholdForTimeframe, shouldPrefetchMarketCandles } from "../datasets/marketCandleRanges";
 
 export function PlayerPage() {
   const { message } = AntApp.useApp();
@@ -88,6 +88,7 @@ export function PlayerPage() {
     dataset,
     catalog,
     candleCacheRef,
+    initialTimeframe,
   );
   const pricePrecision = useMemo(() => inferPricePrecision(raw), [raw]);
   const {
@@ -122,9 +123,9 @@ export function PlayerPage() {
   } | null>(null);
   useEffect(() => {
     if (!hasMoreCandles || candlesLoadingMore) return;
-    if (!shouldPrefetchMarketCandles(raw, cur?.time)) return;
+    if (!shouldPrefetchMarketCandles(raw, cur?.time, prefetchMarketCandleThresholdForTimeframe(tf))) return;
     void loadMoreCandles();
-  }, [candlesLoadingMore, cur?.time, hasMoreCandles, loadMoreCandles, raw]);
+  }, [candlesLoadingMore, cur?.time, hasMoreCandles, loadMoreCandles, raw, tf]);
   useEffect(() => {
     if (pendingReplayTime == null || !raw.length) return;
     const last = raw.at(-1)!.time;

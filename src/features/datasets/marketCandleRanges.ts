@@ -4,6 +4,7 @@ export const NEXT_MARKET_CANDLE_LIMIT = 5_000;
 export const REPLAY_FORWARD_BASE_CANDLES = 2_000;
 export const REPLAY_FORWARD_TIMEFRAME_BARS = 60;
 export const MARKET_CANDLE_PREFETCH_THRESHOLD = 500;
+export const MARKET_TIMEFRAME_PREFETCH_BARS = 20;
 
 export interface MarketCandleRange {
   from: number;
@@ -34,6 +35,20 @@ const timeframeToBaseCandles = (timeframeMinutes: number): number => {
   if (!Number.isFinite(timeframeMinutes) || timeframeMinutes <= 0) return 1;
   return Math.max(1, Math.ceil((timeframeMinutes * 60 * 1_000) / MARKET_CANDLE_INTERVAL_MS));
 };
+
+export function initialMarketCandleLimitForTimeframe(timeframeMinutes: number): number {
+  return Math.max(
+    INITIAL_MARKET_CANDLE_LIMIT,
+    REPLAY_FORWARD_TIMEFRAME_BARS * timeframeToBaseCandles(timeframeMinutes),
+  );
+}
+
+export function prefetchMarketCandleThresholdForTimeframe(timeframeMinutes: number): number {
+  return Math.max(
+    MARKET_CANDLE_PREFETCH_THRESHOLD,
+    MARKET_TIMEFRAME_PREFETCH_BARS * timeframeToBaseCandles(timeframeMinutes),
+  );
+}
 
 export function buildReplayStartMarketCandleRange(
   boundary: MarketRangeBoundary,
