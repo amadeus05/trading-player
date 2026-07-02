@@ -56,6 +56,10 @@ interface PriceRange {
   to: number;
 }
 
+export type ChartViewportRef = {
+  getVisiblePriceRange: () => PriceRange | null;
+};
+
 interface ReplayChartProps {
   candles: Candle[];
   rawCandles: Candle[];
@@ -79,6 +83,7 @@ interface ReplayChartProps {
   datasetId: string;
   drawingsVisible: boolean;
   followCandle: boolean;
+  chartViewportRef?: MutableRefObject<ChartViewportRef | null>;
   onDrawingComplete: () => void;
   deleteAllDrawingsRef?: MutableRefObject<(() => void) | null>;
 }
@@ -106,6 +111,7 @@ export function ReplayChart({
   datasetId,
   drawingsVisible,
   followCandle,
+  chartViewportRef,
   onDrawingComplete,
   deleteAllDrawingsRef,
 }: ReplayChartProps) {
@@ -510,6 +516,11 @@ export function ReplayChart({
       rebuildTradeOverlays,
       lockPriceScale: primePriceScaleInteraction,
     };
+    if (chartViewportRef) {
+      chartViewportRef.current = {
+        getVisiblePriceRange: () => cs.priceScale().getVisibleRange() ?? null,
+      };
+    }
     prevReplayIndexRef.current = index;
     const cleanupTrendLines = attachTrendLineTool({
       manager: drawingManager,
@@ -663,8 +674,9 @@ export function ReplayChart({
       drawingManager.destroy();
       chart.remove();
       chartRuntimeRef.current = null;
+      if (chartViewportRef) chartViewportRef.current = null;
     };
-  }, [candleInterval, selectingStart, focusRevision, pricePrecision, datasetId, drawingRestoreRevision]);
+  }, [candleInterval, selectingStart, focusRevision, pricePrecision, datasetId, drawingRestoreRevision, chartViewportRef]);
 
   const prevOverlayKeyRef = useRef("");
   useLayoutEffect(() => {

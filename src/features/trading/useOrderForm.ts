@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { Candle, SimulationSettings, Trade } from "../../types";
 import type { AmountUnit, OrderType } from "./types";
 import { calculateLiquidationRisk, calculateOrderRisk, calculateRiskBasedSizing } from "./lib/calculateOrderRisk";
+import { buildInitialProtectionPrices, type ChartPriceRange } from "./lib/buildInitialProtectionPrices";
 
 interface UseOrderFormOptions {
   currentCandle?: Candle;
@@ -79,22 +80,27 @@ export function useOrderForm({
     if (nextOrderType === "LIMIT" && currentCandle) setLimitPrice(currentCandle.close);
   };
 
-  const beginOrderDraft = (side: Trade["side"]) => {
+  const beginOrderDraft = (side: Trade["side"], visiblePriceRange?: ChartPriceRange | null) => {
     if (!currentCandle?.close) return;
     setSelectedRiskPct(null);
     setRiskSizingCapped(false);
     const currentPrice = currentCandle.close;
     setOrderDraftSide(side);
+    const entry = orderType === "LIMIT"
+      ? Number((limitPrice || currentPrice).toFixed(pricePrecision))
+      : currentPrice;
     if (orderType === "LIMIT") {
-      setLimitPrice(Number(currentPrice.toFixed(pricePrecision)));
+      setLimitPrice(entry);
     }
-    if (side === "LONG") {
-      setTakeProfit(Number((currentPrice * 1.01).toFixed(pricePrecision)));
-      setStopLoss(Number((currentPrice * 0.99).toFixed(pricePrecision)));
-      return;
-    }
-    setTakeProfit(Number((currentPrice * 0.99).toFixed(pricePrecision)));
-    setStopLoss(Number((currentPrice * 1.01).toFixed(pricePrecision)));
+    const { tp, sl } = buildInitialProtectionPrices(
+      side,
+      entry,
+      visiblePriceRange,
+      currentCandle,
+      pricePrecision,
+    );
+    setTakeProfit(tp);
+    setStopLoss(sl);
   };
 
   const cancelOrderDraft = () => {

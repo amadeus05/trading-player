@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App as AntApp, Empty } from "antd";
 import type { AmbiguousExitPolicy, Candle, SimulationSettings } from "../../types";
 import type { DrawingMode } from "../../drawing";
-import { ReplayChart } from "../chart/ReplayChart";
+import { ReplayChart, type ChartViewportRef } from "../chart/ReplayChart";
 import { PlayerModals } from "./PlayerModals";
 import { ReplayControls } from "../replay/ReplayControls";
 import { AppHeader } from "../../widgets/AppHeader";
@@ -26,6 +26,7 @@ export function PlayerPage() {
   const { message } = AntApp.useApp();
   const chartInteractionActive = useRef(false);
   const deleteAllDrawingsRef = useRef<(() => void) | null>(null);
+  const chartViewportRef = useRef<ChartViewportRef | null>(null);
   const candleCacheRef = useRef<Map<string, Candle[]>>(new Map());
   const { state, setState, initialDatasetId, initialTimeframe, hydrated } = usePersistedPlayerState();
   const { catalog, datasetOptions, ready: catalogReady, refresh: refreshCatalog } = useMarketCatalog();
@@ -349,6 +350,7 @@ export function PlayerPage() {
                 datasetId={dataset}
                 drawingsVisible={drawingsVisible}
                 followCandle={simulationSettings.followCandle}
+                chartViewportRef={chartViewportRef}
                 deleteAllDrawingsRef={deleteAllDrawingsRef}
                 onDrawingComplete={() => setDrawingMode("none")}
                 onInteractionChange={(active) => { chartInteractionActive.current = active; }}
@@ -388,7 +390,7 @@ export function PlayerPage() {
           onBeginOrderDraft={(side) => {
             setFocusedTradeId(null);
             setTradeEditDraft(null);
-            orderForm.beginOrderDraft(side);
+            orderForm.beginOrderDraft(side, chartViewportRef.current?.getVisiblePriceRange());
           }}
           onCancelOrderDraft={() => {
             setTradeEditDraft(null);
