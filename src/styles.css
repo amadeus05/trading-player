@@ -97,14 +97,15 @@ header {
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   gap: 18px;
+  padding-top: 1px;
 }
 
 .headerStatsGroup {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 14px;
   min-width: 0;
 }
@@ -113,6 +114,7 @@ header {
   width: 1px;
   height: 28px;
   flex-shrink: 0;
+  margin-top: 1px;
   background: #282b35;
 }
 
@@ -126,6 +128,8 @@ header {
 .headerStat span {
   color: #656b7c;
   font-size: 9px;
+  line-height: 11px;
+  min-height: 11px;
   letter-spacing: 0.35px;
   text-transform: uppercase;
   white-space: nowrap;
@@ -135,14 +139,16 @@ header {
   color: #d8dbe5;
   font-size: 11px;
   font-weight: 600;
+  line-height: 13px;
+  min-height: 13px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .headerStatPrimary b {
   color: #eef0f6;
-  font-size: 13px;
-  font-weight: 650;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .headerStat b.pos {
