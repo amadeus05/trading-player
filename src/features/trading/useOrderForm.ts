@@ -20,7 +20,7 @@ export function useOrderForm({
   availableBalance,
 }: UseOrderFormOptions) {
   const [orderType, setOrderType] = useState<OrderType>("MARKET");
-  const [leverage, setLeverage] = useState(10);
+  const [leverage, setLeverage] = useState(1);
   const [amountUnit, setAmountUnit] = useState<AmountUnit>("USDT");
   const [orderValue, setOrderValue] = useState(100);
   const [allocationPercent, setAllocationPercent] = useState(1);
