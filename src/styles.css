@@ -83,6 +83,34 @@ body {
   min-height: 100vh;
 }
 
+.app--chart-fullscreen {
+  background: #0d0f15;
+}
+
+.app--chart-fullscreen header,
+.app--chart-fullscreen aside {
+  display: none !important;
+}
+
+.app--chart-fullscreen main {
+  grid-template-columns: minmax(0, 1fr);
+  height: 100vh;
+}
+
+.app--chart-fullscreen .toolbar,
+.app--chart-fullscreen .replay {
+  display: none;
+}
+
+.app--chart-fullscreen .workspace {
+  height: 100%;
+}
+
+.app--chart-fullscreen .chartArea {
+  flex: 1;
+  min-height: 0;
+}
+
 header {
   height: 64px;
   display: flex;
@@ -228,11 +256,31 @@ main {
 
 .toolbar {
   height: 58px;
-  padding: 10px 16px;
+  padding: 10px 0 10px 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--chart-price-scale-width, 72px);
+  align-items: center;
+  border-bottom: 1px solid #1c1f28;
+}
+
+.toolbarMain {
   display: flex;
   align-items: center;
   gap: 16px;
-  border-bottom: 1px solid #1c1f28;
+  min-width: 0;
+}
+
+.toolbarPriceScaleSlot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--chart-price-scale-width, 72px);
+}
+
+.toolbarPriceScaleSlot .drawing-tool-btn.ant-btn {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .tf {

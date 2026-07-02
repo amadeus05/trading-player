@@ -12,6 +12,7 @@ import { TradingSidebar } from "../trading/TradingSidebar";
 import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SIMULATION_SETTINGS } from "../../shared/config/simulation";
 import { formatMarketPair, formatTimeframe, getMarketAssets, inferPricePrecision } from "../../shared/lib/market";
 import { usePersistedPlayerState } from "./usePersistedPlayerState";
+import { useChartFullscreen } from "./useChartFullscreen";
 import { useReplayController } from "../replay/useReplayController";
 import { selectDrawingCollections, useDrawingCollections, countDrawingsForDataset } from "../drawings/useDrawingCollections";
 import { useTradeEditing } from "../trading/useTradeEditing";
@@ -29,6 +30,7 @@ export function PlayerPage() {
   const deleteAllDrawingsRef = useRef<(() => void) | null>(null);
   const chartViewportRef = useRef<ChartViewportRef | null>(null);
   const candleCacheRef = useRef<Map<string, Candle[]>>(new Map());
+  const { appRef, chartFullscreenActive, toggleChartFullscreen } = useChartFullscreen();
   const { state, setState, initialDatasetId, initialTimeframe, hydrated } = usePersistedPlayerState();
   const { catalog, datasetOptions, ready: catalogReady, refresh: refreshCatalog } = useMarketCatalog();
   const drawingActions = useDrawingCollections(setState);
@@ -297,7 +299,7 @@ export function PlayerPage() {
     setIdx(Math.min(120, market.candles.length - 1));
   }, [refreshCatalog, setIdx, setState]);
   return (
-    <div className="app">
+    <div className="app" ref={appRef}>
       <AppHeader
         tradeCount={state.trades.length}
         quoteAsset={quoteAsset}
@@ -318,6 +320,8 @@ export function PlayerPage() {
               setIdx(120);
             }}
             onTimeframeChange={handleTimeframeChange}
+            chartFullscreenActive={chartFullscreenActive}
+            onToggleChartFullscreen={toggleChartFullscreen}
           />
           <div className="chartArea">
             <DrawingToolsRail
