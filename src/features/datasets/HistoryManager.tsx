@@ -55,6 +55,7 @@ interface HistoryFormValues {
 
 interface HistoryManagerProps {
   onOpen: (market: Dataset) => void;
+  iconOnly?: boolean;
 }
 
 const formatDate = (milliseconds: number) => dayjs(milliseconds).format("YYYY-MM-DD");
@@ -64,7 +65,7 @@ const readError = async (response: Response) => {
   return payload.error ?? `HTTP ${response.status}`;
 };
 
-export function HistoryManager({ onOpen }: HistoryManagerProps) {
+export function HistoryManager({ onOpen, iconOnly = false }: HistoryManagerProps) {
   const { message } = AntApp.useApp();
   const [open, setOpen] = useState(false);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
@@ -201,7 +202,14 @@ export function HistoryManager({ onOpen }: HistoryManagerProps) {
 
   return (
     <>
-      <Button icon={<Database size={16} />} onClick={() => setOpen(true)}>История</Button>
+      <Button
+        className={iconOnly ? "historyIconBtn" : undefined}
+        icon={<Database size={16} />}
+        aria-label="История"
+        onClick={() => setOpen(true)}
+      >
+        {iconOnly ? null : "История"}
+      </Button>
       <Modal title="История Bybit" open={open} width={850} onCancel={() => setOpen(false)} footer={null} destroyOnHidden>
         <Form
           form={form}

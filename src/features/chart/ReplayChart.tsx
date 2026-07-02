@@ -424,7 +424,19 @@ export function ReplayChart({
     }
     appliedFocusRevision.current = focusRevision;
     appliedDrawingRestoreRevision.current = drawingRestoreRevision;
-    const priceScaleWidth = Math.max(70, chart.priceScale("right").width());
+    const syncWorkspaceLayout = () => {
+      const nextPriceScaleWidth = Math.max(70, chart.priceScale("right").width());
+      ref.current?.parentElement?.parentElement?.style.setProperty(
+        "--chart-price-scale-width",
+        `${nextPriceScaleWidth}px`,
+      );
+      return nextPriceScaleWidth;
+    };
+    let priceScaleWidth = syncWorkspaceLayout();
+    const layoutObserver = new ResizeObserver(() => {
+      priceScaleWidth = syncWorkspaceLayout();
+    });
+    if (ref.current) layoutObserver.observe(ref.current);
     const timeScaleHeight = Math.max(28, chart.timeScale().height());
     let chartAlive = true;
     const markManualScale = (event: PointerEvent) => {
@@ -644,6 +656,7 @@ export function ReplayChart({
       deleteAllDrawingsRef.current = () => { drawingManager.deleteAllDrawings(); };
     }
     return () => {
+      layoutObserver.disconnect();
       if (deleteAllDrawingsRef) deleteAllDrawingsRef.current = null;
       chartAlive = false;
       const range = chart.timeScale().getVisibleLogicalRange();

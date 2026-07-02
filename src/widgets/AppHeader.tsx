@@ -1,15 +1,12 @@
 import { Button, Tag } from "antd";
 import { BarChart3, BookOpen, Settings } from "lucide-react";
-import { HistoryManager } from "../features/datasets/HistoryManager";
 import { AccountStatsBar } from "../features/trading/AccountStatsBar";
 import type { AccountStats } from "../features/trading/lib/calculateAccountStats";
-import type { Dataset } from "../types";
 
 interface AppHeaderProps {
   tradeCount: number;
   quoteAsset: string;
   accountStats: AccountStats;
-  onMarketOpen: (market: Dataset) => void;
   onSettingsOpen: () => void;
   onJournalOpen: () => void;
 }
@@ -18,7 +15,6 @@ export function AppHeader({
   tradeCount,
   quoteAsset,
   accountStats,
-  onMarketOpen,
   onSettingsOpen,
   onJournalOpen,
 }: AppHeaderProps) {
@@ -33,8 +29,6 @@ export function AppHeader({
       </div>
       <AccountStatsBar stats={accountStats} quoteAsset={quoteAsset} />
       <div className="headerRight">
-        <HistoryManager onOpen={onMarketOpen} />
-        <span className="live"><i /> LOCAL</span>
         <Button icon={<Settings size={16} />} onClick={onSettingsOpen}>
           Настройки
         </Button>

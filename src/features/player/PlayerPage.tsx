@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App as AntApp, Empty } from "antd";
-import type { AmbiguousExitPolicy, Candle, SimulationSettings } from "../../types";
+import type { AmbiguousExitPolicy, Candle, Dataset, SimulationSettings } from "../../types";
 import type { DrawingMode } from "../../drawing";
 import { ReplayChart, type ChartViewportRef } from "../chart/ReplayChart";
 import { PlayerModals } from "./PlayerModals";
@@ -288,19 +288,19 @@ export function PlayerPage() {
       if (!loaded) setPendingTimeframeChange(null);
     });
   }, [changeTimeframe, cur?.time, loadCandlesAroundTime, setPlaying, setState]);
+  const handleMarketOpen = useCallback((market: Dataset) => {
+    candleCacheRef.current.set(market.id, market.candles);
+    void refreshCatalog();
+    setDataset(market.id);
+    setState((current) => ({ ...current, lastDatasetId: market.id }));
+    setIdx(Math.min(120, market.candles.length - 1));
+  }, [refreshCatalog, setIdx, setState]);
   return (
     <div className="app">
       <AppHeader
         tradeCount={state.trades.length}
         quoteAsset={quoteAsset}
         accountStats={accountStats}
-        onMarketOpen={(market) => {
-          candleCacheRef.current.set(market.id, market.candles);
-          void refreshCatalog();
-          setDataset(market.id);
-          setState((current) => ({ ...current, lastDatasetId: market.id }));
-          setIdx(Math.min(120, market.candles.length - 1));
-        }}
         onSettingsOpen={() => setSettingsOpen(true)}
         onJournalOpen={() => setJournal(true)}
       />
@@ -372,6 +372,7 @@ export function PlayerPage() {
             currentCandle={cur}
             replayIndex={replayIndex}
             candleCount={candles.length}
+            onMarketOpen={handleMarketOpen}
             onStartAction={handleStartAction}
             onReset={reset}
             onPlayingChange={setPlaying}
