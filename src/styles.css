@@ -1873,18 +1873,55 @@ aside {
 .tradeBtns .ant-btn {
   width: 100%;
   height: 48px;
-  border-radius: 24px;
+  border-radius: 12px;
+  border-width: 1px;
+  border-style: solid;
   font-weight: 700;
   font-size: 16px;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 .tradeBtnSplit {
-  display: flex;
+  position: relative;
   width: 100%;
   height: 48px;
-  border-radius: 24px;
-  overflow: hidden;
+  padding: 1px;
+  border-radius: 12px;
   border: 1px solid transparent;
+  background: #141821;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.tradeBtnBeam {
+  position: absolute;
+  inset: -140%;
+  z-index: 0;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 250deg,
+    rgba(124, 108, 242, 0.18) 285deg,
+    rgba(210, 200, 255, 0.92) 312deg,
+    rgba(255, 255, 255, 0.98) 328deg,
+    rgba(168, 155, 255, 0.55) 342deg,
+    transparent 360deg
+  );
+  animation: position-beam-spin 2.8s linear infinite;
+  pointer-events: none;
+}
+
+.tradeBtnSplitInner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  border-radius: 11px;
+  overflow: hidden;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.045) 0%, transparent 42%),
+    #141821;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .tradeBtnSplitPart {
@@ -1904,69 +1941,121 @@ aside {
 
 .tradeBtnSplitPart:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
+  opacity: 1;
 }
 
 .tradeBtnSplit.long {
-  border-color: #205b4c;
-  background: #112b25;
+  border-color: rgba(43, 217, 168, 0.55);
+  box-shadow:
+    0 0 0 1px rgba(43, 217, 168, 0.1),
+    0 8px 20px rgba(8, 10, 18, 0.28);
+}
+
+.tradeBtnSplit.long .tradeBtnSplitInner {
+  background:
+    linear-gradient(145deg, rgba(43, 217, 168, 0.08) 0%, transparent 42%),
+    #121a18;
 }
 
 .tradeBtnSplit.long .confirm {
-  background: #205b4c;
-  color: #2bd9a8;
+  background: #2bd9a8;
+  color: #0b1210;
 }
 
 .tradeBtnSplit.long .confirm:not(:disabled):hover {
-  background: #267a66;
+  background: #35e3b0;
+}
+
+.tradeBtnSplit.long .confirm:disabled {
+  background: #1e4a40;
+  color: #6b8f84;
 }
 
 .tradeBtnSplit.long .cancel {
-  background: #31151d;
-  color: #ff687d;
-  box-shadow: inset 1px 0 0 #205b4c;
+  background: #141821;
+  color: #9da3b4;
+  box-shadow: inset 1px 0 0 rgba(43, 217, 168, 0.28);
 }
 
 .tradeBtnSplit.long .cancel:hover {
-  background: #452028;
-  color: #ff8a9b;
+  background: #1a1f28;
+  color: #d8dbe5;
 }
 
 .tradeBtnSplit.short {
-  border-color: #6a2938;
-  background: #31151d;
+  border-color: rgba(255, 104, 125, 0.55);
+  box-shadow:
+    0 0 0 1px rgba(255, 104, 125, 0.1),
+    0 8px 20px rgba(8, 10, 18, 0.28);
+}
+
+.tradeBtnSplit.short .tradeBtnSplitInner {
+  background:
+    linear-gradient(145deg, rgba(255, 104, 125, 0.08) 0%, transparent 42%),
+    #181214;
 }
 
 .tradeBtnSplit.short .confirm {
-  background: #6a2938;
-  color: #ff687d;
+  background: #ff687d;
+  color: #160b0e;
 }
 
 .tradeBtnSplit.short .confirm:not(:disabled):hover {
-  background: #853244;
+  background: #ff8596;
+}
+
+.tradeBtnSplit.short .confirm:disabled {
+  background: #4a2830;
+  color: #9a7078;
 }
 
 .tradeBtnSplit.short .cancel {
-  background: #31151d;
-  color: #ff687d;
-  box-shadow: inset 1px 0 0 #6a2938;
+  background: #141821;
+  color: #9da3b4;
+  box-shadow: inset 1px 0 0 rgba(255, 104, 125, 0.28);
 }
 
 .tradeBtnSplit.short .cancel:hover {
-  background: #452028;
-  color: #ff8a9b;
+  background: #1a1f28;
+  color: #d8dbe5;
 }
 
-.long {
-  background: #112b25 !important;
+.tradeBtns .ant-btn.long {
+  background: #141821 !important;
   color: #2bd9a8 !important;
-  border-color: #205b4c !important;
+  border-color: #2bd9a8 !important;
 }
 
-.short {
-  background: #31151d !important;
+.tradeBtns .ant-btn.long:not(:disabled):hover {
+  background: rgba(43, 217, 168, 0.12) !important;
+  color: #3ee7b8 !important;
+  border-color: #3ee7b8 !important;
+}
+
+.tradeBtns .ant-btn.long:disabled {
+  background: #11151d !important;
+  color: #4f5969 !important;
+  border-color: #2a303c !important;
+  opacity: 1 !important;
+}
+
+.tradeBtns .ant-btn.short {
+  background: #141821 !important;
   color: #ff687d !important;
-  border-color: #6a2938 !important;
+  border-color: #ff687d !important;
+}
+
+.tradeBtns .ant-btn.short:not(:disabled):hover {
+  background: rgba(255, 104, 125, 0.12) !important;
+  color: #ff8596 !important;
+  border-color: #ff8596 !important;
+}
+
+.tradeBtns .ant-btn.short:disabled {
+  background: #11151d !important;
+  color: #4f5969 !important;
+  border-color: #2a303c !important;
+  opacity: 1 !important;
 }
 
 .pos {
@@ -2052,6 +2141,17 @@ aside {
 
 @media (prefers-reduced-motion: reduce) {
   .positionBeam {
+    animation: none;
+    inset: 0;
+    background: linear-gradient(
+      135deg,
+      rgba(124, 108, 242, 0.35),
+      rgba(255, 255, 255, 0.12) 50%,
+      rgba(124, 108, 242, 0.2)
+    );
+  }
+
+  .tradeBtnBeam {
     animation: none;
     inset: 0;
     background: linear-gradient(

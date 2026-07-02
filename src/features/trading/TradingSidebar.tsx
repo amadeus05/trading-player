@@ -52,23 +52,26 @@ function OrderSideButton({
   if (orderDraftSide === side) {
     return (
       <div className={`tradeBtnSplit ${className}`}>
-        <button
-          type="button"
-          className="tradeBtnSplitPart confirm"
-          aria-label={`Подтвердить ${label}`}
-          disabled={disabled || takeProfit <= 0 || stopLoss <= 0}
-          onClick={() => onPlaceOrder(side)}
-        >
-          <Check size={20} strokeWidth={2.5} />
-        </button>
-        <button
-          type="button"
-          className="tradeBtnSplitPart cancel"
-          aria-label="Отменить создание сделки"
-          onClick={onCancelOrderDraft}
-        >
-          <X size={20} strokeWidth={2.5} />
-        </button>
+        <span className="tradeBtnBeam" aria-hidden="true" />
+        <div className="tradeBtnSplitInner">
+          <button
+            type="button"
+            className="tradeBtnSplitPart confirm"
+            aria-label={`Подтвердить ${label}`}
+            disabled={disabled || takeProfit <= 0 || stopLoss <= 0}
+            onClick={() => onPlaceOrder(side)}
+          >
+            <Check size={20} strokeWidth={2.5} />
+          </button>
+          <button
+            type="button"
+            className="tradeBtnSplitPart cancel"
+            aria-label="Отменить создание сделки"
+            onClick={onCancelOrderDraft}
+          >
+            <X size={20} strokeWidth={2.5} />
+          </button>
+        </div>
       </div>
     );
   }
