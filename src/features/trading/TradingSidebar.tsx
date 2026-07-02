@@ -181,29 +181,54 @@ export function TradingSidebar({
       </div>
       {orderType === "LIMIT" && (
         <div className="ticketField">
-          <span>Цена</span>
-          <div className="priceInput">
-            <InputNumber controls={false} value={limitPrice || currentCandle?.close} precision={pricePrecision} step={10 ** -pricePrecision} onChange={(value) => onLimitPriceChange(value ?? 0)} />
-            <button onClick={() => currentCandle && onLimitPriceChange(currentCandle.close)}>Last</button>
+          <div className="ticketFieldRow">
+            <div className="ticketFieldMain">
+              <span>Цена</span>
+              <InputNumber controls={false} value={limitPrice || currentCandle?.close} precision={pricePrecision} step={10 ** -pricePrecision} onChange={(value) => onLimitPriceChange(value ?? 0)} />
+            </div>
+            <div className="ticketFieldAside">
+              <button
+                type="button"
+                className="ticketFieldAction"
+                onClick={() => currentCandle && onLimitPriceChange(currentCandle.close)}
+              >
+                Last
+              </button>
+            </div>
           </div>
         </div>
       )}
       {orderDraftSide && (
         <div className="limitProtection">
-          <div className="ticketField"><span>Take Profit</span><InputNumber controls={false} placeholder="Не задан" value={takeProfit || undefined} precision={pricePrecision} step={10 ** -pricePrecision} onChange={(value) => onTakeProfitChange(value ?? 0)} /></div>
-          <div className="ticketField"><span>Stop Loss</span><InputNumber controls={false} placeholder="Не задан" value={stopLoss || undefined} precision={pricePrecision} step={10 ** -pricePrecision} onChange={(value) => onStopLossChange(value ?? 0)} /></div>
+          <div className="ticketField">
+            <div className="ticketFieldMain">
+              <span>Take Profit</span>
+              <InputNumber controls={false} placeholder="Не задан" value={takeProfit || undefined} precision={pricePrecision} step={10 ** -pricePrecision} onChange={(value) => onTakeProfitChange(value ?? 0)} />
+            </div>
+          </div>
+          <div className="ticketField">
+            <div className="ticketFieldMain">
+              <span>Stop Loss</span>
+              <InputNumber controls={false} placeholder="Не задан" value={stopLoss || undefined} precision={pricePrecision} step={10 ** -pricePrecision} onChange={(value) => onStopLossChange(value ?? 0)} />
+            </div>
+          </div>
         </div>
       )}
       <div className="ticketField">
-        <span>{amountUnit === "USDT" ? "Margin" : "Quantity"}</span>
-        <div className="amountInput">
-          <InputNumber controls={false} min={0} value={orderValue} onChange={(value) => onOrderValueChange(value ?? 0)} />
-          <Select
-            variant="borderless"
-            value={amountUnit}
-            onChange={onAmountUnitChange}
-            options={[{ value: "USDT", label: "USDT" }, { value: "COIN", label: baseAsset }]}
-          />
+        <div className="ticketFieldRow">
+          <div className="ticketFieldMain">
+            <span>{amountUnit === "USDT" ? "Margin" : "Quantity"}</span>
+            <InputNumber controls={false} min={0} value={orderValue} onChange={(value) => onOrderValueChange(value ?? 0)} />
+          </div>
+          <div className="ticketFieldAside">
+            <Select
+              className="ticketFieldUnit"
+              variant="borderless"
+              value={amountUnit}
+              onChange={onAmountUnitChange}
+              options={[{ value: "USDT", label: "USDT" }, { value: "COIN", label: baseAsset }]}
+            />
+          </div>
         </div>
       </div>
       <div className="allocationSlider">

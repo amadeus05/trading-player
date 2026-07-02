@@ -1430,23 +1430,55 @@ aside {
 }
 
 .ticketField {
-  margin-bottom: 12px;
-  padding: 8px 12px 9px;
-  border: 0;
-  border-radius: 5px;
-  background: #24272e;
-  transition: box-shadow .15s ease;
+  margin-bottom: 8px;
+  padding: 0;
+  border: 1px solid #242934;
+  border-radius: 7px;
+  background: #141821;
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .ticketField:focus-within {
-  box-shadow: 0 0 0 1px #7c6cf2;
+  border-color: rgba(124, 108, 242, 0.55);
+  box-shadow: 0 0 0 1px rgba(124, 108, 242, 0.12);
 }
 
-.ticketField>span {
+.ticketField>span,
+.ticketFieldMain>span {
   display: block;
-  margin-bottom: 1px;
-  color: #9299a8;
-  font-size: 11px;
+  margin-bottom: 2px;
+  color: #656b7c;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.35px;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+
+.ticketFieldRow {
+  display: flex;
+  align-items: stretch;
+  min-height: 46px;
+}
+
+.ticketFieldMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 6px 10px 7px;
+}
+
+.ticketFieldAside {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  padding: 0 10px;
+  background: transparent;
 }
 
 .ticketField.compact {
@@ -1466,7 +1498,7 @@ aside {
 
 .ticketField .ant-input-number {
   width: 100%;
-  height: 24px;
+  height: 20px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1484,17 +1516,18 @@ aside {
 }
 
 .ticketField .ant-input-number-input {
-  height: 24px;
+  height: 20px;
   padding: 0;
-  color: #fff;
-  font-size: 16px;
+  color: #eef0f6;
+  font-size: 15px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  line-height: 20px;
 }
 
 .ticketField .ant-input-number-input-wrap,
-.priceInput .ant-input-number,
-.priceInput .ant-input-number-input-wrap {
+.ticketFieldMain .ant-input-number,
+.ticketFieldMain .ant-input-number-input-wrap {
   margin: 0 !important;
   padding: 0 !important;
 }
@@ -1509,18 +1542,32 @@ aside {
   font-weight: 500;
 }
 
-.priceInput {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+.ticketFieldAction {
+  display: inline-flex;
   align-items: center;
-}
-
-.priceInput button {
+  justify-content: center;
+  height: auto;
+  padding: 0;
   border: 0;
+  border-radius: 0;
   background: transparent;
   color: #9b8cff;
+  font-size: 11px;
   font-weight: 600;
+  line-height: 1;
   cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.ticketFieldAction:hover {
+  color: #c8bcff;
+}
+
+.ticketFieldAction:focus-visible {
+  outline: 0;
+  color: #c8bcff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .protectionToggle {
@@ -1546,68 +1593,83 @@ aside {
 .limitProtection {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
 .limitProtection .ticketField {
   min-width: 0;
+  margin-bottom: 0;
+  padding: 0;
+}
+
+.limitProtection .ticketFieldMain {
+  padding: 6px 10px 7px;
 }
 
 .limitProtection .ant-input-number {
   width: 100%;
+  height: 18px;
+}
+
+.limitProtection .ant-input-number-handler-wrap {
+  display: none !important;
+  width: 0 !important;
+}
+
+.limitProtection .ant-input-number-input-wrap {
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 .limitProtection .ant-input-number-input {
-  font-size: 13px;
-}
-
-.amountInput {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 82px;
-  gap: 6px;
-  align-items: center;
-}
-
-.limitProtection .ant-input-number,
-.limitProtection .ant-input-number-input-wrap,
-.limitProtection .ant-input-number-input,
-.amountInput .ant-input-number,
-.amountInput .ant-input-number-input-wrap,
-.amountInput .ant-input-number-input {
-  margin-inline: 0 !important;
-  padding-inline: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  height: 18px !important;
+  font-size: 12px;
+  line-height: 18px;
   text-align: left;
 }
 
-.amountInput .ant-select {
+.ticketFieldUnit.ant-select {
+  width: auto !important;
+  min-width: 0;
   border: 0 !important;
   outline: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
 }
 
-.amountInput .ant-select-selector,
-.amountInput .ant-select:hover .ant-select-selector,
-.amountInput .ant-select-focused .ant-select-selector,
-.amountInput .ant-select-open .ant-select-selector {
-  height: 24px !important;
-  padding: 0 18px 0 0 !important;
+.ticketFieldUnit .ant-select-selector,
+.ticketFieldUnit.ant-select:hover .ant-select-selector,
+.ticketFieldUnit.ant-select-focused .ant-select-selector,
+.ticketFieldUnit.ant-select-open .ant-select-selector {
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 0 16px 0 0 !important;
   border: 0 !important;
-  outline: 0 !important;
+  border-radius: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
 }
 
-.amountInput .ant-select-selection-item {
-  line-height: 22px !important;
-  color: #fff;
+.ticketFieldUnit.ant-select:hover .ant-select-selector,
+.ticketFieldUnit.ant-select-focused .ant-select-selector,
+.ticketFieldUnit.ant-select-open .ant-select-selector {
+  background: transparent !important;
+}
+
+.ticketFieldUnit .ant-select-selection-item {
+  line-height: 1 !important;
+  color: #d8dbe5 !important;
+  font-size: 11px;
   font-weight: 600;
-  text-align: right;
+  text-align: center;
 }
 
-.amountInput .ant-select-arrow {
+.ticketFieldUnit .ant-select-arrow {
   right: 0;
-  color: #d8dbe5;
+  color: #9da3b4;
 }
 
 .orderSummary {
