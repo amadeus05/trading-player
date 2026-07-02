@@ -87,10 +87,70 @@ header {
   height: 64px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 18px;
   padding: 0 22px;
   border-bottom: 1px solid #20232d;
   background: #0d0f15;
+}
+
+.headerStats {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+}
+
+.headerStatsGroup {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.headerStatsSep {
+  width: 1px;
+  height: 28px;
+  flex-shrink: 0;
+  background: #282b35;
+}
+
+.headerStat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.headerStat span {
+  color: #656b7c;
+  font-size: 9px;
+  letter-spacing: 0.35px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.headerStat b {
+  color: #d8dbe5;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.headerStatPrimary b {
+  color: #eef0f6;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.headerStat b.pos {
+  color: #2bd9a8;
+}
+
+.headerStat b.neg {
+  color: #ff687d;
 }
 
 .brand,
@@ -102,6 +162,7 @@ header {
 
 .brand {
   gap: 11px;
+  flex-shrink: 0;
 }
 
 .brand>div:last-child {
@@ -129,6 +190,7 @@ header {
 
 .headerRight {
   gap: 14px;
+  flex-shrink: 0;
 }
 
 .live {
@@ -1178,73 +1240,6 @@ aside {
 
 .orderHeader b {
   font-size: 16px;
-}
-
-.orderHeader span {
-  color: #747b8d;
-  font-size: 11px;
-}
-
-.accountSummary {
-  display: grid;
-  gap: 10px;
-  margin-bottom: 14px;
-  padding: 12px;
-  border: 1px solid #242934;
-  border-radius: 7px;
-  background: #141821;
-}
-
-.accountSummaryMain {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.accountSummaryMain span,
-.accountSummaryGrid span {
-  color: #747b8d;
-  font-size: 11px;
-}
-
-.accountSummaryMain strong {
-  color: #eef0f6;
-  font-size: 18px;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-.accountSummaryGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.accountSummaryGrid div {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-  padding: 8px 9px;
-  border-radius: 6px;
-  background: #0f1219;
-}
-
-.accountSummaryGrid b {
-  overflow: hidden;
-  color: #d8dbe5;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.accountSummaryGrid .pos {
-  color: #2bd9a8;
-}
-
-.accountSummaryGrid .neg {
-  color: #ff687d;
 }
 
 .riskPanel {

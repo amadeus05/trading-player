@@ -292,6 +292,8 @@ export function PlayerPage() {
     <div className="app">
       <AppHeader
         tradeCount={state.trades.length}
+        quoteAsset={quoteAsset}
+        accountStats={accountStats}
         onMarketOpen={(market) => {
           candleCacheRef.current.set(market.id, market.candles);
           void refreshCatalog();
