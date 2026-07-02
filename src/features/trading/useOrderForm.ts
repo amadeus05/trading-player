@@ -4,6 +4,8 @@ import type { AmountUnit, OrderType } from "./types";
 import { calculateLiquidationRisk, calculateOrderRisk, calculateRiskBasedSizing } from "./lib/calculateOrderRisk";
 import { buildInitialProtectionPrices, type ChartPriceRange } from "./lib/buildInitialProtectionPrices";
 
+export const RISK_PRESETS = [0.5, 1, 2] as const;
+
 interface UseOrderFormOptions {
   currentCandle?: Candle;
   pricePrecision: number;
@@ -57,6 +59,24 @@ export function useOrderForm({
       leverage,
       takerFeePct: settings.takerFeePct,
     });
+    // Precompute whether each risk-size preset is actually reachable with the
+    // available margin — otherwise clicking between presets that all clamp to
+    // the same max-margin quantity looks like the buttons do nothing.
+    const riskPresetCapped: Record<number, boolean> = {};
+    if (orderDraftSide) {
+      RISK_PRESETS.forEach((riskPct) => {
+        const sizing = calculateRiskBasedSizing({
+          side: orderDraftSide,
+          entry: ticketPrice,
+          stopLoss,
+          balance,
+          riskPct,
+          leverage,
+          maxMargin: availableBalance,
+        });
+        riskPresetCapped[riskPct] = sizing?.capped ?? false;
+      });
+    }
     return {
       ticketPrice,
       ticketQuantity,
@@ -64,6 +84,7 @@ export function useOrderForm({
       ticketMargin,
       riskStats,
       liquidationStats,
+      riskPresetCapped,
       longLiquidation: ticketPrice > 0 && leverage > 1
         ? ticketPrice * (1 - 1 / leverage)
         : null,
@@ -71,7 +92,7 @@ export function useOrderForm({
         ? ticketPrice * (1 + 1 / leverage)
         : null,
     };
-  }, [amountUnit, balance, currentCandle?.close, leverage, limitPrice, orderDraftSide, orderType, orderValue, settings.takerFeePct, stopLoss, takeProfit]);
+  }, [amountUnit, availableBalance, balance, currentCandle?.close, leverage, limitPrice, orderDraftSide, orderType, orderValue, settings.takerFeePct, stopLoss, takeProfit]);
 
   const changeOrderType = (nextOrderType: OrderType) => {
     setSelectedRiskPct(null);
@@ -171,16 +192,31 @@ export function useOrderForm({
     setSelectedRiskPct(riskPct);
   };
 
+  const resyncAllocationForUnitPrice = (nextLeverage: number, nextTicketPrice: number) => {
+    if (amountUnit !== "COIN") return;
+    const margin = nextTicketPrice > 0 ? orderValue * nextTicketPrice / nextLeverage : 0;
+    setAllocationPercent(
+      availableBalance > 0 ? Math.min(100, margin / availableBalance * 100) : 0,
+    );
+  };
+
   const changeLeverage = (nextLeverage: number) => {
     setLeverage(nextLeverage);
-    if (!orderDraftSide || selectedRiskPct == null) return;
-    void applyRiskSizing(selectedRiskPct, nextLeverage);
+    if (orderDraftSide && selectedRiskPct != null) {
+      void applyRiskSizing(selectedRiskPct, nextLeverage);
+      return;
+    }
+    resyncAllocationForUnitPrice(nextLeverage, ticket.ticketPrice);
   };
 
   const changeLimitPrice = (nextLimitPrice: number) => {
     setLimitPrice(nextLimitPrice);
-    if (selectedRiskPct == null) return;
-    void applyRiskSizing(selectedRiskPct, leverage, stopLoss, nextLimitPrice || currentCandle?.close || 0);
+    const nextTicketPrice = nextLimitPrice || currentCandle?.close || 0;
+    if (selectedRiskPct != null) {
+      void applyRiskSizing(selectedRiskPct, leverage, stopLoss, nextTicketPrice);
+      return;
+    }
+    resyncAllocationForUnitPrice(leverage, nextTicketPrice);
   };
 
   const changeStopLoss = (nextStopLoss: number) => {

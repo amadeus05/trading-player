@@ -3,7 +3,7 @@ import { Check, CircleHelp, Pencil, X } from "lucide-react";
 import type { Candle, Trade } from "../../types";
 import { formatNumber, formatPrice } from "../../shared/lib/market";
 import type { AccountStats } from "./lib/calculateAccountStats";
-import type { OrderFormController } from "./useOrderForm";
+import { RISK_PRESETS, type OrderFormController } from "./useOrderForm";
 
 interface TradingSidebarProps {
   currentCandle?: Candle;
@@ -124,6 +124,7 @@ export function TradingSidebar({
     liquidationStats,
     selectedRiskPct,
     riskSizingCapped,
+    riskPresetCapped,
     longLiquidation,
     shortLiquidation,
     changeAllocation: onAllocationChange,
@@ -246,16 +247,23 @@ export function TradingSidebar({
           <div className="riskPresets">
             <span>Risk size</span>
             <div>
-              {[0.5, 1, 2].map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={selectedRiskPct === value ? "active" : ""}
-                  onClick={() => onRiskPercentChange(value)}
-                >
-                  {value}%
-                </button>
-              ))}
+              {RISK_PRESETS.map((value) => {
+                const capped = riskPresetCapped?.[value] ?? false;
+                return (
+                  <Tooltip
+                    key={value}
+                    title={capped ? `Недостаточно доступной маржи для риска ${value}% — будет использован максимум` : undefined}
+                  >
+                    <button
+                      type="button"
+                      className={`${selectedRiskPct === value ? "active" : ""}${capped ? " maxed" : ""}`}
+                      onClick={() => onRiskPercentChange(value)}
+                    >
+                      {value}%
+                    </button>
+                  </Tooltip>
+                );
+              })}
             </div>
           </div>
           <div className="riskGrid">

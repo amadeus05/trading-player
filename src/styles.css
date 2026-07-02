@@ -1341,6 +1341,17 @@ aside {
   color: #fff;
 }
 
+.riskPresets button.maxed::after {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: #f5a623;
+  vertical-align: middle;
+}
+
 .riskGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
