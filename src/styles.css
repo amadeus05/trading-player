@@ -1635,61 +1635,131 @@ aside {
   font-size: 11px;
 }
 
-.positionMain {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  gap: 9px;
-  align-items: center;
-}
-
-.positionMain .ant-tag {
-  margin: 0;
-}
-
-.positionPrice {
+.positionTop {
   display: flex;
-  min-width: 0;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
 }
 
-.positionPrice b {
-  color: #e8eaf0;
+.positionIdentity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.positionSide {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  line-height: 1.2;
+}
+
+.positionSide.long {
+  color: #2bd9a8;
+  background: rgba(43, 217, 168, 0.12);
+}
+
+.positionSide.short {
+  color: #ff687d;
+  background: rgba(255, 104, 125, 0.12);
+}
+
+.positionSide.pending {
+  color: #ffb020;
+  background: rgba(255, 176, 32, 0.12);
+}
+
+.positionSymbol {
+  color: #eef0f6;
   font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.2px;
+}
+
+.positionLeverage {
+  color: #687083;
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
 
-.positionPrice small,
-.positionPnl small {
+.positionPending {
   color: #687083;
-  font-size: 9px;
+  font-size: 10px;
+  letter-spacing: 0.2px;
 }
 
-.positionPnl {
+.positionBottom {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.positionStats {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.positionStat {
+  display: flex;
   flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.positionStat span {
+  color: #5e6472;
+  font-size: 9px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.positionStat b {
+  color: #c8ccd6;
+  font-size: 11px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.positionPnl b {
-  font-size: 10px;
+.positionPnl {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.positionPnlValue {
+  font-size: 12px;
   font-weight: 650;
+  line-height: 1.2;
 }
 
-.positionPnl em {
-  margin-top: 1px;
-  font-size: 9px;
-  font-style: normal;
+.positionPnlPct {
+  font-size: 10px;
+  line-height: 1.2;
 }
 
-.positionPnl.positive b,
-.positionPnl.positive em {
+.positionPnl.positive .positionPnlValue,
+.positionPnl.positive .positionPnlPct {
   color: #2bd9a8;
 }
 
-.positionPnl.negative b,
-.positionPnl.negative em {
+.positionPnl.negative .positionPnlValue,
+.positionPnl.negative .positionPnlPct {
   color: #ff687d;
 }
 
@@ -1697,13 +1767,14 @@ aside {
   display: flex;
   align-items: center;
   gap: 2px;
+  flex-shrink: 0;
 }
 
 .sideTitle {
   font-size: 10px;
   color: #5e6472;
   letter-spacing: 1.4px;
-  margin: 4px 0 10px;
+  margin: 16px 0 10px;
 }
 
 .price {
@@ -1879,49 +1950,50 @@ aside {
 
 .position {
   margin-bottom: 8px;
+  padding: 10px 11px;
+  border: 1px solid #242934;
+  border-radius: 7px;
+  background: #141821;
   cursor: pointer;
-  transition: border-color .15s ease, background .15s ease;
+  transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
 }
 
 .position:hover {
   border-color: #343947;
+  background: #161b24;
 }
 
 .position.focused {
-  border-color: #6559c8;
-  background: #11111b;
-}
-
-.position .ant-card-body {
-  display: block;
-  padding: 10px 11px;
+  border-color: #4f4588;
+  background: #151822;
+  box-shadow: inset 3px 0 0 #7c6cf2;
 }
 
 .positionAction.ant-btn {
   flex: 0 0 auto;
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
   padding: 0;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: #666d7c;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: #1a1f2a;
+  color: #8b92a3;
   box-shadow: none;
 }
 
 .positionAction.close.ant-btn {
-  background: transparent;
-  color: #78646a;
+  background: #1a1f2a;
+  color: #a86b76;
 }
 
 .positionAction.cancel.ant-btn {
-  background: transparent;
-  color: #a69d89;
+  background: #1a1f2a;
+  color: #b8a574;
 }
 
 .positionAction.edit.ant-btn {
-  color: #7f8494;
+  color: #8b92a3;
 }
 
 .positionAction.save.ant-btn {
@@ -1936,6 +2008,13 @@ aside {
 
 .positionAction.ant-btn:hover,
 .positionAction.ant-btn:focus-visible {
+  border-color: #343947;
+  background: #222733;
+  color: #d5d9e3;
+}
+
+.positionAction.close.ant-btn:hover,
+.positionAction.close.ant-btn:focus-visible {
   border-color: #74404b !important;
   background: #21151a !important;
   color: #e87889 !important;

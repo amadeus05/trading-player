@@ -1,4 +1,4 @@
-import { Button, Card, InputNumber, Select, Slider, Tag, Tooltip } from "antd";
+import { Button, InputNumber, Select, Slider, Tooltip } from "antd";
 import { Check, CircleHelp, Pencil, X } from "lucide-react";
 import type { Candle, Trade } from "../../types";
 import { formatDateTime, formatNumber, formatPrice } from "../../shared/lib/market";
@@ -351,23 +351,50 @@ export function TradingSidebar({
         const unrealizedRoi = unrealizedPnl != null && margin > 0
           ? unrealizedPnl / margin * 100
           : null;
+        const sideClass = trade.status === "PENDING"
+          ? "pending"
+          : trade.side === "LONG"
+            ? "long"
+            : "short";
+        const sideLabel = trade.status === "PENDING" ? "LIMIT" : trade.side;
+
         return (
-          <Card
-            size="small"
+          <div
             key={trade.id}
             data-trade-focus-id={trade.id}
             className={`position ${focusedTradeId === trade.id ? "focused" : ""}`}
             onClick={() => onTradeFocus(trade.id)}
           >
-            <div className="positionMain">
-              <Tag color={trade.status === "PENDING" ? "orange" : trade.side === "LONG" ? "green" : "red"}>{trade.status === "PENDING" ? "LIMIT" : trade.side}</Tag>
-              <div className="positionPrice"><b>{formatPrice(trade.entry, pricePrecision)}</b><small>{trade.leverage ?? 1}x · {formatPrice(trade.size, Math.min(8, pricePrecision + 2))} {baseAsset}</small></div>
-              {unrealizedPnl != null && (
+            <div className="positionTop">
+              <div className="positionIdentity">
+                <span className={`positionSide ${sideClass}`}>{sideLabel}</span>
+                <span className="positionSymbol">{baseAsset}</span>
+                <span className="positionLeverage">{trade.leverage ?? 1}x</span>
+              </div>
+              {unrealizedPnl != null ? (
                 <div className={`positionPnl ${unrealizedPnl >= 0 ? "positive" : "negative"}`}>
-                  <b>{unrealizedPnl >= 0 ? "+" : ""}{formatNumber(unrealizedPnl)} {quoteAsset}</b>
-                  <em>{unrealizedRoi != null && unrealizedRoi >= 0 ? "+" : ""}{unrealizedRoi?.toFixed(2)}%</em>
+                  <span className="positionPnlValue">
+                    {unrealizedPnl >= 0 ? "+" : ""}{formatNumber(unrealizedPnl)} {quoteAsset}
+                  </span>
+                  <span className="positionPnlPct">
+                    {unrealizedRoi != null && unrealizedRoi >= 0 ? "+" : ""}{unrealizedRoi?.toFixed(2)}%
+                  </span>
                 </div>
+              ) : (
+                <span className="positionPending">Ожидает</span>
               )}
+            </div>
+            <div className="positionBottom">
+              <div className="positionStats">
+                <div className="positionStat">
+                  <span>{trade.status === "PENDING" ? "Limit" : "Entry"}</span>
+                  <b>{formatPrice(trade.entry, pricePrecision)}</b>
+                </div>
+                <div className="positionStat">
+                  <span>Size</span>
+                  <b>{formatPrice(trade.size, Math.min(8, pricePrecision + 2))}</b>
+                </div>
+              </div>
               <div className="positionActions">
                 {editingTradeId === trade.id ? (
                   <>
@@ -395,7 +422,7 @@ export function TradingSidebar({
                 )}
               </div>
             </div>
-          </Card>
+          </div>
         );
       }) : <div className="muted">Нет активных позиций и заявок</div>}
       <div className="tip">
