@@ -2076,19 +2076,6 @@ aside {
   color: #e87889 !important;
 }
 
-.tip {
-  margin-top: 28px;
-  padding: 12px;
-  background: #11131a;
-  border-left: 2px solid #7c6cf2;
-  font-size: 11px;
-  color: #9a9fad;
-}
-
-.tip span {
-  color: #5d6370;
-}
-
 .form {
   display: grid;
   grid-template-columns: 1fr 1fr;

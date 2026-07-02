@@ -1,7 +1,7 @@
 import { Button, InputNumber, Select, Slider, Tooltip } from "antd";
 import { Check, CircleHelp, Pencil, X } from "lucide-react";
 import type { Candle, Trade } from "../../types";
-import { formatDateTime, formatNumber, formatPrice } from "../../shared/lib/market";
+import { formatNumber, formatPrice } from "../../shared/lib/market";
 import type { AccountStats } from "./lib/calculateAccountStats";
 import type { OrderFormController } from "./useOrderForm";
 
@@ -428,11 +428,6 @@ export function TradingSidebar({
           </div>
         );
       }) : <div className="muted">Нет активных позиций и заявок</div>}
-      <div className="tip">
-        Будущие свечи скрыты
-        <br />
-        <span>Доступно до {currentCandle ? formatDateTime(currentCandle.time) : "—"}</span>
-      </div>
     </aside>
   );
 }
