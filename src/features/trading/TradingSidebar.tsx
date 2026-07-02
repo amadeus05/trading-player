@@ -365,6 +365,8 @@ export function TradingSidebar({
             className={`position ${focusedTradeId === trade.id ? "focused" : ""}`}
             onClick={() => onTradeFocus(focusedTradeId === trade.id ? null : trade.id)}
           >
+            {focusedTradeId === trade.id ? <span className="positionBeam" aria-hidden="true" /> : null}
+            <div className="positionContent">
             <div className="positionTop">
               <div className="positionIdentity">
                 <span className={`positionSide ${sideClass}`}>{sideLabel}</span>
@@ -421,6 +423,7 @@ export function TradingSidebar({
                   </>
                 )}
               </div>
+            </div>
             </div>
           </div>
         );
