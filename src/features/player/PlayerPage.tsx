@@ -391,7 +391,6 @@ export function PlayerPage() {
             orderForm.beginOrderDraft(side);
           }}
           onCancelOrderDraft={() => {
-            setFocusedTradeId(null);
             setTradeEditDraft(null);
             orderForm.cancelOrderDraft();
           }}

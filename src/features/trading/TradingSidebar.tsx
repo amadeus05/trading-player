@@ -363,7 +363,7 @@ export function TradingSidebar({
             key={trade.id}
             data-trade-focus-id={trade.id}
             className={`position ${focusedTradeId === trade.id ? "focused" : ""}`}
-            onClick={() => onTradeFocus(trade.id)}
+            onClick={() => onTradeFocus(focusedTradeId === trade.id ? null : trade.id)}
           >
             <div className="positionTop">
               <div className="positionIdentity">

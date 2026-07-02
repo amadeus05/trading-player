@@ -34,6 +34,7 @@ export function attachPriceMarkers({
     const trade = trades.find((item) => item.id === barrier.id);
     if (!trade) return;
     (["tp", "sl"] as const).forEach((kind) => {
+      if (trade[kind] <= 0) return;
       const color = kind === "tp" ? "#2bd9a8" : "#ff5c73";
       let displayedPrice = trade[kind];
       const line = series.createPriceLine({

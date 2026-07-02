@@ -85,6 +85,25 @@ export function useChartDisplayState({
       : tradeEditDraft && editedTrade
         ? replayVisibleTrades.map((trade) => trade.id === editedTrade.id ? editedTrade : trade)
         : replayVisibleTrades;
+    const focusedBarrierFromAnnotations = !tradeEditDraft && focusedTrade
+      ? annotations.find(
+          (barrier) => barrier.id === focusedTrade.id
+            && barrier.entryTime <= (currentCandle?.time ?? 0),
+        )
+      : undefined;
+    const staticFocusBarrier: Barrier | undefined = !focusedBarrierFromAnnotations
+      && !tradeEditDraft
+      && focusedTrade
+      && (focusedTrade.tp > 0 || focusedTrade.sl > 0)
+      ? {
+          id: focusedTrade.id,
+          entryTime: focusedTrade.entryTime,
+          upper: focusedTrade.side === "LONG" ? focusedTrade.tp : focusedTrade.sl,
+          lower: focusedTrade.side === "LONG" ? focusedTrade.sl : focusedTrade.tp,
+          timeLimit: Number.MAX_SAFE_INTEGER,
+        }
+      : undefined;
+    const focusBarrier = focusedBarrierFromAnnotations ?? staticFocusBarrier;
     const barriers: Barrier[] = tradeEditDraft && editedTrade
       ? activeBarriers
       : draftProtectionTrade
@@ -95,7 +114,9 @@ export function useChartDisplayState({
             lower: draftProtectionTrade.side === "LONG" ? draftProtectionTrade.sl : draftProtectionTrade.tp,
             timeLimit: Number.MAX_SAFE_INTEGER,
           }]
-        : NO_BARRIERS;
+        : focusBarrier
+          ? [focusBarrier]
+          : NO_BARRIERS;
     const entryMarker = editedTrade?.status === "PENDING" && tradeEditDraft?.id === editedTrade.id
       ? { id: editedTrade.id, price: editedTrade.entry }
       : protectionEnabled && orderType === "LIMIT" && ticketPrice > 0
