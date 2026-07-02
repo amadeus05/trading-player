@@ -7,6 +7,7 @@ import { PlayerModals } from "./PlayerModals";
 import { ReplayControls } from "../replay/ReplayControls";
 import { AppHeader } from "../../widgets/AppHeader";
 import { PlayerToolbar } from "../../widgets/PlayerToolbar";
+import { DrawingToolsRail } from "../../widgets/DrawingToolsRail";
 import { TradingSidebar } from "../trading/TradingSidebar";
 import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SIMULATION_SETTINGS } from "../../shared/config/simulation";
 import { formatMarketPair, formatTimeframe, getMarketAssets, inferPricePrecision } from "../../shared/lib/market";
@@ -311,58 +312,62 @@ export function PlayerPage() {
             datasetId={dataset}
             datasetsLoading={!catalogReady || candlesLoading}
             timeframe={tf}
-            drawingMode={drawingMode}
-            drawingsVisible={drawingsVisible}
-            drawingCount={drawingCount}
-            canUndoDrawings={drawingActions.canUndo}
-            canRedoDrawings={drawingActions.canRedo}
             onDatasetChange={(nextDataset) => {
               setDataset(nextDataset);
               setState((current) => ({ ...current, lastDatasetId: nextDataset }));
               setIdx(120);
             }}
             onTimeframeChange={handleTimeframeChange}
-            onDrawingModeChange={setDrawingMode}
-            onDrawingsVisibleChange={setDrawingsVisible}
-            onUndoDrawings={drawingActions.undo}
-            onRedoDrawings={drawingActions.redo}
-            onDeleteAllDrawings={() => deleteAllDrawingsRef.current?.()}
           />
-          <div className="chartWrap">
-            {candles.length ? (
-              <ReplayChart
-                candles={candles}
-                rawCandles={raw}
-                index={selectingStart ? lastIndex : replayIndex}
-                barriers={chartDisplay.barriers}
-                trades={chartDisplay.trades}
-                onBarrierChange={moveBarrier}
-                selectingStart={selectingStart}
-                onStartSelected={selectReplayTimeWithData}
-                focusRevision={focusRevision}
-                pricePrecision={pricePrecision}
-                entryMarker={chartDisplay.entryMarker}
-                onEntryMarkerChange={moveEntryMarker}
-                showClosedTradeOverlays={simulationSettings.showClosedTradeOverlays}
-                markersEditable={chartDisplay.markersEditable}
-                drawings={drawings}
-                drawingActions={drawingActions}
-                drawingRestoreRevision={drawingActions.restoreRevision}
-                drawingMode={drawingMode}
-                datasetId={dataset}
-                drawingsVisible={drawingsVisible}
-                followCandle={simulationSettings.followCandle}
-                chartViewportRef={chartViewportRef}
-                deleteAllDrawingsRef={deleteAllDrawingsRef}
-                onDrawingComplete={() => setDrawingMode("none")}
-                onInteractionChange={(active) => { chartInteractionActive.current = active; }}
-              />
-            ) : (
-              <Empty />
-            )}
-            <div className="symbol">
-              <b>{formatMarketPair(activeDataset?.name)}</b>
-              <span>{formatTimeframe(tf)} · Historical</span>
+          <div className="chartArea">
+            <DrawingToolsRail
+              drawingMode={drawingMode}
+              drawingsVisible={drawingsVisible}
+              drawingCount={drawingCount}
+              canUndoDrawings={drawingActions.canUndo}
+              canRedoDrawings={drawingActions.canRedo}
+              onDrawingModeChange={setDrawingMode}
+              onDrawingsVisibleChange={setDrawingsVisible}
+              onUndoDrawings={drawingActions.undo}
+              onRedoDrawings={drawingActions.redo}
+              onDeleteAllDrawings={() => deleteAllDrawingsRef.current?.()}
+            />
+            <div className="chartWrap">
+              {candles.length ? (
+                <ReplayChart
+                  candles={candles}
+                  rawCandles={raw}
+                  index={selectingStart ? lastIndex : replayIndex}
+                  barriers={chartDisplay.barriers}
+                  trades={chartDisplay.trades}
+                  onBarrierChange={moveBarrier}
+                  selectingStart={selectingStart}
+                  onStartSelected={selectReplayTimeWithData}
+                  focusRevision={focusRevision}
+                  pricePrecision={pricePrecision}
+                  entryMarker={chartDisplay.entryMarker}
+                  onEntryMarkerChange={moveEntryMarker}
+                  showClosedTradeOverlays={simulationSettings.showClosedTradeOverlays}
+                  markersEditable={chartDisplay.markersEditable}
+                  drawings={drawings}
+                  drawingActions={drawingActions}
+                  drawingRestoreRevision={drawingActions.restoreRevision}
+                  drawingMode={drawingMode}
+                  datasetId={dataset}
+                  drawingsVisible={drawingsVisible}
+                  followCandle={simulationSettings.followCandle}
+                  chartViewportRef={chartViewportRef}
+                  deleteAllDrawingsRef={deleteAllDrawingsRef}
+                  onDrawingComplete={() => setDrawingMode("none")}
+                  onInteractionChange={(active) => { chartInteractionActive.current = active; }}
+                />
+              ) : (
+                <Empty />
+              )}
+              <div className="symbol">
+                <b>{formatMarketPair(activeDataset?.name)}</b>
+                <span>{formatTimeframe(tf)} · Historical</span>
+              </div>
             </div>
           </div>
           <ReplayControls
