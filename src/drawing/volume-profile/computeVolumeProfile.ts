@@ -80,7 +80,9 @@ export function computeVolumeProfile(
   for (let i = 0; i < rows; i += 1) {
     const tv = buyVol[i] + sellVol[i];
     totalVolume += tv;
-    if (tv > maxVolume) {
+    const midpointDistance = Math.abs(i + 0.5 - rows / 2);
+    const pocMidpointDistance = Math.abs(pocIndex + 0.5 - rows / 2);
+    if (tv > maxVolume || (tv === maxVolume && midpointDistance < pocMidpointDistance)) {
       maxVolume = tv;
       pocIndex = i;
     }
@@ -89,15 +91,22 @@ export function computeVolumeProfile(
   let upper = pocIndex;
   let lower = pocIndex;
   let vaAccum = maxVolume;
+  const rowVolume = (index: number) => buyVol[index] + sellVol[index];
   while (vaAccum < totalVolume * valueAreaPct && (upper < rows - 1 || lower > 0)) {
-    const uv = upper < rows - 1 ? buyVol[upper + 1] + sellVol[upper + 1] : -1;
-    const dv = lower > 0 ? buyVol[lower - 1] + sellVol[lower - 1] : -1;
+    const uv = upper < rows - 1
+      ? rowVolume(upper + 1) + (upper < rows - 2 ? rowVolume(upper + 2) : 0)
+      : -1;
+    const dv = lower > 0
+      ? rowVolume(lower - 1) + (lower > 1 ? rowVolume(lower - 2) : 0)
+      : -1;
     if (uv >= dv && upper < rows - 1) {
-      upper += 1;
-      vaAccum += uv;
+      const nextUpper = Math.min(rows - 1, upper + 2);
+      for (let i = upper + 1; i <= nextUpper; i += 1) vaAccum += rowVolume(i);
+      upper = nextUpper;
     } else if (lower > 0) {
-      lower -= 1;
-      vaAccum += dv;
+      const nextLower = Math.max(0, lower - 2);
+      for (let i = lower - 1; i >= nextLower; i -= 1) vaAccum += rowVolume(i);
+      lower = nextLower;
     } else {
       break;
     }

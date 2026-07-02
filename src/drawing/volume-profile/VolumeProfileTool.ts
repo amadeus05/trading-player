@@ -691,6 +691,7 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
     if (!vp) return;
     const span = getSpan(vp);
     if (!span) return;
+    let draft = { ...vp };
     const cb = container.getBoundingClientRect();
     const sx = startEv.clientX - cb.left;
     runManagedDragSession(startEv, (active) => { dragActive = active; }, {
@@ -702,22 +703,22 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
         const newRightX = snapXToNearestCandle(chart, span.right + dx);
         const tL = xToSnappedTime(chart, newLeftX, candleStore.candles);
         const tR = xToSnappedTime(chart, newRightX, candleStore.candles);
-        const v = profiles.find((item) => item.id === id);
-        if (!v || tL == null || tR == null) return;
+        if (tL == null || tR == null) return;
         // Recompute and redraw the whole profile (bins/POC/VA) live on every frame
         // instead of only previewing the hit-box — otherwise it jumps on release.
-        v.timeLeft = tL;
-        v.timeRight = tR;
+        draft = { ...draft, timeLeft: tL, timeRight: tR };
         invalidate(id);
-        syncOne(v);
+        syncOne(draft);
       },
       onEnd: (_event, moved) => {
         if (!moved) return;
-        const v = profiles.find((item) => item.id === id);
-        if (!v) return;
-        if (v.timeLeft > v.timeRight) { const tmp = v.timeLeft; v.timeLeft = v.timeRight; v.timeRight = tmp; }
+        const idx = profiles.findIndex((item) => item.id === id);
+        if (idx < 0) return;
+        const next = { ...draft };
+        if (next.timeLeft > next.timeRight) { const tmp = next.timeLeft; next.timeLeft = next.timeRight; next.timeRight = tmp; }
+        profiles[idx] = next;
         invalidate(id);
-        callbacks.onUpdate(v);
+        callbacks.onUpdate(next);
         syncAll();
       },
     });
@@ -726,25 +727,27 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
   function startEdgeDrag(id: string, edge: "left" | "right", startEv: PointerEvent) {
     const vp = profiles.find((p) => p.id === id);
     if (!vp) return;
+    let draft = { ...vp };
     runManagedDragSession(startEv, (active) => { dragActive = active; }, {
       target: startEv.target as Element,
       onMove: (event) => {
         const cb = container.getBoundingClientRect();
         const x = snapXToNearestCandle(chart, event.clientX - cb.left);
         const t = xToSnappedTime(chart, x, candleStore.candles);
-        const v = profiles.find((item) => item.id === id);
-        if (!v || t == null) return;
-        if (edge === "left") v.timeLeft = t; else v.timeRight = t;
+        if (t == null) return;
+        draft = edge === "left" ? { ...draft, timeLeft: t } : { ...draft, timeRight: t };
         invalidate(id);
-        syncOne(v);
+        syncOne(draft);
       },
       onEnd: (_event, moved) => {
         if (!moved) return;
-        const v = profiles.find((item) => item.id === id);
-        if (!v) return;
-        if (v.timeLeft > v.timeRight) { const tmp = v.timeLeft; v.timeLeft = v.timeRight; v.timeRight = tmp; }
+        const idx = profiles.findIndex((item) => item.id === id);
+        if (idx < 0) return;
+        const next = { ...draft };
+        if (next.timeLeft > next.timeRight) { const tmp = next.timeLeft; next.timeLeft = next.timeRight; next.timeRight = tmp; }
+        profiles[idx] = next;
         invalidate(id);
-        callbacks.onUpdate(v);
+        callbacks.onUpdate(next);
         syncAll();
       },
     });
