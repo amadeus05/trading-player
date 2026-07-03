@@ -78,12 +78,14 @@ const createCollectionMutations = <Key extends DrawingCollectionKey>(
 
   return {
     onCreate: (item) => {
-      updateWithHistory((current) => write(current, [...read(current), item] as DrawingCollections[Key]));
+      const nextItem = structuredClone(item) as DrawingItem<Key>;
+      updateWithHistory((current) => write(current, [...read(current), nextItem] as DrawingCollections[Key]));
     },
     onUpdate: (item) => {
+      const nextItem = structuredClone(item) as DrawingItem<Key>;
       updateWithHistory((current) => write(
         current,
-        read(current).map((currentItem) => currentItem.id === item.id ? item : currentItem) as DrawingCollections[Key],
+        read(current).map((currentItem) => currentItem.id === nextItem.id ? nextItem : currentItem) as DrawingCollections[Key],
       ), `${key}:${item.id}:update`);
     },
     onDelete: (id) => {

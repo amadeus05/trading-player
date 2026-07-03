@@ -51,6 +51,9 @@ const defaultFocusRange = (barIndex: number) => ({
   to: barIndex + 20,
 } as LogicalRange);
 
+const cloneDatasetItems = <Item extends { datasetId: string }>(items: Item[], datasetId: string): Item[] =>
+  structuredClone(items.filter((item) => item.datasetId === datasetId));
+
 interface PriceRange {
   from: number;
   to: number;
@@ -540,7 +543,7 @@ export function ReplayChart({
       chart,
       series: cs,
       candleStore: drawingCandleStore,
-      trendLines: drawings.trendLines.filter((line) => line.datasetId === datasetId),
+      trendLines: cloneDatasetItems(drawings.trendLines, datasetId),
       drawingMode,
       datasetId,
       selectedId: selectedTrendLineId.current,
@@ -568,7 +571,7 @@ export function ReplayChart({
       chart,
       series: cs,
       candleStore: drawingCandleStore,
-      rectangles: drawings.rectangles.filter((rectangle) => rectangle.datasetId === datasetId),
+      rectangles: cloneDatasetItems(drawings.rectangles, datasetId),
       drawingMode,
       datasetId,
       callbacks: {
@@ -584,7 +587,7 @@ export function ReplayChart({
       chart,
       series: cs,
       candleStore: drawingCandleStore,
-      fibonacciRetracements: drawings.fibonacciRetracements.filter((fibonacci) => fibonacci.datasetId === datasetId),
+      fibonacciRetracements: cloneDatasetItems(drawings.fibonacciRetracements, datasetId),
       drawingMode,
       datasetId,
       pricePrecision,
@@ -601,7 +604,7 @@ export function ReplayChart({
       chart,
       series: cs,
       candleStore: drawingCandleStore,
-      fibonacciTrendExtensions: drawings.fibonacciTrendExtensions.filter((extension) => extension.datasetId === datasetId),
+      fibonacciTrendExtensions: cloneDatasetItems(drawings.fibonacciTrendExtensions, datasetId),
       drawingMode,
       datasetId,
       pricePrecision,
@@ -618,7 +621,7 @@ export function ReplayChart({
       chart,
       series: cs,
       candleStore: drawingCandleStore,
-      parallelChannels: drawings.parallelChannels.filter((channel) => channel.datasetId === datasetId),
+      parallelChannels: cloneDatasetItems(drawings.parallelChannels, datasetId),
       drawingMode,
       datasetId,
       callbacks: {
@@ -641,7 +644,7 @@ export function ReplayChart({
         if (candleInterval == null || candleInterval <= 0) return lastVisibleCandle.time;
         return lastVisibleCandle.time + candleInterval - 1;
       },
-      volumeProfiles: drawings.volumeProfiles.filter((vp) => vp.datasetId === datasetId),
+      volumeProfiles: cloneDatasetItems(drawings.volumeProfiles, datasetId),
       drawingMode,
       datasetId,
       callbacks: {
