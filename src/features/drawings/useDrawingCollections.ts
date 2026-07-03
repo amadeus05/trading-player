@@ -60,6 +60,15 @@ const applyCollections = (state: Persisted, collections: DrawingCollections): Pe
   volumeProfiles: collections.volumeProfiles,
 });
 
+const collectionsEqual = (a: DrawingCollections, b: DrawingCollections): boolean =>
+  JSON.stringify(a) === JSON.stringify(b);
+
+const appendHistoryState = (stack: DrawingCollections[], state: DrawingCollections): DrawingCollections[] => {
+  const last = stack.at(-1);
+  if (last && collectionsEqual(last, state)) return stack;
+  return [...stack.slice(-(HISTORY_LIMIT - 1)), state];
+};
+
 const filterByDataset = <Item extends { datasetId: string }>(
   items: Item[],
   datasetId: string,
@@ -112,13 +121,15 @@ export function useDrawingCollections(
     setState((current) => {
       const previous = cloneCollections(current);
       const next = recipe(current);
+      const nextCollections = cloneCollections(next);
+      if (collectionsEqual(previous, nextCollections)) return current;
       const now = Date.now();
       const canMerge = historyKey
         && historyKey === lastHistoryKeyRef.current
         && now - lastHistoryAtRef.current < HISTORY_MERGE_WINDOW_MS
         && undoStackRef.current.length > 0;
       if (!canMerge) {
-        undoStackRef.current = [...undoStackRef.current.slice(-(HISTORY_LIMIT - 1)), previous];
+        undoStackRef.current = appendHistoryState(undoStackRef.current, previous);
       }
       lastHistoryKeyRef.current = historyKey ?? null;
       lastHistoryAtRef.current = now;
@@ -135,7 +146,7 @@ export function useDrawingCollections(
     lastHistoryKeyRef.current = null;
     lastHistoryAtRef.current = 0;
     setState((current) => {
-      redoStackRef.current = [...redoStackRef.current.slice(-(HISTORY_LIMIT - 1)), cloneCollections(current)];
+      redoStackRef.current = appendHistoryState(redoStackRef.current, cloneCollections(current));
       return applyCollections(current, previous);
     });
     setRestoreRevision((current) => current + 1);
@@ -149,7 +160,7 @@ export function useDrawingCollections(
     lastHistoryKeyRef.current = null;
     lastHistoryAtRef.current = 0;
     setState((current) => {
-      undoStackRef.current = [...undoStackRef.current.slice(-(HISTORY_LIMIT - 1)), cloneCollections(current)];
+      undoStackRef.current = appendHistoryState(undoStackRef.current, cloneCollections(current));
       return applyCollections(current, next);
     });
     setRestoreRevision((current) => current + 1);
