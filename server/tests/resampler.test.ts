@@ -10,6 +10,24 @@ const START = Date.UTC(2026, 0, 1);
 let root: string;
 let store: ParquetCandleStore;
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function rmWithRetry(path: string): Promise<void> {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      await rm(path, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (attempt === 5) {
+        const code = error instanceof Error && "code" in error ? error.code : undefined;
+        if (code === "EPERM" || code === "ENOTEMPTY") return;
+        throw error;
+      }
+      await sleep(50 * (attempt + 1));
+    }
+  }
+}
+
 function candles(count: number, start = START): Candle[] {
   return Array.from({ length: count }, (_, i) => ({
     openTime: start + i * BASE_INTERVAL_MS,
@@ -29,7 +47,8 @@ before(async () => {
 });
 
 after(async () => {
-  await rm(root, { recursive: true, force: true });
+  await store.close();
+  await rmWithRetry(root);
 });
 
 test("15m uses first open, maximum high, minimum low, last close and summed volume", async () => {
