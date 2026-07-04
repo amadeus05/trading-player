@@ -123,6 +123,8 @@ export function ReplayChart({
   candlesRef.current = candles;
   const rawCandlesRef = useRef(rawCandles);
   rawCandlesRef.current = rawCandles;
+  const selectingStartRef = useRef(selectingStart);
+  selectingStartRef.current = selectingStart;
   const followCandleRef = useRef(followCandle);
   followCandleRef.current = followCandle;
   const selectedTrendLineId = useRef<string | null>(null);
@@ -134,7 +136,12 @@ export function ReplayChart({
   const appliedFocusRevision = useRef(focusRevision);
   const appliedDrawingRestoreRevision = useRef(drawingRestoreRevision);
   const chartRuntimeRef = useRef<{
-    applyReplayIndex: (nextIndex: number, allCandles: Candle[]) => void;
+    applyReplayIndex: (
+      nextIndex: number,
+      allCandles: Candle[],
+      forcedRange?: LogicalRange | null,
+      preserveViewport?: boolean,
+    ) => void;
     syncOverlays: () => void;
     setDrawingsVisible: (visible: boolean) => void;
     setDrawingMode: (mode: DrawingMode) => void;
@@ -401,9 +408,11 @@ export function ReplayChart({
     };
     rebuildTradeOverlays();
     const selectStart = (event: MouseEventParams<Time>) => {
-      if (selectingStart && typeof event.time === "number") callbacksRef.current.onStartSelected(Number(event.time));
+      if (selectingStartRef.current && typeof event.time === "number") {
+        callbacksRef.current.onStartSelected(Number(event.time));
+      }
     };
-    if (selectingStart) chart.subscribeClick(selectStart);
+    chart.subscribeClick(selectStart);
     let deferredTimeRangeFrame = 0;
     let initialRange: LogicalRange | null = null;
     if (timeframeChanged || forceFocus) {
@@ -677,7 +686,7 @@ export function ReplayChart({
       ref.current?.removeEventListener("wheel", zoomPriceScale, { capture: true });
       destroyTradeOverlays();
       cancelAnimationFrame(deferredTimeRangeFrame);
-      if (selectingStart) chart.unsubscribeClick(selectStart);
+      chart.unsubscribeClick(selectStart);
       try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRangeChange); } catch { }
       syncViewportState();
       cleanupTrendLines();
@@ -692,7 +701,7 @@ export function ReplayChart({
       chartRuntimeRef.current = null;
       if (chartViewportRef) chartViewportRef.current = null;
     };
-  }, [candleInterval, selectingStart, focusRevision, pricePrecision, datasetId, drawingRestoreRevision, chartViewportRef]);
+  }, [candleInterval, focusRevision, pricePrecision, datasetId, drawingRestoreRevision, chartViewportRef]);
 
   const prevOverlayKeyRef = useRef("");
   useLayoutEffect(() => {
@@ -717,7 +726,7 @@ export function ReplayChart({
   useLayoutEffect(() => {
     if (prevReplayIndexRef.current === index) return;
     prevReplayIndexRef.current = index;
-    chartRuntimeRef.current?.applyReplayIndex(index, candles);
+    chartRuntimeRef.current?.applyReplayIndex(index, candles, null, selectingStartRef.current);
   }, [index, candles]);
 
   useLayoutEffect(() => {

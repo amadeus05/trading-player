@@ -341,7 +341,7 @@ export function PlayerPage() {
                 <ReplayChart
                   candles={candles}
                   rawCandles={raw}
-                  index={selectingStart ? lastIndex : replayIndex}
+                  index={replayIndex}
                   barriers={chartDisplay.barriers}
                   trades={chartDisplay.trades}
                   onBarrierChange={moveBarrier}
