@@ -7,7 +7,7 @@ import { PlayerModals } from "./PlayerModals";
 import { ReplayControls } from "../replay/ReplayControls";
 import { AppHeader } from "../../widgets/AppHeader";
 import { PlayerToolbar } from "../../widgets/PlayerToolbar";
-import { DrawingToolsRail } from "../../widgets/DrawingToolsRail";
+import { DrawingToolsRail, DRAWING_TOOL_SHORTCUTS } from "../../widgets/DrawingToolsRail";
 import { TradingSidebar } from "../trading/TradingSidebar";
 import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SIMULATION_SETTINGS } from "../../shared/config/simulation";
 import { formatMarketPair, formatTimeframe, getMarketAssets, inferPricePrecision } from "../../shared/lib/market";
@@ -62,6 +62,14 @@ export function PlayerPage() {
         const tag = target.tagName;
         const editable = target instanceof HTMLElement && target.isContentEditable;
         if (tag === "INPUT" || tag === "TEXTAREA" || editable) return;
+      }
+      if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+        const shortcut = DRAWING_TOOL_SHORTCUTS.find((s) => s.code === event.code);
+        if (shortcut) {
+          event.preventDefault();
+          setDrawingMode((prev) => (prev === shortcut.mode ? "none" : shortcut.mode));
+          return;
+        }
       }
       const mod = event.ctrlKey || event.metaKey;
       if (!mod) return;
