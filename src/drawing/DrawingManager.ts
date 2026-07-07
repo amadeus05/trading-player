@@ -46,13 +46,16 @@ export class DrawingManager {
   private clipboard: DrawingClipboardItem | null = null;
   private drawingsVisible = true;
   private readonly onKeyDown: (event: KeyboardEvent) => void;
+  private readonly onContextMenu: (event: MouseEvent) => void;
 
   constructor(
     private readonly container: HTMLElement,
     private readonly options: DrawingManagerOptions = {},
   ) {
     this.onKeyDown = (event) => this.handleKeyDown(event);
+    this.onContextMenu = (event) => this.handleContextMenu(event);
     document.addEventListener("keydown", this.onKeyDown);
+    this.container.addEventListener("contextmenu", this.onContextMenu);
     this.applyMode();
     this.setDrawingsVisible(true);
   }
@@ -72,6 +75,15 @@ export class DrawingManager {
   private abortActiveDrawing(): void {
     const kind = MODE_TO_KIND[this.mode];
     if (kind) this.bridgesByKind.get(kind)?.cancelDrawing?.(true);
+  }
+
+  /** Right-click cancels an in-progress drawing (after the first point). */
+  private handleContextMenu(event: MouseEvent): void {
+    if (!this.isDrawing()) return;
+    const kind = MODE_TO_KIND[this.mode];
+    if (kind && this.bridgesByKind.get(kind)?.cancelDrawing?.()) {
+      event.preventDefault();
+    }
   }
 
   /** Notifies when the active drawing mode changes (used to cancel in-progress drawings). */
@@ -222,6 +234,7 @@ export class DrawingManager {
 
   destroy(): void {
     document.removeEventListener("keydown", this.onKeyDown);
+    this.container.removeEventListener("contextmenu", this.onContextMenu);
     this.clearSelection();
     cancelAnimationFrame(this.overlayLoopId);
     cancelAnimationFrame(this.pendingOverlaySyncFrame);

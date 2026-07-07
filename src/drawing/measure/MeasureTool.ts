@@ -482,6 +482,14 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
     onComplete();
   }
 
+  // Right-click cancels an in-progress (or completed) measurement.
+  function handleContextMenu(event: MouseEvent) {
+    if (manager.getMode() !== "measure" || (!point1 && !completed)) return;
+    event.preventDefault();
+    resetMeasurement();
+    onComplete();
+  }
+
   const cleanupDrawingClick = bindDrawingPointerClick({
     container,
     chart,
@@ -490,6 +498,7 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
     onClick: handleDrawClick,
   });
   container.addEventListener("mousemove", handleMouseMove);
+  container.addEventListener("contextmenu", handleContextMenu);
   document.addEventListener("keydown", handleKeyDown);
 
   let dismissTimeout = setTimeout(() => {
@@ -502,6 +511,7 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
     clearTimeout(dismissTimeout);
     cleanupDrawingClick();
     container.removeEventListener("mousemove", handleMouseMove);
+    container.removeEventListener("contextmenu", handleContextMenu);
     container.removeEventListener("pointerdown", handleDismissClick);
     document.removeEventListener("keydown", handleKeyDown);
     hideAll();
