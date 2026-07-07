@@ -664,11 +664,11 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
       deleteSelected: () => { if (selectedId) deleteProfile(selectedId); },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
       syncAll,
-      cancelDrawing: () => {
+      cancelDrawing: (silent?: boolean) => {
         if (drawPoint1Time == null) return false;
         drawPoint1Time = null;
         clearGhost();
-        callbacks.onDrawingComplete();
+        if (!silent) callbacks.onDrawingComplete();
         return true;
       },
     }),

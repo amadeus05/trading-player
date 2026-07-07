@@ -373,12 +373,12 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       deleteSelected: () => { if (selectedId) deleteChannel(selectedId); },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
       syncAll,
-      cancelDrawing: () => {
+      cancelDrawing: (silent?: boolean) => {
         if (!drawPoint1) return false;
         drawPoint1 = null;
         drawPoint2 = null;
         removeGhost();
-        callbacks.onDrawingComplete();
+        if (!silent) callbacks.onDrawingComplete();
         return true;
       },
     }),

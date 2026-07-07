@@ -311,12 +311,12 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
       deleteSelected: () => { if (selectedId) deleteFib(selectedId); },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
       syncAll,
-      cancelDrawing: () => {
+      cancelDrawing: (silent?: boolean) => {
         if (!drawPoint1) return false;
         drawPoint1 = null;
         window.removeEventListener("pointermove", handleDrawPointerMove);
         clearGhost();
-        callbacks.onDrawingComplete();
+        if (!silent) callbacks.onDrawingComplete();
         return true;
       },
     }),

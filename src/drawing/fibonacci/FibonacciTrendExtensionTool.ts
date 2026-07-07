@@ -345,13 +345,13 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       deleteSelected: () => { if (selectedId) deleteFib(selectedId); },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
       syncAll,
-      cancelDrawing: () => {
+      cancelDrawing: (silent?: boolean) => {
         if (!drawPoint1 && !drawPoint2) return false;
         drawPoint1 = null;
         drawPoint2 = null;
         window.removeEventListener("pointermove", handleDrawPointerMove);
         clearGhost();
-        callbacks.onDrawingComplete();
+        if (!silent) callbacks.onDrawingComplete();
         return true;
       },
     }),

@@ -332,11 +332,11 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       deleteSelected: () => { if (selectedId) deleteLine(selectedId); },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
       syncAll,
-      cancelDrawing: () => {
+      cancelDrawing: (silent?: boolean) => {
         if (!drawPoint1) return false;
         drawPoint1 = null;
         if (ghostLine) { ghostLine.remove(); ghostLine = null; }
-        callbacks.onDrawingComplete();
+        if (!silent) callbacks.onDrawingComplete();
         return true;
       },
     }),

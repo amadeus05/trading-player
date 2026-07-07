@@ -461,6 +461,11 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
 
   const unregisterOverlaySync = manager.registerOverlaySync(syncOverlayPositions);
 
+  // Cancel an in-progress (or completed) measurement when switching to another tool.
+  const unregisterModeChange = manager.registerModeChange((mode) => {
+    if (mode !== "measure" && (point1 || completed)) resetMeasurement();
+  });
+
   function handleKeyDown(event: KeyboardEvent) {
     if (event.key === "Escape") {
       if (manager.getMode() !== "measure" && !point1 && !completed) return;
@@ -493,6 +498,7 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
 
   function cleanup() {
     unregisterOverlaySync();
+    unregisterModeChange();
     clearTimeout(dismissTimeout);
     cleanupDrawingClick();
     container.removeEventListener("mousemove", handleMouseMove);

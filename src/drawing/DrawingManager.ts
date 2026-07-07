@@ -7,7 +7,8 @@ export interface DrawingSelectionBridge {
   getSelected: () => DrawingClipboardItem | null;
   deleteSelected: () => void;
   paste: (item: DrawingClipboardItem) => void;
-  cancelDrawing?: () => boolean;
+  /** Aborts an in-progress drawing. `silent` skips the completion callback (used on tool switch). */
+  cancelDrawing?: (silent?: boolean) => boolean;
 }
 
 const MODE_TO_KIND: Partial<Record<DrawingMode, DrawingSelectionKind>> = {
@@ -38,6 +39,7 @@ export class DrawingManager {
   private bridgesByKind = new Map<DrawingSelectionKind, DrawingSelectionBridge>();
   private purgeByKind = new Map<DrawingSelectionKind, () => void>();
   private overlaySyncById = new Map<symbol, () => void>();
+  private modeChangeListeners = new Set<(mode: DrawingMode) => void>();
   private overlayLoopTokens = new Set<symbol>();
   private overlayLoopId = 0;
   private pendingOverlaySyncFrame = 0;
@@ -56,8 +58,28 @@ export class DrawingManager {
   }
 
   setMode(mode: DrawingMode): void {
+    const changed = this.mode !== mode;
+    // Abort any half-finished drawing on the current mode before switching away,
+    // so a partial drawing can never get stuck on the chart. Base behaviour for
+    // every drawing tool — persisted tools cancel via their selection bridge,
+    // non-bridge tools (e.g. measure) via a mode-change listener.
+    if (changed) this.abortActiveDrawing();
     this.mode = mode;
     this.applyMode();
+    if (changed) this.modeChangeListeners.forEach((listener) => listener(mode));
+  }
+
+  private abortActiveDrawing(): void {
+    const kind = MODE_TO_KIND[this.mode];
+    if (kind) this.bridgesByKind.get(kind)?.cancelDrawing?.(true);
+  }
+
+  /** Notifies when the active drawing mode changes (used to cancel in-progress drawings). */
+  registerModeChange(listener: (mode: DrawingMode) => void): () => void {
+    this.modeChangeListeners.add(listener);
+    return () => {
+      this.modeChangeListeners.delete(listener);
+    };
   }
 
   getMode(): DrawingMode {
@@ -207,6 +229,7 @@ export class DrawingManager {
     this.overlayLoopId = 0;
     this.pendingOverlaySyncFrame = 0;
     this.overlaySyncById.clear();
+    this.modeChangeListeners.clear();
     this.bridgesByKind.clear();
     this.purgeByKind.clear();
     delete this.container.dataset.drawingMode;
