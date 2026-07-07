@@ -2,6 +2,7 @@ import { useCallback, useRef, useState, type Dispatch, type SetStateAction } fro
 import type {
   FibonacciRetracement,
   FibonacciTrendExtension,
+  HorizontalLine,
   ParallelChannel,
   Persisted,
   Rectangle,
@@ -11,6 +12,7 @@ import type {
 
 export interface DrawingCollections {
   trendLines: TrendLine[];
+  horizontalLines: HorizontalLine[];
   rectangles: Rectangle[];
   fibonacciRetracements: FibonacciRetracement[];
   fibonacciTrendExtensions: FibonacciTrendExtension[];
@@ -43,6 +45,7 @@ const HISTORY_MERGE_WINDOW_MS = 250;
 
 const cloneCollections = (state: Persisted): DrawingCollections => ({
   trendLines: structuredClone(state.trendLines ?? []),
+  horizontalLines: structuredClone(state.horizontalLines ?? []),
   rectangles: structuredClone(state.rectangles ?? []),
   fibonacciRetracements: structuredClone(state.fibonacciRetracements ?? []),
   fibonacciTrendExtensions: structuredClone(state.fibonacciTrendExtensions ?? []),
@@ -53,6 +56,7 @@ const cloneCollections = (state: Persisted): DrawingCollections => ({
 const applyCollections = (state: Persisted, collections: DrawingCollections): Persisted => ({
   ...state,
   trendLines: collections.trendLines,
+  horizontalLines: collections.horizontalLines,
   rectangles: collections.rectangles,
   fibonacciRetracements: collections.fibonacciRetracements,
   fibonacciTrendExtensions: collections.fibonacciTrendExtensions,
@@ -169,6 +173,7 @@ export function useDrawingCollections(
 
   return {
     trendLines: createCollectionMutations(updateWithHistory, "trendLines"),
+    horizontalLines: createCollectionMutations(updateWithHistory, "horizontalLines"),
     rectangles: createCollectionMutations(updateWithHistory, "rectangles"),
     fibonacciRetracements: createCollectionMutations(updateWithHistory, "fibonacciRetracements"),
     fibonacciTrendExtensions: createCollectionMutations(updateWithHistory, "fibonacciTrendExtensions"),
@@ -178,6 +183,7 @@ export function useDrawingCollections(
       updateWithHistory((current) => ({
         ...current,
         trendLines: filterByDataset(current.trendLines ?? [], datasetId, false),
+        horizontalLines: filterByDataset(current.horizontalLines ?? [], datasetId, false),
         rectangles: filterByDataset(current.rectangles ?? [], datasetId, false),
         fibonacciRetracements: filterByDataset(current.fibonacciRetracements ?? [], datasetId, false),
         fibonacciTrendExtensions: filterByDataset(current.fibonacciTrendExtensions ?? [], datasetId, false),
@@ -197,6 +203,7 @@ export function countDrawingsForDataset(collections: DrawingCollections, dataset
   const match = (item: { datasetId: string }) => item.datasetId === datasetId;
   return (
     collections.trendLines.filter(match).length
+    + collections.horizontalLines.filter(match).length
     + collections.rectangles.filter(match).length
     + collections.fibonacciRetracements.filter(match).length
     + collections.fibonacciTrendExtensions.filter(match).length
@@ -208,6 +215,7 @@ export function countDrawingsForDataset(collections: DrawingCollections, dataset
 export function selectDrawingCollections(state: Persisted): DrawingCollections {
   return {
     trendLines: state.trendLines ?? [],
+    horizontalLines: state.horizontalLines ?? [],
     rectangles: state.rectangles ?? [],
     fibonacciRetracements: state.fibonacciRetracements ?? [],
     fibonacciTrendExtensions: state.fibonacciTrendExtensions ?? [],

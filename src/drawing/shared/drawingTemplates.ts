@@ -2,6 +2,7 @@ import type { DrawingLineStyle } from "./DrawingToolbar";
 
 export type DrawingTemplateKind =
   | "trendline"
+  | "horizontalline"
   | "rectangle"
   | "fibonacci"
   | "fibtrendext"
@@ -36,6 +37,11 @@ const DEFAULTS: Record<DrawingTemplateKind, DrawingTemplateState> = {
   trendline: {
     lineColor: "#ff4976",
     textColor: "#ff4976",
+    width: 2,
+    style: "solid",
+  },
+  horizontalline: {
+    lineColor: "#ff4976",
     width: 2,
     style: "solid",
   },

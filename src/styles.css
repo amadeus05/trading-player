@@ -541,6 +541,65 @@ g[data-trend-id].selected .trend-main-line {
   filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.2));
 }
 
+/* Horizontal Line Overlay */
+.hline-line {
+  position: absolute;
+  left: 0;
+  z-index: 7;
+  height: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.hline-line.selected {
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.25));
+}
+
+.hline-hit {
+  position: absolute;
+  left: 0;
+  z-index: 8;
+  height: 10px;
+  background: transparent;
+  pointer-events: auto;
+}
+
+.hline-marker {
+  position: absolute;
+  z-index: 10;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 2px solid #2962ff;
+  border-radius: 4px;
+  background: #0b0f17;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  user-select: none;
+}
+
+.hline-price-label {
+  position: absolute;
+  z-index: 9;
+  min-width: 54px;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  background: #11151d;
+  color: #ff4976;
+  font: 700 11px/20px Inter, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  transform: translateY(-50%);
+  pointer-events: auto;
+  user-select: none;
+}
+
+.hline-price-label.selected {
+  background: #1b2030;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
 /* Fibonacci SVG Overlay */
 .fib-overlay {
   position: absolute;
@@ -805,8 +864,13 @@ g[data-channel-id].selected .pc-edge-line {
   pointer-events: none !important;
 }
 
+.chart[data-drawings-visible="false"] .hline-line,
+.chart[data-drawings-visible="false"] .hline-hit,
+.chart[data-drawings-visible="false"] .hline-marker,
+.chart[data-drawings-visible="false"] .hline-price-label,
 .chart[data-drawings-visible="false"] .rect-toolbar,
 .chart[data-drawings-visible="false"] .trend-toolbar,
+.chart[data-drawings-visible="false"] .hline-toolbar,
 .chart[data-drawings-visible="false"] .trend-text-editor,
 .chart[data-drawings-visible="false"] .drawing-inline-text-editor {
   display: none !important;

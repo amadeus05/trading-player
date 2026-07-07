@@ -24,6 +24,7 @@ export const INITIAL_PLAYER_STATE: Persisted = {
   datasets: [],
   trades: [],
   annotations: [],
+  horizontalLines: [],
   settings: DEFAULT_SIMULATION_SETTINGS,
   account: DEFAULT_ACCOUNT_SETTINGS,
 };

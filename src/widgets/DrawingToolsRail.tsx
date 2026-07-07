@@ -37,6 +37,9 @@ export function DrawingToolsRail({
       <Button type="text" className={`drawing-tool-btn ${drawingMode === "trendline" ? "is-active" : ""}`} onClick={() => toggleDrawingMode("trendline")} title="Трендовая линия">
         <DrawingToolIcon mode="trendline" />
       </Button>
+      <Button type="text" className={`drawing-tool-btn ${drawingMode === "horizontalline" ? "is-active" : ""}`} onClick={() => toggleDrawingMode("horizontalline")} title="Горизонтальная линия">
+        <DrawingToolIcon mode="horizontalline" />
+      </Button>
       <Button type="text" className={`drawing-tool-btn ${drawingMode === "fibonacci" ? "is-active" : ""}`} onClick={() => toggleDrawingMode("fibonacci")} title="Фибоначчи Retracement">
         <DrawingToolIcon mode="fibonacci" />
       </Button>

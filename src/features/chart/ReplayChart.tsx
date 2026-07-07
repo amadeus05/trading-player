@@ -19,6 +19,7 @@ import type {
 import {
   attachFibonacciTool,
   attachFibonacciTrendExtensionTool,
+  attachHorizontalLineTool,
   attachMeasureTool,
   attachParallelChannelTool,
   attachRectangleTool,
@@ -564,6 +565,23 @@ export function ReplayChart({
         onDrawingComplete: () => callbacksRef.current.onDrawingComplete(),
       },
     });
+    const cleanupHorizontalLines = attachHorizontalLineTool({
+      manager: drawingManager,
+      container: ref.current!,
+      chart,
+      series: cs,
+      candleStore: drawingCandleStore,
+      horizontalLines: cloneDatasetItems(drawings.horizontalLines, datasetId),
+      drawingMode,
+      datasetId,
+      pricePrecision,
+      callbacks: {
+        onCreate: (line) => callbacksRef.current.drawingActions.horizontalLines.onCreate(line),
+        onUpdate: (line) => callbacksRef.current.drawingActions.horizontalLines.onUpdate(line),
+        onDelete: (id) => callbacksRef.current.drawingActions.horizontalLines.onDelete(id),
+        onDrawingComplete: () => callbacksRef.current.onDrawingComplete(),
+      },
+    });
     const cleanupMeasure = attachMeasureTool({
       manager: drawingManager,
       container: ref.current!,
@@ -690,6 +708,7 @@ export function ReplayChart({
       try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRangeChange); } catch { }
       syncViewportState();
       cleanupTrendLines();
+      cleanupHorizontalLines();
       cleanupMeasure();
       cleanupRectangles();
       cleanupFibonacci();

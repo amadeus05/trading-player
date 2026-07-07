@@ -39,6 +39,7 @@ export function PlayerPage() {
     [
       state.fibonacciRetracements,
       state.fibonacciTrendExtensions,
+      state.horizontalLines,
       state.parallelChannels,
       state.rectangles,
       state.trendLines,

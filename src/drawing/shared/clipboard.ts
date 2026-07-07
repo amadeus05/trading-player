@@ -1,6 +1,7 @@
 import type {
   FibonacciRetracement,
   FibonacciTrendExtension,
+  HorizontalLine,
   ParallelChannel,
   Rectangle,
   TrendLine,
@@ -10,6 +11,7 @@ import type { DrawingSelectionKind } from "../DrawingManager";
 
 export type DrawingClipboardItem =
   | { kind: "trendline"; data: Omit<TrendLine, "id" | "datasetId"> }
+  | { kind: "horizontalline"; data: Omit<HorizontalLine, "id" | "datasetId"> }
   | { kind: "rectangle"; data: Omit<Rectangle, "id" | "datasetId"> }
   | { kind: "fibonacci"; data: Omit<FibonacciRetracement, "id" | "datasetId"> }
   | { kind: "fibtrendext"; data: Omit<FibonacciTrendExtension, "id" | "datasetId"> }
@@ -50,6 +52,9 @@ export function offsetClipboardItem<T extends DrawingClipboardItem>(item: T, off
     case "trendline":
       cloned.data.point1 = offsetPoint(cloned.data.point1, offset);
       cloned.data.point2 = offsetPoint(cloned.data.point2, offset);
+      break;
+    case "horizontalline":
+      cloned.data.price += offset.priceDelta || Math.max(Math.abs(cloned.data.price) * 0.002, 1e-8);
       break;
     case "rectangle":
       cloned.data.timeLeft += offset.timeDelta;

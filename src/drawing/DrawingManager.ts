@@ -1,7 +1,7 @@
 import type { DrawingMode } from "./shared/types";
 import { cloneClipboardItem, type DrawingClipboardItem } from "./shared/clipboard";
 
-export type DrawingSelectionKind = "trendline" | "rectangle" | "fibonacci" | "fibtrendext" | "parallelchannel" | "volumeprofile";
+export type DrawingSelectionKind = "trendline" | "horizontalline" | "rectangle" | "fibonacci" | "fibtrendext" | "parallelchannel" | "volumeprofile";
 
 export interface DrawingSelectionBridge {
   getSelected: () => DrawingClipboardItem | null;
@@ -12,6 +12,7 @@ export interface DrawingSelectionBridge {
 
 const MODE_TO_KIND: Partial<Record<DrawingMode, DrawingSelectionKind>> = {
   trendline: "trendline",
+  horizontalline: "horizontalline",
   rectangle: "rectangle",
   fibonacci: "fibonacci",
   fibtrendext: "fibtrendext",

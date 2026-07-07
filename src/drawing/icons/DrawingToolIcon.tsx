@@ -2,6 +2,7 @@ import type { DrawingMode } from "../shared/types";
 import parallelChannelIcon from "./channels/parallel-channel.svg?raw";
 import fibRetracementIcon from "./fibonacci/fib-retracement.svg?raw";
 import trendBasedFibExtensionIcon from "./fibonacci/trend-based-fib-extension.svg?raw";
+import horizontalLineIcon from "./lines/horizontal-line.svg?raw";
 import trendLineIcon from "./lines/trend-line.svg?raw";
 import rectangleIcon from "./shapes/rectangle.svg?raw";
 import measureRulerIcon from "./ui/measure-ruler.svg?raw";
@@ -10,6 +11,7 @@ const volumeProfileIcon = `<svg viewBox="0 0 28 28"><g fill="none" stroke="curre
 
 const ICONS: Record<Exclude<DrawingMode, "none">, string> = {
   trendline: trendLineIcon,
+  horizontalline: horizontalLineIcon,
   rectangle: rectangleIcon,
   measure: measureRulerIcon,
   fibonacci: fibRetracementIcon,
