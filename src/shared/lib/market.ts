@@ -64,7 +64,28 @@ export const formatPrice = (value: number, precision: number) =>
     maximumFractionDigits: precision,
   });
 
-export const aggregateCandles = (candles: Candle[], timeframeMinutes: number) => {
+export const inferCandleTimeframeMinutes = (candles: Candle[]): number => {
+  let intervalSeconds: number | null = null;
+  for (let index = 1; index < candles.length; index += 1) {
+    const delta = candles[index].time - candles[index - 1].time;
+    if (delta > 0 && (intervalSeconds == null || delta < intervalSeconds)) {
+      intervalSeconds = delta;
+    }
+  }
+  return Math.max(1, Math.round((intervalSeconds ?? 5 * 60) / 60));
+};
+
+export const aggregateCandles = (
+  candles: Candle[],
+  timeframeMinutes: number,
+  sourceTimeframeMinutes = inferCandleTimeframeMinutes(candles),
+) => {
+  if (!candles.length) return [];
+  if (!Number.isFinite(timeframeMinutes) || timeframeMinutes <= 0) return [];
+  if (!Number.isFinite(sourceTimeframeMinutes) || sourceTimeframeMinutes <= 0) return [];
+  if (timeframeMinutes === sourceTimeframeMinutes) return candles;
+  if (timeframeMinutes < sourceTimeframeMinutes || timeframeMinutes % sourceTimeframeMinutes !== 0) return [];
+
   const timeframeSeconds = timeframeMinutes * 60;
   const buckets = new Map<number, Candle>();
 
@@ -81,7 +102,7 @@ export const aggregateCandles = (candles: Candle[], timeframeMinutes: number) =>
     bucket.volume += candle.volume;
   });
 
-  return [...buckets.values()].sort((left, right) => left.time - right.time);
+  return [...buckets.values()];
 };
 
 export const getMarketAssets = (name?: string) => {

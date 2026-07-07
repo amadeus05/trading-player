@@ -1,12 +1,17 @@
-import { useEffect, useMemo, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { Candle } from "../../types";
 import { DEFAULT_TIMEFRAME_MINUTES } from "../../shared/config/simulation";
-import { aggregateCandles } from "../../shared/lib/market";
+import { aggregateCandles, inferCandleTimeframeMinutes } from "../../shared/lib/market";
 
 interface UseReplayControllerOptions {
   rawCandles: Candle[];
   interactionActiveRef: RefObject<boolean>;
   initialTimeframe?: number;
+}
+
+interface AggregationCache {
+  rawCandles: Candle[];
+  candlesByTimeframe: Map<number, Candle[]>;
 }
 
 export function useReplayController({
@@ -21,14 +26,34 @@ export function useReplayController({
   const [selectingStart, setSelectingStart] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [focusRevision, setFocusRevision] = useState(0);
+  const aggregationCacheRef = useRef<AggregationCache | null>(null);
 
   useEffect(() => {
     setTimeframe(initialTimeframe);
   }, [initialTimeframe]);
 
+  const getAggregatedCandles = useCallback((targetTimeframe: number): Candle[] => {
+    let cache = aggregationCacheRef.current;
+    if (!cache || cache.rawCandles !== rawCandles) {
+      const sourceTimeframe = inferCandleTimeframeMinutes(rawCandles);
+      cache = {
+        rawCandles,
+        candlesByTimeframe: new Map([[sourceTimeframe, rawCandles]]),
+      };
+      aggregationCacheRef.current = cache;
+    }
+
+    const cached = cache.candlesByTimeframe.get(targetTimeframe);
+    if (cached) return cached;
+
+    const aggregated = aggregateCandles(rawCandles, targetTimeframe);
+    cache.candlesByTimeframe.set(targetTimeframe, aggregated);
+    return aggregated;
+  }, [rawCandles]);
+
   const candles = useMemo(
-    () => aggregateCandles(rawCandles, timeframe),
-    [rawCandles, timeframe],
+    () => getAggregatedCandles(timeframe),
+    [getAggregatedCandles, timeframe],
   );
   const lastIndex = Math.max(0, candles.length - 1);
   const replayIndex = Math.max(0, Math.min(Number.isFinite(index) ? index : 0, lastIndex));
@@ -54,7 +79,7 @@ export function useReplayController({
   }, [interactionActiveRef, lastIndex, playing, speed]);
 
   const changeTimeframe = (nextTimeframe: number, anchorTime = currentCandle?.time) => {
-    const nextCandles = aggregateCandles(rawCandles, nextTimeframe);
+    const nextCandles = getAggregatedCandles(nextTimeframe);
     let nextIndex = 0;
     if (anchorTime != null) {
       for (let candidate = 0; candidate < nextCandles.length; candidate += 1) {
