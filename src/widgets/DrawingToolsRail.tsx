@@ -125,7 +125,23 @@ function ToolGroupButton({ group, drawingMode, activeTool, onSelect }: ToolGroup
 
   useEffect(() => () => clearCloseTimer(), []);
 
+  // Close the flyout on any pointer interaction outside the group/flyout so a
+  // lingering flyout can never sit over the chart and swallow drawing clicks.
+  useEffect(() => {
+    if (!flyout) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest(".drawing-tool-group, .drawing-tool-flyout")) return;
+      clearCloseTimer();
+      setFlyout(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [flyout]);
+
   const toggleDisplayTool = () => {
+    clearCloseTimer();
+    setFlyout(null);
     onSelect(displayTool);
   };
 
