@@ -1271,9 +1271,26 @@ g[data-channel-id].selected .pc-edge-line {
 .replayClock {
   grid-column: 2;
   display: flex;
+  align-items: center;
+  gap: 12px;
   justify-content: flex-end;
   padding-right: 10px;
   white-space: nowrap;
+}
+
+.replayStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 184px;
+  justify-content: flex-end;
+  color: #b4b8c4;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.replayStatus .ant-spin {
+  line-height: 0;
 }
 
 .replayPriceScaleSlot {

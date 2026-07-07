@@ -1,4 +1,4 @@
-import { Button, Dropdown, Select } from "antd";
+import { Button, Dropdown, Select, Spin } from "antd";
 import { CalendarDays, ChevronRight, Clock3, Crosshair, Dices, Flag, Pause, Play, RotateCcw } from "lucide-react";
 import { HistoryManager } from "../datasets/HistoryManager";
 import type { Candle, Dataset } from "../../types";
@@ -11,6 +11,7 @@ interface ReplayControlsProps {
   currentCandle?: Candle;
   replayIndex: number;
   candleCount: number;
+  startJumpPending?: boolean;
   onMarketOpen: (market: Dataset) => void;
   onStartAction: (key: string) => void;
   onReset: () => void;
@@ -26,6 +27,7 @@ export function ReplayControls({
   currentCandle,
   replayIndex,
   candleCount,
+  startJumpPending = false,
   onMarketOpen,
   onStartAction,
   onReset,
@@ -38,6 +40,7 @@ export function ReplayControls({
       <div className="replayControls">
         <Dropdown
           trigger={["click"]}
+          disabled={startJumpPending}
           menu={{
             onClick: ({ key }) => onStartAction(key),
             items: [
@@ -48,21 +51,32 @@ export function ReplayControls({
             ],
           }}
         >
-          <Button className={selectingStart ? "select-start active" : "select-start"} icon={<Crosshair size={16} />}>
+          <Button
+            className={selectingStart ? "select-start active" : "select-start"}
+            icon={<Crosshair size={16} />}
+            loading={startJumpPending}
+          >
             {selectingStart ? "Кликните по свече" : "Выбрать старт"}
           </Button>
         </Dropdown>
-        <Button type="text" aria-label="Сбросить replay" icon={<RotateCcw size={18} />} onClick={onReset} />
-        <Button className="play" shape="circle" aria-label={playing ? "Пауза" : "Воспроизвести"} icon={playing ? <Pause size={20} /> : <Play size={20} />} onClick={() => onPlayingChange(!playing)} />
-        <Button type="text" aria-label="Следующая свеча" icon={<ChevronRight size={22} />} onClick={onStep} />
+        <Button type="text" aria-label="Сбросить replay" icon={<RotateCcw size={18} />} disabled={startJumpPending} onClick={onReset} />
+        <Button className="play" shape="circle" aria-label={playing ? "Пауза" : "Воспроизвести"} icon={playing ? <Pause size={20} /> : <Play size={20} />} disabled={startJumpPending} onClick={() => onPlayingChange(!playing)} />
+        <Button type="text" aria-label="Следующая свеча" icon={<ChevronRight size={22} />} disabled={startJumpPending} onClick={onStep} />
         <Select
           value={speed}
+          disabled={startJumpPending}
           onChange={onSpeedChange}
           options={[1, 5, 10].map((value) => ({ value, label: `${value}×` }))}
           style={{ width: 70 }}
         />
       </div>
       <div className="replayClock">
+        {startJumpPending ? (
+          <div className="replayStatus" role="status" aria-live="polite">
+            <Spin size="small" />
+            <span>Загрузка окна истории...</span>
+          </div>
+        ) : null}
         <div className="clock">
           <Clock3 size={15} />
           {currentCandle ? formatDateTime(currentCandle.time) : "—"}

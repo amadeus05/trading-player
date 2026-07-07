@@ -145,6 +145,7 @@ export function PlayerPage() {
     timeframe: number;
     replayTime: number;
   } | null>(null);
+  const startJumpPending = pendingReplayTime != null || pendingTimeframeChange != null;
   useEffect(() => {
     if (!hasMoreCandles || candlesLoadingMore) return;
     if (!shouldPrefetchMarketCandles(raw, cur?.time, prefetchMarketCandleThresholdForTimeframe(tf))) return;
@@ -381,6 +382,7 @@ export function PlayerPage() {
             currentCandle={cur}
             replayIndex={replayIndex}
             candleCount={candles.length}
+            startJumpPending={startJumpPending}
             onMarketOpen={handleMarketOpen}
             onStartAction={handleStartAction}
             onReset={reset}
