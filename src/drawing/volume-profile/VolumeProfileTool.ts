@@ -14,6 +14,7 @@ import type { DrawingCrudCallbacks, ManagedDrawingToolOptions, ChartCandleStore,
 import { DrawingToolbarController, type DrawingToolbarPatch } from "../shared/DrawingToolbarController";
 import { mountDrawingSettingsPanel, type DrawingSettingsPanelController, type DrawingSettingsTabId } from "../shared/DrawingSettingsPanel";
 import { computeVolumeProfile, type VolumeProfileResult } from "./computeVolumeProfile";
+import { hexToRgba } from "../shared/colorUtils";
 
 export type VolumeProfileCallbacks = DrawingCrudCallbacks<VolumeProfile>;
 
@@ -35,16 +36,6 @@ export const VOLUME_PROFILE_DEFAULTS: Omit<VolumeProfile, "id" | "datasetId" | "
   valueAreaBgColor: "#90CAF9",
   valueAreaLineColor: "#42A5F5",
 };
-
-function hexToRgba(hex: string, opacityPct: number): string {
-  let h = hex.replace("#", "");
-  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return hex;
-  return `rgba(${r},${g},${b},${opacityPct / 100})`;
-}
 
 interface BinEls {
   buy: SVGRectElement;

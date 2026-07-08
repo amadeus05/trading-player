@@ -11,6 +11,7 @@ import { attachManagedDrawingLifecycle, createClipboardBridge, runManagedDragSes
 import { createDrawingOverlay } from "../shared/overlay";
 import { bindDrawingPointerClick } from "../shared/drawingPointerClick";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
+import { hexToRgba } from "../shared/colorUtils";
 
 export type ParallelChannelCallbacks = DrawingCrudCallbacks<ParallelChannel>;
 
@@ -36,17 +37,6 @@ function strokeDashForStyle(style: ParallelChannel["lineStyle"]): string {
 
 function pxToPrice(series: any, y: number): number | null {
   return series.coordinateToPrice(y);
-}
-
-function hexToRgba(hex: string, opacity: number): string {
-  if (opacity === 0) return "transparent";
-  let h = hex.replace("#", "");
-  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return hex;
-  return `rgba(${r}, ${g}, ${b}, ${opacity / 100})`;
 }
 
 function channelGeometry(p1: PixelPoint, p2: PixelPoint, widthPt: PixelPoint): ChannelGeometry | null {

@@ -11,6 +11,7 @@ import { createDrawingOverlay } from "../shared/overlay";
 import { forgetFloatingPanelPosition } from "../shared/floatingPanel";
 import { bindDrawingPointerClick, type DrawingPointerClickEvent } from "../shared/drawingPointerClick";
 import { createEditableLabelStore } from "../shared/editableLabel";
+import { hexToRgba } from "../shared/colorUtils";
 import type { DrawingCrudCallbacks, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 
 export type RectangleCallbacks = DrawingCrudCallbacks<Rectangle>;
@@ -34,17 +35,6 @@ function strokeDash(style: Rectangle["borderStyle"]): string {
   if (style === "dashed") return "8 4";
   if (style === "dotted") return "2 4";
   return "";
-}
-
-function hexToRgba(hex: string, opacity: number): string {
-  if (opacity === 0) return "transparent";
-  let h = hex.replace("#", "");
-  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  if (isNaN(r) || isNaN(g) || isNaN(b)) return hex;
-  return `rgba(${r},${g},${b},${opacity / 100})`;
 }
 
 interface PixelBounds { x: number; y: number; w: number; h: number; }
