@@ -4,6 +4,7 @@
  * component's useEffect so it can access chart / series APIs directly.
  */
 
+import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { TrendLine } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
@@ -11,11 +12,11 @@ import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
 import { lineLabelLayout } from "../shared/lineLabelLayout";
 import { createTrendLineExtendSlots } from "./trendLineToolbarSlots";
 import { createDrawingOverlay } from "../shared/overlay";
-import { bindDrawingPointerClick } from "../shared/drawingPointerClick";
 import { attachManagedDrawingLifecycle, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
+import { createDrawingSession, drawingPointFromClick } from "../shared/drawingSession";
 import { createEditableLabelStore } from "../shared/editableLabel";
 import { createSelectionController } from "../shared/selection";
-import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
+import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore, SeriesApiLike } from "../shared/types";
 export type { DrawingMode } from "../shared/types";
 
 /* ------------------------------------------------------------------ */
@@ -58,7 +59,7 @@ function trendLineTextColor(tl: TrendLine): string {
 /*  Coordinate conversions                                             */
 /* ------------------------------------------------------------------ */
 
-function pxToPrice(series: any, y: number): number | null {
+function pxToPrice(series: SeriesApiLike, y: number): number | null {
   return series.coordinateToPrice(y);
 }
 
@@ -71,8 +72,8 @@ function pxToPrice(series: any, y: number): number | null {
  */
 export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
   container: HTMLDivElement;
-  chart: any;
-  series: any;
+  chart: IChartApi;
+  series: ISeriesApi<"Candlestick">;
   candleStore: ChartCandleStore;
   trendLines: TrendLine[];
   drawingMode: DrawingMode;
@@ -90,7 +91,6 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
 
   /* ---- Selection state ---- */
   let ghostLine: SVGLineElement | null = null;
-  let drawPoint1: { time: number; price: number } | null = null;
   let dragActive = false;
 
   /* ---- Elements per line ---- */
@@ -139,12 +139,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       if (!selection.isSelected(id)) selectLine(id);
     },
     onCommit: (id, value) => {
-      const line = trendLines.find((item) => item.id === id);
-      if (!line) return;
-      line.label = value;
-      line.showLabel = Boolean(value);
-      callbacks.onUpdate(line);
-      syncOne(line);
+      updateLine(id, { label: value, showLabel: Boolean(value) });
     },
     onCancel: (id) => {
       const line = trendLines.find((item) => item.id === id);
@@ -291,13 +286,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
       syncAll,
-      cancelDrawing: (silent?: boolean) => {
-        if (!drawPoint1) return false;
-        drawPoint1 = null;
-        if (ghostLine) { ghostLine.remove(); ghostLine = null; }
-        if (!silent) callbacks.onDrawingComplete();
-        return true;
-      },
+      cancelDrawing: (silent?: boolean) => drawingSession.cancel(silent),
     }),
     syncAll,
     isDragActive: () => dragActive,
@@ -484,15 +473,16 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
         previewAtPixels(tl, which === "point1" ? { x, y } : originalP1, which === "point2" ? { x, y } : originalP2);
       },
       onEnd: (_event, moved) => {
-        const lineObj = trendLines.find((l) => l.id === id);
-        if (!lineObj || !moved || !latestEvent) return;
+        if (!moved || !latestEvent) return;
         const x = latestEvent.clientX - rect.left;
         const y = latestEvent.clientY - rect.top;
         const time = xToSnappedTime(chart, x, candleStore.candles);
         const price = pxToPrice(series, y);
-        if (time != null && price != null && price > 0) lineObj[which] = { time, price };
-        syncAll();
-        callbacks.onUpdate(lineObj);
+        if (time != null && price != null && price > 0) {
+          updateLine(id, which === "point1" ? { point1: { time, price } } : { point2: { time, price } });
+        } else {
+          syncAll();
+        }
       },
     });
   }
@@ -525,55 +515,55 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
         );
       },
       onEnd: (_event, moved) => {
-        const lineObj = trendLines.find((l) => l.id === id);
-        if (!lineObj || !moved) return;
+        if (!moved) return;
         const newP1Time = xToSnappedTime(chart, p1Px.x + finalDx, candleStore.candles);
         const newP1Price = pxToPrice(series, p1Px.y + finalDy);
         const newP2Time = xToSnappedTime(chart, p2Px.x + finalDx, candleStore.candles);
         const newP2Price = pxToPrice(series, p2Px.y + finalDy);
         if (newP1Time != null && newP1Price != null && newP2Time != null && newP2Price != null && newP1Price > 0 && newP2Price > 0) {
-          lineObj.point1 = { time: newP1Time, price: newP1Price };
-          lineObj.point2 = { time: newP2Time, price: newP2Price };
+          updateLine(id, {
+            point1: { time: newP1Time, price: newP1Price },
+            point2: { time: newP2Time, price: newP2Price },
+          });
+        } else {
+          syncAll();
         }
-        syncAll();
-        callbacks.onUpdate(lineObj);
       },
     });
   }
 
   /* ---- Drawing mode ---- */
 
-  function handleDrawClick(event: any) {
-    if (manager.getMode() !== "trendline") return;
-    const rect = container.getBoundingClientRect();
-    const sourceEvent = event.sourceEvent as PointerEvent | undefined;
-    const x = sourceEvent ? sourceEvent.clientX - rect.left : null;
-    const y = sourceEvent ? sourceEvent.clientY - rect.top : null;
-    const time = x != null ? xToSnappedTime(chart, x, candleStore.candles) : (event.time as number | undefined);
-    const price = y != null ? pxToPrice(series, y) : (event.seriesData?.get(series)?.close as number | undefined);
-    if (time == null || price == null || price <= 0) return;
-
-    if (!drawPoint1) {
-      drawPoint1 = { time, price };
-      // Create ghost line
-      ghostLine = document.createElementNS(SVG_NS, "line");
-      ghostLine.setAttribute("class", "trend-ghost-line");
-      svg.appendChild(ghostLine);
-      const px = toPixel(drawPoint1);
-      if (px) {
-        ghostLine.setAttribute("x1", String(px.x));
-        ghostLine.setAttribute("y1", String(px.y));
-        ghostLine.setAttribute("x2", String(px.x));
-        ghostLine.setAttribute("y2", String(px.y));
+  const drawingSession = createDrawingSession<{ time: number; price: number }>({
+    mode: "trendline",
+    manager,
+    container,
+    chart,
+    pointCount: 2,
+    pointFromClick: (event) => drawingPointFromClick(event, { container, chart, series, candleStore }),
+    ghostUpdate: (points, cursor) => {
+      if (!ghostLine) {
+        ghostLine = document.createElementNS(SVG_NS, "line");
+        ghostLine.setAttribute("class", "trend-ghost-line");
+        svg.appendChild(ghostLine);
       }
-    } else {
-      // Second click – create line
+      const p1 = toPixel(points[0]) ?? cursor;
+      ghostLine.setAttribute("x1", String(p1.x));
+      ghostLine.setAttribute("y1", String(p1.y));
+      ghostLine.setAttribute("x2", String(cursor.x));
+      ghostLine.setAttribute("y2", String(cursor.y));
+    },
+    ghostRemove: () => {
+      ghostLine?.remove();
+      ghostLine = null;
+    },
+    commit: ([point1, point2]) => {
       const tpl = getDefaultDrawingTemplateState("trendline");
       const newLine: TrendLine = {
         id: crypto.randomUUID(),
         datasetId,
-        point1: drawPoint1,
-        point2: { time, price },
+        point1,
+        point2,
         color: tpl.lineColor,
         textColor: tpl.textColor ?? tpl.lineColor,
         width: tpl.width,
@@ -586,46 +576,17 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       };
       trendLines.push(newLine);
       callbacks.onCreate(newLine);
-      drawPoint1 = null;
-      if (ghostLine) { ghostLine.remove(); ghostLine = null; }
-      // Select the new line and show toolbar
       selectLine(newLine.id);
       syncAll();
-      callbacks.onDrawingComplete();
-    }
-  }
-
-  function handleMouseMove(event: MouseEvent) {
-    if (!ghostLine || !drawPoint1) return;
-    const rect = container.getBoundingClientRect();
-    const x = snapXToNearestCandle(chart, event.clientX - rect.left);
-    const y = event.clientY - rect.top;
-    ghostLine.setAttribute("x2", String(x));
-    ghostLine.setAttribute("y2", String(y));
-    // Update start pos too in case chart scrolled
-    const px = toPixel(drawPoint1);
-    if (px) {
-      ghostLine.setAttribute("x1", String(px.x));
-      ghostLine.setAttribute("y1", String(px.y));
-    }
-  }
-
-  /* ---- Attach events ---- */
-  const cleanupDrawingClick = bindDrawingPointerClick({
-    container,
-    chart,
-    manager,
-    mode: "trendline",
-    onClick: handleDrawClick,
+    },
+    onComplete: () => callbacks.onDrawingComplete(),
   });
-  container.addEventListener("mousemove", handleMouseMove);
 
   /* ---- Cleanup ---- */
   return () => {
     unregisterLifecycle();
-    cleanupDrawingClick();
+    drawingSession.destroy();
     selection.destroy();
-    container.removeEventListener("mousemove", handleMouseMove);
     overlay.remove();
     labelStore.destroy();
     toolbarController.destroy();

@@ -2,6 +2,7 @@
  * FibonacciTool – retracement / extension grid with two anchor points.
  */
 
+import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { FibonacciRetracement } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
@@ -9,9 +10,9 @@ import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
 import { attachManagedDrawingLifecycle, attachScaleInteractionSync, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import type { DrawingLineStyle } from "../shared/DrawingToolbar";
 import { createDrawingOverlay } from "../shared/overlay";
-import { bindDrawingPointerClick } from "../shared/drawingPointerClick";
 import { createSelectionController } from "../shared/selection";
-import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
+import { createDrawingSession, drawingPointFromClick } from "../shared/drawingSession";
+import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore, SeriesApiLike } from "../shared/types";
 
 export type FibonacciCallbacks = DrawingCrudCallbacks<FibonacciRetracement>;
 
@@ -56,7 +57,7 @@ interface PixelPoint {
   y: number;
 }
 
-function pxToPrice(series: any, y: number): number | null {
+function pxToPrice(series: SeriesApiLike, y: number): number | null {
   return series.coordinateToPrice(y);
 }
 
@@ -130,7 +131,7 @@ function levelPriceFromAnchors(p0: number, p100: number, ratio: number): number 
   return p0 + ratio * (p100 - p0);
 }
 
-function anchorPricesFromPixels(series: any, p1: PixelPoint, p2: PixelPoint): { p0: number; p100: number } | null {
+function anchorPricesFromPixels(series: SeriesApiLike, p1: PixelPoint, p2: PixelPoint): { p0: number; p100: number } | null {
   const p100 = pxToPrice(series, p1.y);
   const p0 = pxToPrice(series, p2.y);
   if (p100 == null || p0 == null || p100 <= 0 || p0 <= 0) return null;
@@ -159,8 +160,8 @@ function applyHandles(handle1: SVGCircleElement, handle2: SVGCircleElement, p1: 
 
 export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   container: HTMLDivElement;
-  chart: any;
-  series: any;
+  chart: IChartApi;
+  series: ISeriesApi<"Candlestick">;
   candleStore: ChartCandleStore;
   fibonacciRetracements: FibonacciRetracement[];
   drawingMode: DrawingMode;
@@ -171,10 +172,9 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   const { container, chart, series, candleStore, datasetId, pricePrecision, callbacks, manager } = opts;
   let fibonacciRetracements = [...opts.fibonacciRetracements];
 
-  const overlay = createDrawingOverlay(container, chart, "fib-overlay");
+  const overlay = createDrawingOverlay(container, chart, "fib-overlay", { shared: true });
   const { svg } = overlay;
 
-  let drawPoint1: { time: number; price: number } | null = null;
   let ghostGroup: SVGGElement | null = null;
   let ghostTrendLine: SVGLineElement | null = null;
   let ghostLevelLines: SVGLineElement[] | null = null;
@@ -182,8 +182,6 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   let ghostHandle1: SVGCircleElement | null = null;
   let ghostHandle2: SVGCircleElement | null = null;
   let dragActive = false;
-  let ghostRaf = 0;
-  let latestDrawPointer: { x: number; y: number } | null = null;
 
   let toolbarController: DrawingToolbarController<FibonacciRetracement>;
 
@@ -319,14 +317,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
       },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
       syncAll,
-      cancelDrawing: (silent?: boolean) => {
-        if (!drawPoint1) return false;
-        drawPoint1 = null;
-        window.removeEventListener("pointermove", handleDrawPointerMove);
-        clearGhost();
-        if (!silent) callbacks.onDrawingComplete();
-        return true;
-      },
+      cancelDrawing: (silent?: boolean) => drawingSession.cancel(silent),
     }),
     syncAll,
     isDragActive: () => dragActive,
@@ -543,11 +534,6 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   }
 
   function clearGhost() {
-    if (ghostRaf) {
-      cancelAnimationFrame(ghostRaf);
-      ghostRaf = 0;
-    }
-    latestDrawPointer = null;
     svg.querySelectorAll(".fib-ghost").forEach((node) => node.remove());
     ghostGroup = null;
     ghostTrendLine = null;
@@ -581,24 +567,6 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     applyHandles(ghostHandle1!, ghostHandle2!, p1, p2, true);
   }
 
-  function flushGhostPreview() {
-    ghostRaf = 0;
-    if (!drawPoint1 || !latestDrawPointer) return;
-    const p1 = toPixel(drawPoint1);
-    if (!p1) return;
-    updateGhost(p1, latestDrawPointer);
-  }
-
-  function handleDrawPointerMove(event: PointerEvent) {
-    if (!drawPoint1) return;
-    const rect = container.getBoundingClientRect();
-    latestDrawPointer = clampPlotPoint({
-      x: snapXToNearestCandle(chart, event.clientX - rect.left),
-      y: event.clientY - rect.top,
-    });
-    if (!ghostRaf) ghostRaf = requestAnimationFrame(flushGhostPreview);
-  }
-
   function startDragHandle(id: string, which: "point1" | "point2", startEvent: PointerEvent) {
     const fib = fibonacciRetracements.find((item) => item.id === id);
     if (!fib) return;
@@ -621,17 +589,18 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
         previewAtPixels(fib, p1, p2);
       },
       onEnd: (_event, moved) => {
-        const current = fibonacciRetracements.find((item) => item.id === id);
-        if (!current || !moved || !latestEvent) return;
+        if (!moved || !latestEvent) return;
         const clamped = clampPlotPoint({
           x: latestEvent.clientX - rect.left,
           y: latestEvent.clientY - rect.top,
         });
         const time = xToSnappedTime(chart, clamped.x, candleStore.candles);
         const price = pxToPrice(series, clamped.y);
-        if (time != null && price != null && price > 0) current[which] = { time, price };
-        syncAll();
-        callbacks.onUpdate(current);
+        if (time != null && price != null && price > 0) {
+          updateFib(id, which === "point1" ? { point1: { time, price } } : { point2: { time, price } });
+        } else {
+          syncAll();
+        }
       },
     });
   }
@@ -663,8 +632,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
         );
       },
       onEnd: (_event, moved) => {
-        const current = fibonacciRetracements.find((item) => item.id === id);
-        if (!current || !moved) return;
+        if (!moved) return;
         const fp1 = clampPlotPoint({ x: p1Px.x + finalDx, y: p1Px.y + finalDy });
         const fp2 = clampPlotPoint({ x: p2Px.x + finalDx, y: p2Px.y + finalDy });
         const newP1Time = xToSnappedTime(chart, fp1.x, candleStore.candles);
@@ -675,40 +643,38 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
           newP1Time != null && newP1Price != null && newP2Time != null && newP2Price != null
           && newP1Price > 0 && newP2Price > 0
         ) {
-          current.point1 = { time: newP1Time, price: newP1Price };
-          current.point2 = { time: newP2Time, price: newP2Price };
+          updateFib(id, {
+            point1: { time: newP1Time, price: newP1Price },
+            point2: { time: newP2Time, price: newP2Price },
+          });
+        } else {
+          syncAll();
         }
-        syncAll();
-        callbacks.onUpdate(current);
       },
     });
   }
 
-  function handleDrawClick(event: any) {
-    if (manager.getMode() !== "fibonacci") return;
-    const rect = container.getBoundingClientRect();
-    const sourceEvent = event.sourceEvent as PointerEvent | undefined;
-    let x = sourceEvent ? sourceEvent.clientX - rect.left : null;
-    let y = sourceEvent ? sourceEvent.clientY - rect.top : null;
-    if (x != null && y != null) {
-      const clamped = clampPlotPoint({ x, y });
-      x = clamped.x;
-      y = clamped.y;
-    }
-    const time = x != null ? xToSnappedTime(chart, x, candleStore.candles) : (event.time as number | undefined);
-    const price = y != null ? pxToPrice(series, y) : (event.seriesData?.get(series)?.close as number | undefined);
-    if (time == null || price == null || price <= 0) return;
-
-    if (!drawPoint1) {
-      drawPoint1 = { time, price };
-      window.addEventListener("pointermove", handleDrawPointerMove);
-    } else {
+  const drawingSession = createDrawingSession<{ time: number; price: number }>({
+    mode: "fibonacci",
+    manager,
+    container,
+    chart,
+    pointCount: 2,
+    clampCursorX: true,
+    pointFromClick: (event) => drawingPointFromClick(event, { container, chart, series, candleStore, clampX: true }),
+    ghostUpdate: (points, cursor) => {
+      const p1 = toPixel(points[0]);
+      if (!p1) return;
+      updateGhost(p1, clampPlotPoint(cursor));
+    },
+    ghostRemove: clearGhost,
+    commit: ([point1, point2]) => {
       const tpl = getDefaultDrawingTemplateState("fibonacci");
       const newFib: FibonacciRetracement = {
         id: crypto.randomUUID(),
         datasetId,
-        point1: drawPoint1,
-        point2: { time, price },
+        point1,
+        point2,
         showLabels: true,
         locked: false,
         lineWidth: tpl.width,
@@ -716,14 +682,11 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
       };
       fibonacciRetracements.push(newFib);
       callbacks.onCreate(newFib);
-      drawPoint1 = null;
-      window.removeEventListener("pointermove", handleDrawPointerMove);
-      clearGhost();
       selectFib(newFib.id);
       syncAll();
-      callbacks.onDrawingComplete();
-    }
-  }
+    },
+    onComplete: () => callbacks.onDrawingComplete(),
+  });
 
   syncAll();
 
@@ -736,28 +699,18 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   window.addEventListener("pointerup", scaleInteractionSync.handlePointerUp);
   window.addEventListener("pointercancel", scaleInteractionSync.handlePointerUp);
 
-  const cleanupDrawingClick = bindDrawingPointerClick({
-    container,
-    chart,
-    manager,
-    mode: "fibonacci",
-    onClick: handleDrawClick,
-  });
   return () => {
-    cancelAnimationFrame(ghostRaf);
     scaleInteractionSync.destroy();
     unregisterLifecycle();
-    cleanupDrawingClick();
+    drawingSession.destroy();
     try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRangeChange); } catch { }
     container.removeEventListener("wheel", scaleInteractionSync.handleScaleWheel, { capture: true });
     container.removeEventListener("pointerdown", scaleInteractionSync.handlePointerDown, { capture: true });
     window.removeEventListener("pointerup", scaleInteractionSync.handlePointerUp);
     window.removeEventListener("pointercancel", scaleInteractionSync.handlePointerUp);
-    window.removeEventListener("pointermove", handleDrawPointerMove);
     selection.destroy();
     overlay.remove();
     toolbarController.destroy();
     removeToolbar();
-    clearGhost();
   };
 }

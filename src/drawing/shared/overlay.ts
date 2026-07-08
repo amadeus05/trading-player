@@ -122,8 +122,12 @@ export function createDrawingOverlay(
   container: HTMLElement,
   chart: IChartApi,
   className: string,
+  options?: {
+    /** Несколько инструментов делят один SVG (refcount по className) — fibonacci + fib trend extension. */
+    shared?: boolean;
+  },
 ): DrawingOverlay {
-  if (className === "fib-overlay") {
+  if (options?.shared) {
     let classMap = sharedByContainer.get(container);
     if (!classMap) {
       classMap = new Map();

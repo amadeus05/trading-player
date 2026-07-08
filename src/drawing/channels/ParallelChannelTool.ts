@@ -3,14 +3,15 @@
  * клик 1 → клик 2 (базовая линия) → отвод мыши + клик 3 (ширина).
  */
 
+import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { ParallelChannel } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
 import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
 import { attachManagedDrawingLifecycle, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import { createDrawingOverlay } from "../shared/overlay";
-import { bindDrawingPointerClick } from "../shared/drawingPointerClick";
-import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
+import { createDrawingSession, drawingPointFromClick } from "../shared/drawingSession";
+import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore, SeriesApiLike } from "../shared/types";
 import { hexToRgba } from "../shared/colorUtils";
 import { createSelectionController } from "../shared/selection";
 
@@ -36,7 +37,7 @@ function strokeDashForStyle(style: ParallelChannel["lineStyle"]): string {
   return "";
 }
 
-function pxToPrice(series: any, y: number): number | null {
+function pxToPrice(series: SeriesApiLike, y: number): number | null {
   return series.coordinateToPrice(y);
 }
 
@@ -169,8 +170,8 @@ function widthDragGeometry(
 
 export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   container: HTMLDivElement;
-  chart: any;
-  series: any;
+  chart: IChartApi;
+  series: ISeriesApi<"Candlestick">;
   candleStore: ChartCandleStore;
   parallelChannels: ParallelChannel[];
   drawingMode: DrawingMode;
@@ -183,8 +184,6 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   const overlay = createDrawingOverlay(container, chart, "parallel-channel-overlay");
   const { svg } = overlay;
 
-  let drawPoint1: { time: number; price: number } | null = null;
-  let drawPoint2: { time: number; price: number } | null = null;
   let dragActive = false;
 
   let ghostBaseLine: SVGLineElement | null = null;
@@ -241,9 +240,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   }
 
   function cancelDrawingPreview() {
-    drawPoint1 = null;
-    drawPoint2 = null;
-    removeGhost();
+    drawingSession.cancel(true);
   }
 
   function isChannelHandleTarget(target: EventTarget | null): boolean {
@@ -371,14 +368,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
       syncAll,
-      cancelDrawing: (silent?: boolean) => {
-        if (!drawPoint1) return false;
-        drawPoint1 = null;
-        drawPoint2 = null;
-        removeGhost();
-        if (!silent) callbacks.onDrawingComplete();
-        return true;
-      },
+      cancelDrawing: (silent?: boolean) => drawingSession.cancel(silent),
     }),
     syncAll,
     isDragActive: () => dragActive,
@@ -651,10 +641,8 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
             const p2Data = pixelToDataPoint(next.p2);
             const wpData = wp ? pixelToDataPoint(wp) : null;
             if (p1Data && p2Data && wpData) {
-              current.point1 = p1Data;
-              current.point2 = p2Data;
-              current.widthPoint = wpData;
-              callbacks.onUpdate(current);
+              updateLine(current, { point1: p1Data, point2: p2Data, widthPoint: wpData });
+              return;
             }
           }
         }
@@ -710,10 +698,8 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
           const nextWp = pointOnParallel(nextP1, nextP2, offset, 1);
           const wpData = nextWp ? pixelToDataPoint(nextWp) : null;
           if (p1Data && p2Data && wpData) {
-            current.point1 = p1Data;
-            current.point2 = p2Data;
-            current.widthPoint = wpData;
-            callbacks.onUpdate(current);
+            updateLine(current, { point1: p1Data, point2: p2Data, widthPoint: wpData });
+            return;
           }
         }
         syncAll();
@@ -764,10 +750,8 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
           const nextWp = pointOnParallel(nextP1, nextP2, offset, 1);
           const wpData = nextWp ? pixelToDataPoint(nextWp) : null;
           if (p1Data && p2Data && wpData) {
-            current.point1 = p1Data;
-            current.point2 = p2Data;
-            current.widthPoint = wpData;
-            callbacks.onUpdate(current);
+            updateLine(current, { point1: p1Data, point2: p2Data, widthPoint: wpData });
+            return;
           }
         }
         syncAll();
@@ -775,111 +759,62 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     });
   }
 
-  function clickToPoint(event: any): { time: number; price: number } | null {
-    const rect = container.getBoundingClientRect();
-    const sourceEvent = event.sourceEvent as PointerEvent | undefined;
-    const x = sourceEvent ? sourceEvent.clientX - rect.left : null;
-    const y = sourceEvent ? sourceEvent.clientY - rect.top : null;
-    const time = x != null ? xToSnappedTime(chart, x, candleStore.candles) : (event.time as number | undefined);
-    const price = y != null ? pxToPrice(series, y) : (event.seriesData?.get(series)?.close as number | undefined);
-    if (time == null || price == null || price <= 0) return null;
-    return { time, price };
-  }
-
-  function handleDrawClick(event: any) {
-    if (manager.getMode() !== "parallelchannel") return;
-    if (isChannelHandleTarget(event.sourceEvent?.target ?? null)) return;
-    const point = clickToPoint(event);
-    if (!point) return;
-
-    if (!drawPoint1) {
-      drawPoint1 = point;
-      ghostBaseLine = document.createElementNS(SVG_NS, "line");
-      ghostBaseLine.setAttribute("class", "pc-ghost-line");
-      svg.appendChild(ghostBaseLine);
-      const px = toPixel(drawPoint1);
-      if (px) {
-        setLineEndpoints(ghostBaseLine, px, px);
-      }
-      return;
-    }
-
-    if (!drawPoint2) {
-      drawPoint2 = point;
-      return;
-    }
-
-    const p1px = toPixel(drawPoint1);
-    const p2px = toPixel(drawPoint2);
-    const rect = container.getBoundingClientRect();
-    const sourceEvent = event.sourceEvent as PointerEvent | undefined;
-    const cursor = sourceEvent
-      ? { x: sourceEvent.clientX - rect.left, y: sourceEvent.clientY - rect.top }
-      : null;
-    const widthPoint = p1px && p2px && cursor
-      ? widthPointFromPixels(p1px, p2px, cursor)
-      : point;
-
-    const tpl = getDefaultDrawingTemplateState("parallelchannel");
-    const newChannel: ParallelChannel = {
-      id: crypto.randomUUID(),
-      datasetId,
-      point1: drawPoint1,
-      point2: drawPoint2,
-      widthPoint: widthPoint ?? point,
-      color: tpl.lineColor,
-      fillColor: tpl.fillColor ?? "#787b86",
-      fillOpacity: tpl.fillOpacity ?? 20,
-      width: tpl.width,
-      lineStyle: tpl.style,
-      extendLeft: false,
-      extendRight: false,
-      locked: false,
-    };
-    parallelChannels.push(newChannel);
-    callbacks.onCreate(newChannel);
-    drawPoint1 = null;
-    drawPoint2 = null;
-    removeGhost();
-    selectChannel(newChannel.id);
-    syncAll();
-    callbacks.onDrawingComplete();
-  }
-
-  function handleMouseMove(event: MouseEvent) {
-    if (dragActive) return;
-    const rect = container.getBoundingClientRect();
-    const x = snapXToNearestCandle(chart, event.clientX - rect.left);
-    const y = event.clientY - rect.top;
-    const cursor = { x, y };
-
-    if (drawPoint1 && !drawPoint2 && ghostBaseLine) {
-      const p1 = toPixel(drawPoint1);
-      if (p1) setLineEndpoints(ghostBaseLine, p1, cursor);
-      return;
-    }
-
-    if (drawPoint1 && drawPoint2) {
-      const p1 = toPixel(drawPoint1);
-      const p2 = toPixel(drawPoint2);
-      if (p1 && p2) renderGhostWidth(p1, p2, cursor);
-    }
-  }
-
-  const cleanupDrawingClick = bindDrawingPointerClick({
+  const drawingSession = createDrawingSession<{ time: number; price: number }>({
+    mode: "parallelchannel",
+    manager,
     container,
     chart,
-    manager,
-    mode: "parallelchannel",
-    onClick: handleDrawClick,
+    pointCount: 3,
+    ignoreClick: (event) => isChannelHandleTarget(event.sourceEvent.target),
+    pointFromClick: (event) => drawingPointFromClick(event, { container, chart, series, candleStore }),
+    ghostUpdate: (points, cursor) => {
+      if (!ghostBaseLine) {
+        ghostBaseLine = document.createElementNS(SVG_NS, "line");
+        ghostBaseLine.setAttribute("class", "pc-ghost-line");
+        svg.appendChild(ghostBaseLine);
+      }
+      const p1 = toPixel(points[0]);
+      if (!p1) return;
+      if (points.length === 1) {
+        setLineEndpoints(ghostBaseLine, p1, cursor);
+        return;
+      }
+      const p2 = toPixel(points[1]);
+      if (p2) renderGhostWidth(p1, p2, cursor);
+    },
+    ghostRemove: removeGhost,
+    commit: ([point1, point2, point3], cursor) => {
+      const p1px = toPixel(point1);
+      const p2px = toPixel(point2);
+      const widthPoint = p1px && p2px ? widthPointFromPixels(p1px, p2px, cursor) : null;
+      const tpl = getDefaultDrawingTemplateState("parallelchannel");
+      const newChannel: ParallelChannel = {
+        id: crypto.randomUUID(),
+        datasetId,
+        point1,
+        point2,
+        widthPoint: widthPoint ?? point3,
+        color: tpl.lineColor,
+        fillColor: tpl.fillColor ?? "#787b86",
+        fillOpacity: tpl.fillOpacity ?? 20,
+        width: tpl.width,
+        lineStyle: tpl.style,
+        extendLeft: false,
+        extendRight: false,
+        locked: false,
+      };
+      parallelChannels.push(newChannel);
+      callbacks.onCreate(newChannel);
+      selectChannel(newChannel.id);
+      syncAll();
+    },
+    onComplete: () => callbacks.onDrawingComplete(),
   });
-  container.addEventListener("mousemove", handleMouseMove);
 
   return () => {
     unregisterLifecycle();
-    cleanupDrawingClick();
+    drawingSession.destroy();
     selection.destroy();
-    container.removeEventListener("mousemove", handleMouseMove);
     overlay.remove();
     toolbarController.destroy();
     removeToolbar();

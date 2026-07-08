@@ -2,11 +2,12 @@
  * MeasureTool – TradingView-style ruler overlay.
  */
 
+import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { Candle } from "../../types";
 import { timeToLogical, timeToX, xToTime } from "../shared/coordinates";
 import { bindDrawingPointerClick } from "../shared/drawingPointerClick";
 import { createDrawingOverlay } from "../shared/overlay";
-import type { ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
+import type { ManagedDrawingToolOptions, ChartCandleStore, SeriesApiLike } from "../shared/types";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const TV_BLUE = "#2962FF";
@@ -17,7 +18,7 @@ function clampPrecision(precision: number): number {
   return Math.max(0, Math.min(10, Math.round(precision)));
 }
 
-function pxToPrice(series: any, y: number): number | null {
+function pxToPrice(series: SeriesApiLike, y: number): number | null {
   return series.coordinateToPrice(y);
 }
 
@@ -91,8 +92,8 @@ function makeAxisLabel(className: string): HTMLDivElement {
 
 export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
   container: HTMLDivElement;
-  chart: any;
-  series: any;
+  chart: IChartApi;
+  series: ISeriesApi<"Candlestick">;
   candleStore: ChartCandleStore;
   active: boolean;
   pricePrecision: number;

@@ -3,6 +3,7 @@
  * Points 1 and 2 define the trend, Point 3 defines the retracement from which extensions are drawn.
  */
 
+import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { FibonacciTrendExtension } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
@@ -10,8 +11,8 @@ import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
 import { attachManagedDrawingLifecycle, attachScaleInteractionSync, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import type { DrawingLineStyle } from "../shared/DrawingToolbar";
 import { createDrawingOverlay } from "../shared/overlay";
-import { bindDrawingPointerClick } from "../shared/drawingPointerClick";
-import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
+import { createDrawingSession, drawingPointFromClick } from "../shared/drawingSession";
+import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore, SeriesApiLike } from "../shared/types";
 import { createSelectionController } from "../shared/selection";
 
 export type FibonacciTrendExtensionCallbacks = DrawingCrudCallbacks<FibonacciTrendExtension>;
@@ -59,7 +60,7 @@ interface PixelPoint {
   y: number;
 }
 
-function pxToPrice(series: any, y: number): number | null {
+function pxToPrice(series: SeriesApiLike, y: number): number | null {
   return series.coordinateToPrice(y);
 }
 
@@ -89,7 +90,7 @@ function levelLabelSpan(p2: PixelPoint, p3: PixelPoint) {
 }
 
 function anchorPricesFromPixels(
-  series: any,
+  series: SeriesApiLike,
   p1: PixelPoint,
   p2: PixelPoint,
   p3: PixelPoint,
@@ -185,8 +186,8 @@ function applyHandles(handle1: SVGCircleElement, handle2: SVGCircleElement, hand
 
 export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOptions & {
   container: HTMLDivElement;
-  chart: any;
-  series: any;
+  chart: IChartApi;
+  series: ISeriesApi<"Candlestick">;
   candleStore: ChartCandleStore;
   fibonacciTrendExtensions: FibonacciTrendExtension[];
   drawingMode: DrawingMode;
@@ -197,11 +198,9 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
   const { container, chart, series, candleStore, datasetId, pricePrecision, callbacks, manager } = opts;
   let fibonacciTrendExtensions = [...opts.fibonacciTrendExtensions];
 
-  const overlay = createDrawingOverlay(container, chart, "fib-overlay");
+  const overlay = createDrawingOverlay(container, chart, "fib-overlay", { shared: true });
   const { svg } = overlay;
 
-  let drawPoint1: { time: number; price: number } | null = null;
-  let drawPoint2: { time: number; price: number } | null = null;
   let ghostGroup: SVGGElement | null = null;
   let ghostTrendLine1: SVGLineElement | null = null;
   let ghostTrendLine2: SVGLineElement | null = null;
@@ -212,8 +211,6 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
   let ghostHandle2: SVGCircleElement | null = null;
   let ghostHandle3: SVGCircleElement | null = null;
   let dragActive = false;
-  let ghostRaf = 0;
-  let latestDrawPointer: { x: number; y: number } | null = null;
 
   let toolbarController: DrawingToolbarController<FibonacciTrendExtension>;
 
@@ -353,15 +350,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
       syncAll,
-      cancelDrawing: (silent?: boolean) => {
-        if (!drawPoint1 && !drawPoint2) return false;
-        drawPoint1 = null;
-        drawPoint2 = null;
-        window.removeEventListener("pointermove", handleDrawPointerMove);
-        clearGhost();
-        if (!silent) callbacks.onDrawingComplete();
-        return true;
-      },
+      cancelDrawing: (silent?: boolean) => drawingSession.cancel(silent),
     }),
     syncAll,
     isDragActive: () => dragActive,
@@ -721,11 +710,6 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
   }
 
   function clearGhost() {
-    if (ghostRaf) {
-      cancelAnimationFrame(ghostRaf);
-      ghostRaf = 0;
-    }
-    latestDrawPointer = null;
     svg.querySelectorAll(".fib-ghost").forEach((node) => node.remove());
     ghostGroup = null;
     ghostTrendLine1 = null;
@@ -788,33 +772,6 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     }
   }
 
-  function flushGhostPreview() {
-    ghostRaf = 0;
-    if (!latestDrawPointer) return;
-    
-    if (!drawPoint1) return;
-    const p1 = toPixel(drawPoint1);
-    if (!p1) return;
-
-    if (!drawPoint2) {
-      updateGhost(p1, latestDrawPointer);
-    } else {
-      const p2 = toPixel(drawPoint2);
-      if (!p2) return;
-      updateGhost(p1, p2, latestDrawPointer);
-    }
-  }
-
-  function handleDrawPointerMove(event: PointerEvent) {
-    if (!drawPoint1) return;
-    const rect = container.getBoundingClientRect();
-    latestDrawPointer = clampPlotPoint({
-      x: snapXToNearestCandle(chart, event.clientX - rect.left),
-      y: event.clientY - rect.top,
-    });
-    if (!ghostRaf) ghostRaf = requestAnimationFrame(flushGhostPreview);
-  }
-
   function startDragHandle(id: string, which: "point1" | "point2" | "point3", startEvent: PointerEvent) {
     const fib = fibonacciTrendExtensions.find((item) => item.id === id);
     if (!fib) return;
@@ -836,27 +793,21 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
         const p1 = which === "point1" ? dragged : originalP1;
         const p2 = which === "point2" ? dragged : originalP2;
         const p3 = which === "point3" ? dragged : originalP3;
-        const dragTime = xToSnappedTime(chart, dragged.x, candleStore.candles);
-        const dragPrice = pxToPrice(series, dragged.y);
-        if (dragTime != null && dragPrice != null && dragPrice > 0) {
-          if (which === "point1") fib.point1 = { time: dragTime, price: dragPrice };
-          else if (which === "point2") fib.point2 = { time: dragTime, price: dragPrice };
-          else fib.point3 = { time: dragTime, price: dragPrice };
-        }
         previewAtPixels(fib, p1, p2, p3);
       },
       onEnd: (_event, moved) => {
-        const current = fibonacciTrendExtensions.find((item) => item.id === id);
-        if (!current || !moved || !latestEvent) return;
+        if (!moved || !latestEvent) return;
         const clamped = clampPlotPoint({
           x: latestEvent.clientX - rect.left,
           y: latestEvent.clientY - rect.top,
         });
         const time = xToSnappedTime(chart, clamped.x, candleStore.candles);
         const price = pxToPrice(series, clamped.y);
-        if (time != null && price != null && price > 0) current[which] = { time, price };
-        syncAll();
-        callbacks.onUpdate(current);
+        if (time != null && price != null && price > 0) {
+          updateFib(id, { [which]: { time, price } } as Partial<FibonacciTrendExtension>);
+        } else {
+          syncAll();
+        }
       },
     });
   }
@@ -891,8 +842,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
         );
       },
       onEnd: (_event, moved) => {
-        const current = fibonacciTrendExtensions.find((item) => item.id === id);
-        if (!current || !moved) return;
+        if (!moved) return;
         const fp1 = clampPlotPoint({ x: p1Px.x + finalDx, y: p1Px.y + finalDy });
         const fp2 = clampPlotPoint({ x: p2Px.x + finalDx, y: p2Px.y + finalDy });
         const fp3 = clampPlotPoint({ x: p3Px.x + finalDx, y: p3Px.y + finalDy });
@@ -906,52 +856,46 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
           newP1Time != null && newP1Price != null && newP2Time != null && newP2Price != null && newP3Time != null && newP3Price != null
           && newP1Price > 0 && newP2Price > 0 && newP3Price > 0
         ) {
-          current.point1 = { time: newP1Time, price: newP1Price };
-          current.point2 = { time: newP2Time, price: newP2Price };
-          current.point3 = { time: newP3Time, price: newP3Price };
+          updateFib(id, {
+            point1: { time: newP1Time, price: newP1Price },
+            point2: { time: newP2Time, price: newP2Price },
+            point3: { time: newP3Time, price: newP3Price },
+          });
+        } else {
+          syncAll();
         }
-        syncAll();
-        callbacks.onUpdate(current);
       },
     });
   }
 
-  function handleDrawClick(event: any) {
-    if (manager.getMode() !== "fibtrendext") return;
-    const rect = container.getBoundingClientRect();
-    const sourceEvent = event.sourceEvent as PointerEvent | undefined;
-    let x = sourceEvent ? sourceEvent.clientX - rect.left : null;
-    let y = sourceEvent ? sourceEvent.clientY - rect.top : null;
-    if (x != null && y != null) {
-      const clamped = clampPlotPoint({ x, y });
-      x = clamped.x;
-      y = clamped.y;
-      latestDrawPointer = { x, y };
-    }
-    const time = x != null ? xToSnappedTime(chart, x, candleStore.candles) : (event.time as number | undefined);
-    const price = y != null ? pxToPrice(series, y) : (event.seriesData?.get(series)?.close as number | undefined);
-    if (time == null || price == null || price <= 0) return;
-
-    if (!drawPoint1) {
-      drawPoint1 = { time, price };
-      window.addEventListener("pointermove", handleDrawPointerMove);
-      flushGhostPreview();
-    } else if (!drawPoint2) {
-      drawPoint2 = { time, price };
-      flushGhostPreview();
-    } else {
-      const pointer = latestDrawPointer ?? (x != null && y != null ? { x, y } : null);
-      const p3Time = pointer ? xToSnappedTime(chart, pointer.x, candleStore.candles) : time;
-      const p3Price = pointer ? pxToPrice(series, pointer.y) : price;
-      if (p3Time == null || p3Price == null || p3Price <= 0) return;
-
+  const drawingSession = createDrawingSession<{ time: number; price: number }>({
+    mode: "fibtrendext",
+    manager,
+    container,
+    chart,
+    pointCount: 3,
+    clampCursorX: true,
+    pointFromClick: (event) => drawingPointFromClick(event, { container, chart, series, candleStore, clampX: true }),
+    ghostUpdate: (points, cursor) => {
+      const p1 = toPixel(points[0]);
+      if (!p1) return;
+      const clampedCursor = clampPlotPoint(cursor);
+      if (points.length === 1) {
+        updateGhost(p1, clampedCursor);
+        return;
+      }
+      const p2 = toPixel(points[1]);
+      if (p2) updateGhost(p1, p2, clampedCursor);
+    },
+    ghostRemove: clearGhost,
+    commit: ([point1, point2, point3]) => {
       const tpl = getDefaultDrawingTemplateState("fibtrendext");
       const newFib: FibonacciTrendExtension = {
         id: crypto.randomUUID(),
         datasetId,
-        point1: drawPoint1,
-        point2: drawPoint2,
-        point3: { time: p3Time, price: p3Price },
+        point1,
+        point2,
+        point3,
         showLabels: true,
         locked: false,
         lineWidth: tpl.width,
@@ -959,15 +903,11 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       };
       fibonacciTrendExtensions.push(newFib);
       callbacks.onCreate(newFib);
-      drawPoint1 = null;
-      drawPoint2 = null;
-      window.removeEventListener("pointermove", handleDrawPointerMove);
-      clearGhost();
       selectFib(newFib.id);
       syncAll();
-      callbacks.onDrawingComplete();
-    }
-  }
+    },
+    onComplete: () => callbacks.onDrawingComplete(),
+  });
 
   syncAll();
 
@@ -980,28 +920,18 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
   window.addEventListener("pointerup", scaleInteractionSync.handlePointerUp);
   window.addEventListener("pointercancel", scaleInteractionSync.handlePointerUp);
 
-  const cleanupDrawingClick = bindDrawingPointerClick({
-    container,
-    chart,
-    manager,
-    mode: "fibtrendext",
-    onClick: handleDrawClick,
-  });
   return () => {
-    cancelAnimationFrame(ghostRaf);
     scaleInteractionSync.destroy();
     unregisterLifecycle();
-    cleanupDrawingClick();
+    drawingSession.destroy();
     try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRangeChange); } catch { }
     container.removeEventListener("wheel", scaleInteractionSync.handleScaleWheel, { capture: true });
     container.removeEventListener("pointerdown", scaleInteractionSync.handlePointerDown, { capture: true });
     window.removeEventListener("pointerup", scaleInteractionSync.handlePointerUp);
     window.removeEventListener("pointercancel", scaleInteractionSync.handlePointerUp);
-    window.removeEventListener("pointermove", handleDrawPointerMove);
     selection.destroy();
     overlay.remove();
     toolbarController.destroy();
     removeToolbar();
-    clearGhost();
   };
 }

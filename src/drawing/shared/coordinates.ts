@@ -1,3 +1,5 @@
+import type { ChartApiLike, SeriesApiLike } from "./types";
+
 export interface TimeCandle { time: number }
 export interface DrawingPoint { time: number; price: number }
 export interface PixelPoint { x: number; y: number }
@@ -41,7 +43,7 @@ export function logicalToTime(logical: number, candles: TimeCandle[]): number | 
 }
 
 /** lightweight-charts logicalToCoordinate accepts only integer indices; interpolate for sub-bar times. */
-export function logicalToCoordinateFloat(chart: any, logical: number): number | null {
+export function logicalToCoordinateFloat(chart: ChartApiLike, logical: number): number | null {
   if (!Number.isFinite(logical)) return null;
   const timeScale = chart.timeScale();
   const base = Math.floor(logical);
@@ -56,7 +58,7 @@ export function logicalToCoordinateFloat(chart: any, logical: number): number | 
 }
 
 /** Inverse of logicalToCoordinateFloat; coordinateToLogical returns ceil and loses sub-bar precision. */
-export function coordinateToLogicalFloat(chart: any, x: number): number | null {
+export function coordinateToLogicalFloat(chart: ChartApiLike, x: number): number | null {
   const timeScale = chart.timeScale();
   const logicalCeil = timeScale.coordinateToLogical(x);
   if (logicalCeil == null) return null;
@@ -68,34 +70,34 @@ export function coordinateToLogicalFloat(chart: any, x: number): number | null {
   return (logicalCeil - 1) + (x - xFloor) / (xCeil - xFloor);
 }
 
-export function timeToX(chart: any, time: number, candles: TimeCandle[]): number | null {
+export function timeToX(chart: ChartApiLike, time: number, candles: TimeCandle[]): number | null {
   const logical = timeToLogical(time, candles);
   return logical == null ? null : logicalToCoordinateFloat(chart, logical);
 }
 
-export function xToTime(chart: any, x: number, candles: TimeCandle[]): number | null {
+export function xToTime(chart: ChartApiLike, x: number, candles: TimeCandle[]): number | null {
   const logical = coordinateToLogicalFloat(chart, x);
   return logical == null ? null : logicalToTime(logical, candles);
 }
 
-export function xToSnappedTime(chart: any, x: number, candles: TimeCandle[]): number | null {
+export function xToSnappedTime(chart: ChartApiLike, x: number, candles: TimeCandle[]): number | null {
   const logical = coordinateToLogicalFloat(chart, x);
   return logical == null ? null : logicalToTime(Math.round(logical), candles);
 }
 
-export function snapXToNearestCandle(chart: any, x: number): number {
+export function snapXToNearestCandle(chart: ChartApiLike, x: number): number {
   const logical = coordinateToLogicalFloat(chart, x);
   if (logical == null) return x;
   return logicalToCoordinateFloat(chart, Math.round(logical)) ?? x;
 }
 
-export function pointToPixel(chart: any, series: any, point: DrawingPoint, candles: TimeCandle[]): PixelPoint | null {
+export function pointToPixel(chart: ChartApiLike, series: SeriesApiLike, point: DrawingPoint, candles: TimeCandle[]): PixelPoint | null {
   const x = timeToX(chart, point.time, candles);
   const y = series.priceToCoordinate(point.price);
   return x == null || y == null ? null : { x, y };
 }
 
-export function eventToPoint(event: PointerEvent, container: HTMLElement, chart: any, series: any, candles: TimeCandle[]): DrawingPoint | null {
+export function eventToPoint(event: PointerEvent, container: HTMLElement, chart: ChartApiLike, series: SeriesApiLike, candles: TimeCandle[]): DrawingPoint | null {
   const bounds = container.getBoundingClientRect();
   const x = event.clientX - bounds.left;
   const y = event.clientY - bounds.top;

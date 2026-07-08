@@ -9,7 +9,7 @@ import { snapXToNearestCandle, timeToX, xToSnappedTime } from "../shared/coordin
 import { attachManagedDrawingLifecycle, createClipboardBridge, getPlotWidth, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import { createDrawingOverlay } from "../shared/overlay";
 import { forgetFloatingPanelPosition } from "../shared/floatingPanel";
-import { bindDrawingPointerClick, type DrawingPointerClickEvent } from "../shared/drawingPointerClick";
+import { createDrawingSession } from "../shared/drawingSession";
 import type { DrawingCrudCallbacks, ManagedDrawingToolOptions, ChartCandleStore, DrawingMode } from "../shared/types";
 import { DrawingToolbarController, type DrawingToolbarPatch } from "../shared/DrawingToolbarController";
 import { mountDrawingSettingsPanel, type DrawingSettingsPanelController, type DrawingSettingsTabId } from "../shared/DrawingSettingsPanel";
@@ -104,9 +104,7 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
   let settingsPanel: DrawingSettingsPanelController | null = null;
   let toolbarController: DrawingToolbarController<VolumeProfile>;
 
-  let drawPoint1Time: number | null = null;
   let ghostEl: SVGRectElement | null = null;
-  let lastGhostX: number | null = null;
 
   const elMap = new Map<string, VpEls>();
   const computedCache = new Map<string, { sig: string; result: VolumeProfileResult | null }>();
@@ -647,13 +645,7 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
       },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
       syncAll,
-      cancelDrawing: (silent?: boolean) => {
-        if (drawPoint1Time == null) return false;
-        drawPoint1Time = null;
-        clearGhost();
-        if (!silent) callbacks.onDrawingComplete();
-        return true;
-      },
+      cancelDrawing: (silent?: boolean) => drawingSession.cancel(silent),
     }),
     syncAll,
     isDragActive: () => dragActive,
@@ -735,12 +727,11 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
   function clearGhost() {
     ghostEl?.remove();
     ghostEl = null;
-    lastGhostX = null;
   }
 
-  function updateGhost(x2: number) {
-    if (!ghostEl || drawPoint1Time == null) return;
-    const x1 = timeToX(chart, drawPoint1Time, candleStore.candles);
+  function updateGhost(firstTime: number, x2: number) {
+    if (!ghostEl) return;
+    const x1 = timeToX(chart, firstTime, candleStore.candles);
     if (x1 == null) return;
     const containerHeight = container.getBoundingClientRect().height;
     ghostEl.setAttribute("x", String(Math.min(x1, x2)));
@@ -749,83 +740,57 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
     ghostEl.setAttribute("height", String(containerHeight));
   }
 
-  function handleDrawClick(event: DrawingPointerClickEvent) {
-    if (manager.getMode() !== "volumeprofile") return;
-    const bounds = container.getBoundingClientRect();
-    const sourceEvent = event.sourceEvent;
-    const rawX = sourceEvent.clientX - bounds.left;
-    const x = snapXToNearestCandle(chart, Math.max(0, Math.min(rawX, getPlotWidthLocal())));
-    const time = xToSnappedTime(chart, x, candleStore.candles);
-    if (time == null) return;
-
-    if (drawPoint1Time == null) {
-      drawPoint1Time = time;
-      ghostEl = document.createElementNS(SVG_NS, "rect");
-      ghostEl.setAttribute("class", "vp-ghost");
-      ghostEl.setAttribute("fill", "rgba(38,198,218,0.12)");
-      ghostEl.setAttribute("stroke", "#26C6DA");
-      ghostEl.setAttribute("stroke-width", "1");
-      ghostEl.setAttribute("stroke-dasharray", "4 3");
-      svg.appendChild(ghostEl);
-      lastGhostX = x;
-      updateGhost(x);
-      return;
-    }
-
-    if (Math.abs(time - drawPoint1Time) < 1) {
-      drawPoint1Time = null;
-      clearGhost();
-      return;
-    }
-
-    const newProfile: VolumeProfile = {
-      id: crypto.randomUUID(),
-      datasetId,
-      timeLeft: Math.min(drawPoint1Time, time),
-      timeRight: Math.max(drawPoint1Time, time),
-      ...VOLUME_PROFILE_DEFAULTS,
-    };
-    profiles.push(newProfile);
-    callbacks.onCreate(newProfile);
-    drawPoint1Time = null;
-    clearGhost();
-    selectProfile(newProfile.id);
-    syncAll();
-    callbacks.onDrawingComplete();
-  }
-
-  function handleMouseMove(event: MouseEvent) {
-    if (drawPoint1Time == null || !ghostEl) return;
-    const bounds = container.getBoundingClientRect();
-    const x = snapXToNearestCandle(chart, Math.max(0, Math.min(event.clientX - bounds.left, getPlotWidthLocal())));
-    lastGhostX = x;
-    updateGhost(x);
-  }
-
-  const refreshGhostAfterViewportChange = () => {
-    if (drawPoint1Time == null || !ghostEl || lastGhostX == null) return;
-    updateGhost(lastGhostX);
-  };
-
-  const cleanupDrawingClick = bindDrawingPointerClick({
+  const drawingSession = createDrawingSession<number>({
+    mode: "volumeprofile",
+    manager,
     container,
     chart,
-    manager,
-    mode: "volumeprofile",
-    onClick: handleDrawClick,
+    pointCount: 2,
+    clampCursorX: true,
+    pointFromClick: (event) => {
+      const bounds = container.getBoundingClientRect();
+      const x = snapXToNearestCandle(
+        chart,
+        Math.max(0, Math.min(event.sourceEvent.clientX - bounds.left, getPlotWidthLocal())),
+      );
+      return xToSnappedTime(chart, x, candleStore.candles);
+    },
+    ghostUpdate: ([firstTime], cursor) => {
+      if (!ghostEl) {
+        ghostEl = document.createElementNS(SVG_NS, "rect");
+        ghostEl.setAttribute("class", "vp-ghost");
+        ghostEl.setAttribute("fill", "rgba(38,198,218,0.12)");
+        ghostEl.setAttribute("stroke", "#26C6DA");
+        ghostEl.setAttribute("stroke-width", "1");
+        ghostEl.setAttribute("stroke-dasharray", "4 3");
+        svg.appendChild(ghostEl);
+      }
+      updateGhost(firstTime, cursor.x);
+    },
+    ghostRemove: clearGhost,
+    shouldCommit: ([time1, time2]) => Math.abs(time2 - time1) >= 1,
+    commit: ([time1, time2]) => {
+      const newProfile: VolumeProfile = {
+        id: crypto.randomUUID(),
+        datasetId,
+        timeLeft: Math.min(time1, time2),
+        timeRight: Math.max(time1, time2),
+        ...VOLUME_PROFILE_DEFAULTS,
+      };
+      profiles.push(newProfile);
+      callbacks.onCreate(newProfile);
+      selectProfile(newProfile.id);
+      syncAll();
+    },
+    onComplete: () => callbacks.onDrawingComplete(),
   });
-  chart.timeScale().subscribeVisibleLogicalRangeChange(refreshGhostAfterViewportChange);
-  container.addEventListener("mousemove", handleMouseMove);
 
   return () => {
     unregisterLifecycle();
-    cleanupDrawingClick();
+    drawingSession.destroy();
     selection.destroy();
-    try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(refreshGhostAfterViewportChange); } catch { }
-    container.removeEventListener("mousemove", handleMouseMove);
     toolbarController.destroy();
     removePanel();
     overlay.remove();
-    clearGhost();
   };
 }
