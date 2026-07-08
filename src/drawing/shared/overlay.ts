@@ -23,7 +23,6 @@ const sharedByContainer = new WeakMap<HTMLElement, Map<string, SharedOverlayEntr
 const WHEEL_FORWARD_SELECTOR = [
   `svg[${DRAWING_OVERLAY_ATTRIBUTE}]`,
   ".trend-line-label",
-  ".drawing-inline-text-editor",
 ].join(", ");
 
 function ensureWheelForwarding(container: HTMLElement): void {

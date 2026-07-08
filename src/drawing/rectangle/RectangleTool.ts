@@ -10,6 +10,7 @@ import { attachManagedDrawingLifecycle, createClipboardBridge, getPlotWidth, run
 import { createDrawingOverlay } from "../shared/overlay";
 import { forgetFloatingPanelPosition } from "../shared/floatingPanel";
 import { bindDrawingPointerClick, type DrawingPointerClickEvent } from "../shared/drawingPointerClick";
+import { createEditableLabelStore } from "../shared/editableLabel";
 import type { DrawingCrudCallbacks, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 
 export type RectangleCallbacks = DrawingCrudCallbacks<Rectangle>;
@@ -24,8 +25,6 @@ const HANDLE_CURSORS: Record<HandlePos, string> = {
   ml: "ew-resize", mr: "ew-resize",
   bl: "nesw-resize", bc: "ns-resize", br: "nwse-resize",
 };
-
-const PLACEHOLDER = "+ Add text";
 
 function rectTextColor(rect: Rectangle): string {
   return rect.textColor ?? "#2962ff";
@@ -113,7 +112,6 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
 
   let selectedId: string | null = null;
   let toolbarController: DrawingToolbarController<Rectangle>;
-  let editingTextRectId: string | null = null;
   let dragActive = false;
 
   let drawPoint1: { time: number; price: number } | null = null;
@@ -135,14 +133,41 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     handles: SVGCircleElement[];
   }
   const elMap = new Map<string, RectEls>();
-  const labelOverlays = new Map<string, HTMLDivElement>();
 
-  function closeTextEditor() {
-    if (editingTextRectId) commitLabelEdit(editingTextRectId);
-  }
+  const labelStore = createEditableLabelStore({
+    container,
+    className: "rectangle-label",
+    canEdit: (id) => {
+      if (!manager.canEditExistingDrawings()) return false;
+      const rect = rectangles.find((item) => item.id === id);
+      return Boolean(rect && !rect.locked);
+    },
+    getText: (id) => rectangles.find((item) => item.id === id)?.text ?? "",
+    getTextColor: (id) => {
+      const rect = rectangles.find((item) => item.id === id);
+      return rect ? rectTextColor(rect) : "#d1d4dc";
+    },
+    onBeforeEdit: (id) => {
+      if (selectedId !== id) selectRect(id);
+      const rect = rectangles.find((item) => item.id === id);
+      if (rect) syncOne(rect);
+    },
+    onCommit: (id, value) => {
+      const rect = rectangles.find((item) => item.id === id);
+      if (!rect) return;
+      rect.text = value;
+      callbacks.onUpdate(rect);
+      syncOne(rect);
+    },
+    onCancel: (id) => {
+      const rect = rectangles.find((item) => item.id === id);
+      if (rect) syncOne(rect);
+    },
+    emptyCaretAtEnd: false,
+  });
 
   function removeToolbar() {
-    closeTextEditor();
+    labelStore.commitActive();
     toolbarController.hide();
   }
 
@@ -156,79 +181,6 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     rectangles[idx] = { ...rectangles[idx], ...patch };
     callbacks.onUpdate(rectangles[idx]);
     syncAll();
-  }
-
-  function normalizeLabelValue(raw: string): string {
-    return raw.replaceAll(PLACEHOLDER, "").trim();
-  }
-
-  function placeLabelCaret(el: HTMLElement, atEnd = false) {
-    const range = document.createRange();
-    const selection = window.getSelection();
-    const textNode = el.firstChild;
-    if (textNode?.nodeType === Node.TEXT_NODE) {
-      const offset = atEnd ? (textNode.textContent?.length ?? 0) : 0;
-      range.setStart(textNode, offset);
-    } else {
-      range.setStart(el, 0);
-    }
-    range.collapse(true);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-  }
-
-  function restoreLabelCaret(el: HTMLElement) {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => placeLabelCaret(el, true));
-    });
-  }
-
-  function commitLabelEdit(id: string) {
-    if (editingTextRectId !== id) return;
-    const el = labelOverlays.get(id);
-    const rect = rectangles.find((item) => item.id === id);
-    if (!el || !rect) {
-      editingTextRectId = null;
-      return;
-    }
-
-    el.contentEditable = "false";
-    el.classList.remove("is-editing");
-    rect.text = normalizeLabelValue(el.textContent ?? "");
-    editingTextRectId = null;
-    callbacks.onUpdate(rect);
-    syncOne(rect);
-  }
-
-  function cancelLabelEdit(id: string) {
-    if (editingTextRectId !== id) return;
-    editingTextRectId = null;
-    const rect = rectangles.find((item) => item.id === id);
-    if (rect) syncOne(rect);
-  }
-
-  function openTextEditor(rect: Rectangle) {
-    if (rect.locked) return;
-    if (editingTextRectId && editingTextRectId !== rect.id) commitLabelEdit(editingTextRectId);
-    syncOne(rect);
-    const el = labelOverlays.get(rect.id);
-    if (!el) return;
-
-    const hasText = Boolean(rect.text?.trim());
-    if (!hasText) {
-      el.textContent = PLACEHOLDER;
-      el.classList.add("is-placeholder");
-      el.style.color = "#d1d4dc";
-    }
-    editingTextRectId = rect.id;
-    el.classList.add("is-editing");
-    el.contentEditable = "true";
-    el.focus({ preventScroll: true });
-    if (hasText) {
-      restoreLabelCaret(el);
-    } else {
-      requestAnimationFrame(() => requestAnimationFrame(() => placeLabelCaret(el, false)));
-    }
   }
 
   function visibleBoundsCenter(rect: Rectangle) {
@@ -283,8 +235,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     });
     hit.addEventListener("dblclick", (e) => {
       e.stopPropagation();
-      const current = rectangles.find((item) => item.id === rect.id);
-      if (current) openTextEditor(current);
+      labelStore.startEdit(rect.id);
     });
     handles.forEach((h, i) => {
       h.addEventListener("pointerdown", (e) => {
@@ -305,8 +256,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     forgetFloatingPanelPosition(`rectangle:${id}`);
     const els = elMap.get(id);
     if (els) { els.group.remove(); elMap.delete(id); }
-    labelOverlays.get(id)?.remove();
-    labelOverlays.delete(id);
+    labelStore.remove(id);
     if (selectedId === id) {
       selectedId = null;
       removeToolbar();
@@ -321,8 +271,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       els.group.remove();
     }
     elMap.clear();
-    for (const el of labelOverlays.values()) el.remove();
-    labelOverlays.clear();
+    labelStore.destroy();
     rectangles = [];
     if (selectedId !== null) {
       selectedId = null;
@@ -415,61 +364,8 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     syncAll();
   }
 
-  function ensureLabelOverlay(rect: Rectangle): HTMLDivElement {
-    let el = labelOverlays.get(rect.id);
-    if (el) return el;
-
-    el = document.createElement("div");
-    el.className = "rectangle-label";
-    el.dataset.placeholder = PLACEHOLDER;
-    el.addEventListener("pointerdown", (event) => {
-      event.stopPropagation();
-      if (!manager.canEditExistingDrawings()) return;
-      const current = rectangles.find((item) => item.id === rect.id);
-      if (!current || current.locked) return;
-      if (selectedId !== rect.id) selectRect(rect.id);
-      openTextEditor(current);
-    });
-    el.addEventListener("focus", () => {
-      if (editingTextRectId !== rect.id) return;
-      restoreLabelCaret(el);
-    });
-    el.addEventListener("beforeinput", (event) => {
-      if (editingTextRectId !== rect.id) return;
-      if (!el.classList.contains("is-placeholder")) return;
-      if (!event.inputType.startsWith("insert")) return;
-      const data = (event as InputEvent).data;
-      if (!data) return;
-      event.preventDefault();
-      const current = rectangles.find((item) => item.id === rect.id);
-      const textColor = current ? rectTextColor(current) : el.style.color;
-      el.textContent = data;
-      el.classList.remove("is-placeholder");
-      el.style.color = textColor;
-      placeLabelCaret(el, true);
-    });
-    el.addEventListener("keydown", (event) => {
-      if (editingTextRectId !== rect.id) return;
-      if (event.key === "Enter") {
-        event.preventDefault();
-        el.blur();
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        cancelLabelEdit(rect.id);
-      }
-    });
-    el.addEventListener("blur", () => {
-      if (editingTextRectId === rect.id) commitLabelEdit(rect.id);
-    });
-
-    container.appendChild(el);
-    labelOverlays.set(rect.id, el);
-    return el;
-  }
-
   function syncLabelOverlay(rect: Rectangle, bounds: PixelBounds, selected: boolean) {
-    const el = ensureLabelOverlay(rect);
+    const el = labelStore.ensure(rect.id);
     const safe = { x: bounds.x, y: bounds.y, w: Math.max(0, bounds.w), h: Math.max(0, bounds.h) };
     const visibleBounds = clampHorizontalBounds(safe);
     el.style.left = `${visibleBounds.x + visibleBounds.w / 2}px`;
@@ -477,24 +373,16 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     el.style.width = `${Math.max(1, visibleBounds.w)}px`;
     el.style.transform = "translate(-50%, -50%)";
 
-    if (editingTextRectId === rect.id) {
+    const state = labelStore.syncContent(rect.id, selected);
+    if (state === "editing") {
       el.style.display = "";
       return;
     }
-
-    const hasText = Boolean(rect.text?.trim());
-    const showPlaceholder = selected && !hasText;
-    if (!hasText && !showPlaceholder) {
+    if (state === "hidden") {
       el.style.display = "none";
       return;
     }
-
     el.style.display = safe.w >= 70 && safe.h >= 28 ? "" : "none";
-    el.contentEditable = "false";
-    el.classList.remove("is-editing");
-    el.style.color = hasText ? rectTextColor(rect) : "#d1d4dc";
-    el.textContent = hasText ? (rect.text ?? "") : PLACEHOLDER;
-    el.classList.toggle("is-placeholder", showPlaceholder);
   }
 
   function applyPixelBounds(els: RectEls, b: PixelBounds, rect: Rectangle, selected: boolean) {
@@ -531,7 +419,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     const b = getBounds(rect, chart, series, candleStore.candles);
     if (!b) {
       els.group.setAttribute("visibility", "hidden");
-      const label = labelOverlays.get(rect.id);
+      const label = labelStore.get(rect.id);
       if (label) label.style.display = "none";
       return;
     }
@@ -803,8 +691,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     removeToolbar();
     toolbarController.destroy();
     overlay.remove();
-    for (const el of labelOverlays.values()) el.remove();
-    labelOverlays.clear();
+    labelStore.destroy();
     clearGhost();
   };
 }

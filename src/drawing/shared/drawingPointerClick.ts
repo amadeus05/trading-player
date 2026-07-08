@@ -23,7 +23,6 @@ const IGNORED_TARGET_SELECTOR = [
   ".rect-line-menu",
   ".rect-templates-menu",
   ".hline-toolbar",
-  ".drawing-inline-text-editor",
   ".measure-tooltip",
   ".drawing-settings-panel",
   ".vp-panel",

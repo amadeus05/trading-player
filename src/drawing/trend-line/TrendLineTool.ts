@@ -13,6 +13,7 @@ import { createTrendLineExtendSlots } from "./trendLineToolbarSlots";
 import { createDrawingOverlay } from "../shared/overlay";
 import { bindDrawingPointerClick } from "../shared/drawingPointerClick";
 import { attachManagedDrawingLifecycle, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
+import { createEditableLabelStore } from "../shared/editableLabel";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 export type { DrawingMode } from "../shared/types";
 
@@ -102,39 +103,40 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     handle2: SVGCircleElement;
   }
   const lineElements = new Map<string, LineEls>();
-  const labelOverlays = new Map<string, HTMLDivElement>();
 
   /* ---- Toolbar ---- */
   let toolbarController: DrawingToolbarController<TrendLine>;
-  let editingTextLineId: string | null = null;
 
-  const PLACEHOLDER = "+ Add text";
-
-  function normalizeLabelValue(raw: string): string {
-    const value = raw.replaceAll(PLACEHOLDER, "").trim();
-    return value;
-  }
-
-  function placeLabelCaret(el: HTMLElement, atEnd = false) {
-    const range = document.createRange();
-    const selection = window.getSelection();
-    const textNode = el.firstChild;
-    if (textNode?.nodeType === Node.TEXT_NODE) {
-      const offset = atEnd ? (textNode.textContent?.length ?? 0) : 0;
-      range.setStart(textNode, offset);
-    } else {
-      range.setStart(el, 0);
-    }
-    range.collapse(true);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-  }
-
-  function restoreLabelCaret(el: HTMLElement) {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => placeLabelCaret(el, true));
-    });
-  }
+  const labelStore = createEditableLabelStore({
+    container,
+    className: "trend-line-label",
+    canEdit: (id) => {
+      if (!manager.canEditExistingDrawings()) return false;
+      const line = trendLines.find((item) => item.id === id);
+      return Boolean(line && !line.locked);
+    },
+    getText: (id) => trendLines.find((item) => item.id === id)?.label ?? "",
+    getTextColor: (id) => {
+      const line = trendLines.find((item) => item.id === id);
+      return line ? trendLineTextColor(line) : "#d1d4dc";
+    },
+    onBeforeEdit: (id) => {
+      if (selectedId !== id) selectLine(id);
+    },
+    onCommit: (id, value) => {
+      const line = trendLines.find((item) => item.id === id);
+      if (!line) return;
+      line.label = value;
+      line.showLabel = Boolean(value);
+      callbacks.onUpdate(line);
+      syncOne(line);
+    },
+    onCancel: (id) => {
+      const line = trendLines.find((item) => item.id === id);
+      if (line) syncOne(line);
+    },
+    emptyCaretAtEnd: true,
+  });
 
   function applyLabelPosition(el: HTMLElement, p1: PixelPoint, p2: PixelPoint) {
     const layout = lineLabelLayout(p1, p2);
@@ -143,59 +145,9 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     el.style.transform = `translate(-50%, -50%) rotate(${layout.angle}deg)`;
   }
 
-  function commitLabelEdit(id: string) {
-    if (editingTextLineId !== id) return;
-    const el = labelOverlays.get(id);
-    const line = trendLines.find((item) => item.id === id);
-    if (!el || !line) {
-      editingTextLineId = null;
-      return;
-    }
-
-    el.contentEditable = "false";
-    el.classList.remove("is-editing");
-    const value = normalizeLabelValue(el.textContent ?? "");
-
-    line.label = value;
-    line.showLabel = Boolean(value);
-    editingTextLineId = null;
-    callbacks.onUpdate(line);
-    syncOne(line);
-  }
-
-  function cancelLabelEdit(id: string) {
-    if (editingTextLineId !== id) return;
-    editingTextLineId = null;
-    const line = trendLines.find((item) => item.id === id);
-    if (line) syncOne(line);
-  }
-
-  function closeInlineTextEditor() {
-    if (editingTextLineId) commitLabelEdit(editingTextLineId);
-  }
-
   function removeToolbar() {
-    closeInlineTextEditor();
+    labelStore.commitActive();
     toolbarController.hide();
-  }
-
-  function startLabelEdit(tl: TrendLine) {
-    if (tl.locked) return;
-    const el = labelOverlays.get(tl.id);
-    if (!el) return;
-
-    const hasText = Boolean(tl.label?.trim());
-    if (!hasText) {
-      el.textContent = PLACEHOLDER;
-      el.classList.add("is-placeholder");
-      el.style.color = "#d1d4dc";
-    }
-
-    editingTextLineId = tl.id;
-    el.classList.add("is-editing");
-    el.contentEditable = "true";
-    el.focus({ preventScroll: true });
-    restoreLabelCaret(el);
   }
 
   function createToolbar(tl: TrendLine) {
@@ -254,8 +206,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     trendLines = trendLines.filter((l) => l.id !== id);
     const els = lineElements.get(id);
     if (els) { els.group.remove(); lineElements.delete(id); }
-    labelOverlays.get(id)?.remove();
-    labelOverlays.delete(id);
+    labelStore.remove(id);
     if (selectedId === id) {
       selectedId = null;
       removeToolbar();
@@ -269,8 +220,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       els.group.remove();
     }
     lineElements.clear();
-    for (const el of labelOverlays.values()) el.remove();
-    labelOverlays.clear();
+    labelStore.destroy();
     trendLines = [];
     if (selectedId !== null) {
       selectedId = null;
@@ -432,77 +382,12 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     return { group, line, extLine, hitArea, handle1, handle2 };
   }
 
-  function ensureLabelOverlay(tl: TrendLine): HTMLDivElement {
-    let el = labelOverlays.get(tl.id);
-    if (el) return el;
-
-    el = document.createElement("div");
-    el.className = "trend-line-label";
-    el.addEventListener("pointerdown", (event) => {
-      event.stopPropagation();
-      if (!manager.canEditExistingDrawings()) return;
-      const current = trendLines.find((item) => item.id === tl.id);
-      if (!current || current.locked) return;
-      if (selectedId !== tl.id) selectLine(tl.id);
-      startLabelEdit(current);
-    });
-    el.addEventListener("focus", () => {
-      if (editingTextLineId !== tl.id) return;
-      restoreLabelCaret(el);
-    });
-    el.addEventListener("beforeinput", (event) => {
-      if (editingTextLineId !== tl.id) return;
-      if (!el.classList.contains("is-placeholder")) return;
-      if (!event.inputType.startsWith("insert")) return;
-      const data = (event as InputEvent).data;
-      if (!data) return;
-      event.preventDefault();
-      const current = trendLines.find((item) => item.id === tl.id);
-      const textColor = current ? trendLineTextColor(current) : el.style.color;
-      el.textContent = data;
-      el.classList.remove("is-placeholder");
-      el.style.color = textColor;
-      placeLabelCaret(el, true);
-    });
-    el.addEventListener("keydown", (event) => {
-      if (editingTextLineId !== tl.id) return;
-      if (event.key === "Enter") {
-        event.preventDefault();
-        el.blur();
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        cancelLabelEdit(tl.id);
-      }
-    });
-    el.addEventListener("blur", () => {
-      if (editingTextLineId === tl.id) commitLabelEdit(tl.id);
-    });
-
-    container.appendChild(el);
-    labelOverlays.set(tl.id, el);
-    return el;
-  }
-
   function syncLabelOverlay(tl: TrendLine, p1: PixelPoint, p2: PixelPoint, isSelected: boolean) {
-    const el = ensureLabelOverlay(tl);
+    const el = labelStore.ensure(tl.id);
     applyLabelPosition(el, p1, p2);
-
-    if (editingTextLineId === tl.id) return;
-
-    const hasText = Boolean(tl.label?.trim());
-    const showPlaceholder = isSelected && !hasText;
-    if (!hasText && !showPlaceholder) {
-      el.style.display = "none";
-      return;
-    }
-
-    el.style.display = "";
-    el.contentEditable = "false";
-    el.classList.remove("is-editing");
-    el.style.color = hasText ? trendLineTextColor(tl) : "#d1d4dc";
-    el.textContent = hasText ? tl.label : PLACEHOLDER;
-    el.classList.toggle("is-placeholder", showPlaceholder);
+    const state = labelStore.syncContent(tl.id, isSelected);
+    if (state === "editing") return;
+    el.style.display = state === "hidden" ? "none" : "";
   }
 
   /* ---- Sync visual positions ---- */
@@ -769,8 +654,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     container.removeEventListener("mousemove", handleMouseMove);
     container.removeEventListener("pointerdown", handleBackgroundClick);
     overlay.remove();
-    for (const el of labelOverlays.values()) el.remove();
-    labelOverlays.clear();
+    labelStore.destroy();
     toolbarController.destroy();
     removeToolbar();
     if (ghostLine) ghostLine.remove();
