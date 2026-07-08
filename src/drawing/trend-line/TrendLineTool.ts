@@ -14,6 +14,7 @@ import { createDrawingOverlay } from "../shared/overlay";
 import { bindDrawingPointerClick } from "../shared/drawingPointerClick";
 import { attachManagedDrawingLifecycle, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import { createEditableLabelStore } from "../shared/editableLabel";
+import { createSelectionController } from "../shared/selection";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 export type { DrawingMode } from "../shared/types";
 
@@ -88,7 +89,6 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
   const { svg } = overlay;
 
   /* ---- Selection state ---- */
-  let selectedId: string | null = opts.selectedId ?? null;
   let ghostLine: SVGLineElement | null = null;
   let drawPoint1: { time: number; price: number } | null = null;
   let dragActive = false;
@@ -107,6 +107,21 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
   /* ---- Toolbar ---- */
   let toolbarController: DrawingToolbarController<TrendLine>;
 
+  const selection = createSelectionController<TrendLine>({
+    kind: "trendline",
+    manager,
+    container,
+    findById: (id) => trendLines.find((item) => item.id === id),
+    getSelectionElement: (id) => lineElements.get(id)?.group ?? null,
+    onShow: (tl) => createToolbar(tl),
+    onHide: () => removeToolbar(),
+    onChange: (id) => onSelect?.(id),
+    syncAll,
+    ignoreSelector: ".trend-hit-area, .rect-handle-el, .trend-line-label",
+    initialSelectedId: opts.selectedId ?? null,
+  });
+  const selectLine = selection.select;
+
   const labelStore = createEditableLabelStore({
     container,
     className: "trend-line-label",
@@ -121,7 +136,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       return line ? trendLineTextColor(line) : "#d1d4dc";
     },
     onBeforeEdit: (id) => {
-      if (selectedId !== id) selectLine(id);
+      if (!selection.isSelected(id)) selectLine(id);
     },
     onCommit: (id, value) => {
       const line = trendLines.find((item) => item.id === id);
@@ -207,11 +222,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     const els = lineElements.get(id);
     if (els) { els.group.remove(); lineElements.delete(id); }
     labelStore.remove(id);
-    if (selectedId === id) {
-      selectedId = null;
-      removeToolbar();
-      manager.clearSelection("trendline");
-    }
+    selection.handleDeleted(id);
     callbacks.onDelete(id);
   }
 
@@ -222,12 +233,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     lineElements.clear();
     labelStore.destroy();
     trendLines = [];
-    if (selectedId !== null) {
-      selectedId = null;
-      onSelect?.(null);
-      removeToolbar();
-    }
-    manager.clearSelection("trendline");
+    selection.reset();
     syncAll();
   }
 
@@ -274,12 +280,15 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       kind: "trendline",
       datasetId,
       candleStore,
-      getSelectedId: () => selectedId,
+      getSelectedId: () => selection.getSelectedId(),
       findById: (id) => trendLines.find((item) => item.id === id),
       append: (line) => { trendLines.push(line); },
       onCreate: callbacks.onCreate,
       select: (id) => selectLine(id),
-      deleteSelected: () => { if (selectedId) deleteLine(selectedId); },
+      deleteSelected: () => {
+        const id = selection.getSelectedId();
+        if (id) deleteLine(id);
+      },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
       syncAll,
       cancelDrawing: (silent?: boolean) => {
@@ -292,34 +301,9 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     }),
     syncAll,
     isDragActive: () => dragActive,
-    onDeselect: () => {
-      if (selectedId === null) return;
-      selectedId = null;
-      onSelect?.(null);
-      removeToolbar();
-      syncAll();
-    },
+    onDeselect: () => selection.handleManagerDeselect(),
     purgeAll: purgeAllLines,
   });
-
-  function selectLine(id: string | null) {
-    if (!id) {
-      if (selectedId !== null) {
-        selectedId = null;
-        onSelect?.(null);
-        removeToolbar();
-        syncAll();
-      }
-      manager.clearSelection("trendline");
-      return;
-    }
-    selectedId = id;
-    onSelect?.(id);
-    const tl = trendLines.find((l) => l.id === id);
-    if (tl) createToolbar(tl);
-    manager.activateSelection("trendline", lineElements.get(id)?.group ?? null, id);
-    syncAll();
-  }
 
   /* ---- Build SVG elements for one line ---- */
 
@@ -408,7 +392,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     }
     els.group.setAttribute("visibility", "visible");
 
-    const isSelected = selectedId === tl.id;
+    const isSelected = selection.isSelected(tl.id);
 
     // Main line
     els.line.setAttribute("x1", String(p1.x));
@@ -476,7 +460,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       els.extLine.setAttribute("x1", String(ep1.x)); els.extLine.setAttribute("y1", String(ep1.y));
       els.extLine.setAttribute("x2", String(ep2.x)); els.extLine.setAttribute("y2", String(ep2.y));
     }
-    syncLabelOverlay(tl, p1, p2, selectedId === tl.id);
+    syncLabelOverlay(tl, p1, p2, selection.isSelected(tl.id));
   }
 
   /* ---- Drag handlers ---- */
@@ -626,16 +610,6 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     }
   }
 
-  /* ---- Deselect on background click ---- */
-  function handleBackgroundClick(event: PointerEvent) {
-    if (manager.getMode() !== "none") return;
-    const target = event.target as Element;
-    if (target.closest(".trend-toolbar") || target.closest(".trend-hit-area") || target.closest(".rect-handle-el") || target.closest(".trend-line-label")) return;
-    if (selectedId) {
-      selectLine(null);
-    }
-  }
-
   /* ---- Attach events ---- */
   const cleanupDrawingClick = bindDrawingPointerClick({
     container,
@@ -645,14 +619,13 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     onClick: handleDrawClick,
   });
   container.addEventListener("mousemove", handleMouseMove);
-  container.addEventListener("pointerdown", handleBackgroundClick);
 
   /* ---- Cleanup ---- */
   return () => {
     unregisterLifecycle();
     cleanupDrawingClick();
+    selection.destroy();
     container.removeEventListener("mousemove", handleMouseMove);
-    container.removeEventListener("pointerdown", handleBackgroundClick);
     overlay.remove();
     labelStore.destroy();
     toolbarController.destroy();

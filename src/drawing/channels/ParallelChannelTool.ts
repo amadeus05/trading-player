@@ -12,6 +12,7 @@ import { createDrawingOverlay } from "../shared/overlay";
 import { bindDrawingPointerClick } from "../shared/drawingPointerClick";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 import { hexToRgba } from "../shared/colorUtils";
+import { createSelectionController } from "../shared/selection";
 
 export type ParallelChannelCallbacks = DrawingCrudCallbacks<ParallelChannel>;
 
@@ -182,7 +183,6 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   const overlay = createDrawingOverlay(container, chart, "parallel-channel-overlay");
   const { svg } = overlay;
 
-  let selectedId: string | null = null;
   let drawPoint1: { time: number; price: number } | null = null;
   let drawPoint2: { time: number; price: number } | null = null;
   let dragActive = false;
@@ -294,15 +294,24 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     syncAll();
   }
 
+  const selection = createSelectionController<ParallelChannel>({
+    kind: "parallelchannel",
+    manager,
+    container,
+    findById: (id) => parallelChannels.find((item) => item.id === id),
+    getSelectionElement: (id) => elMap.get(id)?.group ?? null,
+    onShow: (channel) => createToolbar(channel),
+    onHide: () => removeToolbar(),
+    syncAll,
+    ignoreSelector: ".pc-hit-area, .rect-handle-el, .pc-mid-handle",
+  });
+  const selectChannel = selection.select;
+
   function deleteChannel(id: string) {
     parallelChannels = parallelChannels.filter((item) => item.id !== id);
     elMap.get(id)?.group.remove();
     elMap.delete(id);
-    if (selectedId === id) {
-      selectedId = null;
-      removeToolbar();
-      manager.clearSelection("parallelchannel");
-    }
+    selection.handleDeleted(id);
     callbacks.onDelete(id);
   }
 
@@ -312,11 +321,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     }
     elMap.clear();
     parallelChannels = [];
-    if (selectedId !== null) {
-      selectedId = null;
-      removeToolbar();
-    }
-    manager.clearSelection("parallelchannel");
+    selection.reset();
     syncAll();
   }
 
@@ -355,12 +360,15 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       kind: "parallelchannel",
       datasetId,
       candleStore,
-      getSelectedId: () => selectedId,
+      getSelectedId: () => selection.getSelectedId(),
       findById: (id) => parallelChannels.find((item) => item.id === id),
       append: (channel) => { parallelChannels.push(channel); },
       onCreate: callbacks.onCreate,
       select: (id) => selectChannel(id),
-      deleteSelected: () => { if (selectedId) deleteChannel(selectedId); },
+      deleteSelected: () => {
+        const id = selection.getSelectedId();
+        if (id) deleteChannel(id);
+      },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
       syncAll,
       cancelDrawing: (silent?: boolean) => {
@@ -374,31 +382,9 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     }),
     syncAll,
     isDragActive: () => dragActive,
-    onDeselect: () => {
-      if (selectedId === null) return;
-      selectedId = null;
-      removeToolbar();
-      syncAll();
-    },
+    onDeselect: () => selection.handleManagerDeselect(),
     purgeAll: purgeAllChannels,
   });
-
-  function selectChannel(id: string | null) {
-    if (!id) {
-      if (selectedId !== null) {
-        selectedId = null;
-        removeToolbar();
-        syncAll();
-      }
-      manager.clearSelection("parallelchannel");
-      return;
-    }
-    selectedId = id;
-    const channel = parallelChannels.find((item) => item.id === id);
-    if (channel) createToolbar(channel);
-    manager.activateSelection("parallelchannel", elMap.get(id)?.group ?? null, id);
-    syncAll();
-  }
 
   function buildEls(channel: ParallelChannel): ChannelEls {
     const group = overlay.createClippedGroup();
@@ -591,7 +577,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     }
     const widthPx = { x: p2.x, y: wp.y };
     els.group.setAttribute("visibility", "visible");
-    renderChannelGeometry(channel, els, p1, p2, widthPx, selectedId === channel.id);
+    renderChannelGeometry(channel, els, p1, p2, widthPx, selection.isSelected(channel.id));
   }
 
   function syncAll() {
@@ -608,7 +594,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
   ) {
     const els = elMap.get(channel.id);
     if (!els) return;
-    renderChannelGeometry(channel, els, p1, p2, wp, selectedId === channel.id);
+    renderChannelGeometry(channel, els, p1, p2, wp, selection.isSelected(channel.id));
   }
 
   function previewWidthDrag(
@@ -880,13 +866,6 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     }
   }
 
-  function handleBackgroundClick(event: PointerEvent) {
-    if (manager.getMode() !== "none") return;
-    const target = event.target as Element;
-    if (target.closest(".trend-toolbar") || target.closest(".pc-hit-area") || target.closest(".rect-handle-el") || target.closest(".pc-mid-handle")) return;
-    if (selectedId) selectChannel(null);
-  }
-
   const cleanupDrawingClick = bindDrawingPointerClick({
     container,
     chart,
@@ -895,13 +874,12 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     onClick: handleDrawClick,
   });
   container.addEventListener("mousemove", handleMouseMove);
-  container.addEventListener("pointerdown", handleBackgroundClick);
 
   return () => {
     unregisterLifecycle();
     cleanupDrawingClick();
+    selection.destroy();
     container.removeEventListener("mousemove", handleMouseMove);
-    container.removeEventListener("pointerdown", handleBackgroundClick);
     overlay.remove();
     toolbarController.destroy();
     removeToolbar();

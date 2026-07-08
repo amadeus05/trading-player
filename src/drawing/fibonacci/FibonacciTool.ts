@@ -10,6 +10,7 @@ import { attachManagedDrawingLifecycle, attachScaleInteractionSync, createClipbo
 import type { DrawingLineStyle } from "../shared/DrawingToolbar";
 import { createDrawingOverlay } from "../shared/overlay";
 import { bindDrawingPointerClick } from "../shared/drawingPointerClick";
+import { createSelectionController } from "../shared/selection";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 
 export type FibonacciCallbacks = DrawingCrudCallbacks<FibonacciRetracement>;
@@ -173,7 +174,6 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   const overlay = createDrawingOverlay(container, chart, "fib-overlay");
   const { svg } = overlay;
 
-  let selectedId: string | null = null;
   let drawPoint1: { time: number; price: number } | null = null;
   let ghostGroup: SVGGElement | null = null;
   let ghostTrendLine: SVGLineElement | null = null;
@@ -242,17 +242,26 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     syncAll();
   }
 
+  const selection = createSelectionController<FibonacciRetracement>({
+    kind: "fibonacci",
+    manager,
+    container,
+    findById: (id) => fibonacciRetracements.find((item) => item.id === id),
+    getSelectionElement: (id) => elMap.get(id)?.group ?? null,
+    onShow: (fib) => createToolbar(fib),
+    onHide: () => removeToolbar(),
+    syncAll,
+    ignoreSelector: ".fib-trend-hit, .fib-level-hit, .fib-handle",
+  });
+  const selectFib = selection.select;
+
   function deleteFib(id: string) {
     fibonacciRetracements = fibonacciRetracements.filter((item) => item.id !== id);
     const els = elMap.get(id);
     els?.group.remove();
     els?.labelGroup.remove();
     elMap.delete(id);
-    if (selectedId === id) {
-      selectedId = null;
-      removeToolbar();
-      manager.clearSelection("fibonacci");
-    }
+    selection.handleDeleted(id);
     callbacks.onDelete(id);
   }
 
@@ -263,11 +272,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     }
     elMap.clear();
     fibonacciRetracements = [];
-    if (selectedId !== null) {
-      selectedId = null;
-      removeToolbar();
-    }
-    manager.clearSelection("fibonacci");
+    selection.reset();
     syncAll();
   }
 
@@ -303,12 +308,15 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
       kind: "fibonacci",
       datasetId,
       candleStore,
-      getSelectedId: () => selectedId,
+      getSelectedId: () => selection.getSelectedId(),
       findById: (id) => fibonacciRetracements.find((item) => item.id === id),
       append: (fib) => { fibonacciRetracements.push(fib); },
       onCreate: callbacks.onCreate,
       select: (id) => selectFib(id),
-      deleteSelected: () => { if (selectedId) deleteFib(selectedId); },
+      deleteSelected: () => {
+        const id = selection.getSelectedId();
+        if (id) deleteFib(id);
+      },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
       syncAll,
       cancelDrawing: (silent?: boolean) => {
@@ -322,31 +330,9 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     }),
     syncAll,
     isDragActive: () => dragActive,
-    onDeselect: () => {
-      if (selectedId === null) return;
-      selectedId = null;
-      removeToolbar();
-      syncAll();
-    },
+    onDeselect: () => selection.handleManagerDeselect(),
     purgeAll: purgeAllFib,
   });
-
-  function selectFib(id: string | null) {
-    if (!id) {
-      if (selectedId !== null) {
-        selectedId = null;
-        removeToolbar();
-        syncAll();
-      }
-      manager.clearSelection("fibonacci");
-      return;
-    }
-    selectedId = id;
-    const fib = fibonacciRetracements.find((item) => item.id === id);
-    if (fib) createToolbar(fib);
-    manager.activateSelection("fibonacci", elMap.get(id)?.group ?? null, id);
-    syncAll();
-  }
 
   function buildFibEls(fib: FibonacciRetracement): FibEls {
     const group = overlay.createClippedGroup();
@@ -495,7 +481,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     }
     els.group.setAttribute("visibility", "visible");
     els.labelGroup.setAttribute("visibility", "visible");
-    renderFibGeometry(fib, els, p1, p2, selectedId === fib.id);
+    renderFibGeometry(fib, els, p1, p2, selection.isSelected(fib.id));
   }
 
   function syncAll() {
@@ -515,7 +501,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   function previewAtPixels(fib: FibonacciRetracement, p1: PixelPoint, p2: PixelPoint) {
     const els = elMap.get(fib.id);
     if (!els) return;
-    renderFibGeometry(fib, els, p1, p2, selectedId === fib.id, "pixels");
+    renderFibGeometry(fib, els, p1, p2, selection.isSelected(fib.id), "pixels");
   }
 
   function ensureGhostElements() {
@@ -739,18 +725,6 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     }
   }
 
-  function handleBackgroundClick(event: PointerEvent) {
-    if (manager.getMode() !== "none") return;
-    const target = event.target as Element;
-    if (
-      target.closest(".rect-toolbar")
-      || target.closest(".fib-trend-hit")
-      || target.closest(".fib-level-hit")
-      || target.closest(".fib-handle")
-    ) return;
-    if (selectedId) selectFib(null);
-  }
-
   syncAll();
 
   const onVisibleRangeChange = () => {
@@ -769,8 +743,6 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     mode: "fibonacci",
     onClick: handleDrawClick,
   });
-  container.addEventListener("pointerdown", handleBackgroundClick);
-
   return () => {
     cancelAnimationFrame(ghostRaf);
     scaleInteractionSync.destroy();
@@ -782,7 +754,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     window.removeEventListener("pointerup", scaleInteractionSync.handlePointerUp);
     window.removeEventListener("pointercancel", scaleInteractionSync.handlePointerUp);
     window.removeEventListener("pointermove", handleDrawPointerMove);
-    container.removeEventListener("pointerdown", handleBackgroundClick);
+    selection.destroy();
     overlay.remove();
     toolbarController.destroy();
     removeToolbar();

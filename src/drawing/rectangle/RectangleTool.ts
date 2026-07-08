@@ -12,6 +12,7 @@ import { forgetFloatingPanelPosition } from "../shared/floatingPanel";
 import { bindDrawingPointerClick, type DrawingPointerClickEvent } from "../shared/drawingPointerClick";
 import { createEditableLabelStore } from "../shared/editableLabel";
 import { hexToRgba } from "../shared/colorUtils";
+import { createSelectionController } from "../shared/selection";
 import type { DrawingCrudCallbacks, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 
 export type RectangleCallbacks = DrawingCrudCallbacks<Rectangle>;
@@ -100,9 +101,21 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
   const overlay = createDrawingOverlay(container, chart, "rect-overlay");
   const { svg } = overlay;
 
-  let selectedId: string | null = null;
   let toolbarController: DrawingToolbarController<Rectangle>;
   let dragActive = false;
+
+  const selection = createSelectionController<Rectangle>({
+    kind: "rectangle",
+    manager,
+    container,
+    findById: (id) => rectangles.find((item) => item.id === id),
+    getSelectionElement: (id) => elMap.get(id)?.group ?? null,
+    onShow: (rect) => createToolbar(rect),
+    onHide: () => removeToolbar(),
+    syncAll,
+    ignoreSelector: ".rect-hit-el, .rect-handle-el, .rectangle-label",
+  });
+  const selectRect = selection.select;
 
   let drawPoint1: { time: number; price: number } | null = null;
   interface GhostEls {
@@ -138,7 +151,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       return rect ? rectTextColor(rect) : "#d1d4dc";
     },
     onBeforeEdit: (id) => {
-      if (selectedId !== id) selectRect(id);
+      if (!selection.isSelected(id)) selectRect(id);
       const rect = rectangles.find((item) => item.id === id);
       if (rect) syncOne(rect);
     },
@@ -247,11 +260,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     const els = elMap.get(id);
     if (els) { els.group.remove(); elMap.delete(id); }
     labelStore.remove(id);
-    if (selectedId === id) {
-      selectedId = null;
-      removeToolbar();
-      manager.clearSelection("rectangle");
-    }
+    selection.handleDeleted(id);
     callbacks.onDelete(id);
   }
 
@@ -263,11 +272,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     elMap.clear();
     labelStore.destroy();
     rectangles = [];
-    if (selectedId !== null) {
-      selectedId = null;
-      removeToolbar();
-    }
-    manager.clearSelection("rectangle");
+    selection.reset();
     syncAll();
   }
 
@@ -310,12 +315,15 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       kind: "rectangle",
       datasetId,
       candleStore,
-      getSelectedId: () => selectedId,
+      getSelectedId: () => selection.getSelectedId(),
       findById: (id) => rectangles.find((item) => item.id === id),
       append: (rect) => { rectangles.push(rect); },
       onCreate: callbacks.onCreate,
       select: (id) => selectRect(id),
-      deleteSelected: () => { if (selectedId) deleteRect(selectedId); },
+      deleteSelected: () => {
+        const id = selection.getSelectedId();
+        if (id) deleteRect(id);
+      },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
       syncAll,
       cancelDrawing: (silent?: boolean) => {
@@ -328,31 +336,9 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     }),
     syncAll,
     isDragActive: () => dragActive,
-    onDeselect: () => {
-      if (selectedId === null) return;
-      selectedId = null;
-      removeToolbar();
-      syncAll();
-    },
+    onDeselect: () => selection.handleManagerDeselect(),
     purgeAll: purgeAllRects,
   });
-
-  function selectRect(id: string | null) {
-    if (!id) {
-      if (selectedId !== null) {
-        selectedId = null;
-        removeToolbar();
-        syncAll();
-      }
-      manager.clearSelection("rectangle");
-      return;
-    }
-    selectedId = id;
-    const r = rectangles.find((item) => item.id === id);
-    if (r) createToolbar(r);
-    manager.activateSelection("rectangle", elMap.get(id)?.group ?? null, id);
-    syncAll();
-  }
 
   function syncLabelOverlay(rect: Rectangle, bounds: PixelBounds, selected: boolean) {
     const el = labelStore.ensure(rect.id);
@@ -414,7 +400,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       return;
     }
     els.group.setAttribute("visibility", "visible");
-    applyPixelBounds(els, b, rect, selectedId === rect.id);
+    applyPixelBounds(els, b, rect, selection.isSelected(rect.id));
   }
 
   function syncAll() {
@@ -659,25 +645,12 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
   chart.timeScale().subscribeVisibleLogicalRangeChange(refreshGhostAfterViewportChange);
   container.addEventListener("mousemove", handleMouseMove);
 
-  const onBgPointerDown = (e: PointerEvent) => {
-    if (manager.getMode() !== "none") return;
-    const t = e.target as Element;
-    if (
-      t.closest(".rect-toolbar") ||
-      t.closest(".rect-palette") ||
-      t.classList.contains("rect-hit-el") ||
-      t.classList.contains("rect-handle-el")
-    ) return;
-    if (selectedId) selectRect(null);
-  };
-  container.addEventListener("pointerdown", onBgPointerDown);
-
   return () => {
     unregisterLifecycle();
     cleanupDrawingClick();
+    selection.destroy();
     try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(refreshGhostAfterViewportChange); } catch { }
     container.removeEventListener("mousemove", handleMouseMove);
-    container.removeEventListener("pointerdown", onBgPointerDown);
     removeToolbar();
     toolbarController.destroy();
     overlay.remove();

@@ -1,5 +1,6 @@
 import type { DrawingMode } from "./types";
 import type { DrawingManager } from "../DrawingManager";
+import { DRAWING_UI_SELECTOR } from "./selection";
 
 export interface DrawingPointerClickEvent {
   sourceEvent: PointerEvent;
@@ -18,20 +19,10 @@ interface BindDrawingPointerClickOptions {
   onClick: (event: DrawingPointerClickEvent) => void;
 }
 
-const IGNORED_TARGET_SELECTOR = [
-  ".rect-toolbar",
-  ".rect-line-menu",
-  ".rect-templates-menu",
-  ".hline-toolbar",
-  ".measure-tooltip",
-  ".drawing-settings-panel",
-  ".vp-panel",
-].join(", ");
-
 const CLICK_TOLERANCE_PX = 7;
 
 function isIgnoredTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && target.closest(IGNORED_TARGET_SELECTOR) != null;
+  return target instanceof Element && target.closest(DRAWING_UI_SELECTOR) != null;
 }
 
 function isInsidePlotArea(container: HTMLElement, chart: BindDrawingPointerClickOptions["chart"], event: PointerEvent): boolean {

@@ -15,6 +15,7 @@ import { DrawingToolbarController, type DrawingToolbarPatch } from "../shared/Dr
 import { mountDrawingSettingsPanel, type DrawingSettingsPanelController, type DrawingSettingsTabId } from "../shared/DrawingSettingsPanel";
 import { computeVolumeProfile, type VolumeProfileResult } from "./computeVolumeProfile";
 import { hexToRgba } from "../shared/colorUtils";
+import { createSelectionController } from "../shared/selection";
 
 export type VolumeProfileCallbacks = DrawingCrudCallbacks<VolumeProfile>;
 
@@ -98,7 +99,6 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
   const overlay = createDrawingOverlay(container, chart, "vp-overlay");
   const { svg } = overlay;
 
-  let selectedId: string | null = null;
   let dragActive = false;
   let panelEl: HTMLDivElement | null = null;
   let settingsPanel: DrawingSettingsPanelController | null = null;
@@ -325,7 +325,7 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
       els.bodyHit.style.display = "none";
       els.leftHandle.style.display = "none";
       els.rightHandle.style.display = "none";
-      els.group.classList.toggle("vp-selected", selectedId === vp.id);
+      els.group.classList.toggle("vp-selected", selection.isSelected(vp.id));
       return;
     }
     const top = Math.min(yRangeTop, yRangeBottom);
@@ -338,7 +338,7 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
     els.bodyHit.style.display = "";
     els.bodyHit.style.cursor = vp.locked ? "default" : "move";
 
-    const selected = selectedId === vp.id;
+    const selected = selection.isSelected(vp.id);
     const handleW = 6;
     els.leftHandle.setAttribute("x", String(left - handleW / 2));
     els.leftHandle.setAttribute("y", String(top));
@@ -356,8 +356,25 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
   function syncAll() {
     overlay.sync();
     profiles.forEach(syncOne);
+    const selectedId = selection.getSelectedId();
     if (selectedId) positionPanel(selectedId);
   }
+
+  const selection = createSelectionController<VolumeProfile>({
+    kind: "volumeprofile",
+    manager,
+    container,
+    findById: (id) => profiles.find((item) => item.id === id),
+    getSelectionElement: (id) => elMap.get(id)?.group ?? null,
+    onShow: (vp) => toolbarController.show(vp),
+    onHide: () => {
+      removePanel();
+      toolbarController.hide();
+    },
+    syncAll,
+    ignoreSelector: ".vp-hit-el, .vp-handle-el",
+  });
+  const selectProfile = selection.select;
 
   function deleteProfile(id: string) {
     profiles = profiles.filter((p) => p.id !== id);
@@ -366,12 +383,7 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
     invalidate(id);
     const els = elMap.get(id);
     if (els) { els.group.remove(); elMap.delete(id); }
-    if (selectedId === id) {
-      selectedId = null;
-      removePanel();
-      toolbarController.hide();
-      manager.clearSelection("volumeprofile");
-    }
+    selection.handleDeleted(id);
     callbacks.onDelete(id);
   }
 
@@ -384,12 +396,7 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
     elMap.clear();
     computedCache.clear();
     profiles = [];
-    if (selectedId !== null) {
-      selectedId = null;
-      removePanel();
-      toolbarController.hide();
-    }
-    manager.clearSelection("volumeprofile");
+    selection.reset();
     syncAll();
   }
 
@@ -400,7 +407,7 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
     invalidate(vp.id);
     callbacks.onUpdate(profiles[idx]);
     syncAll();
-    if (selectedId === vp.id) refreshPanelValues(profiles[idx]);
+    if (selection.isSelected(vp.id)) refreshPanelValues(profiles[idx]);
     toolbarController.refresh();
   }
 
@@ -586,24 +593,6 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
     panelEl = settingsPanel.panel;
   }
 
-  function selectProfile(id: string | null) {
-    if (!id) {
-      if (selectedId !== null) {
-        selectedId = null;
-        removePanel();
-        toolbarController.hide();
-        syncAll();
-      }
-      manager.clearSelection("volumeprofile");
-      return;
-    }
-    selectedId = id;
-    const vp = profiles.find((item) => item.id === id);
-    if (vp) toolbarController.show(vp);
-    manager.activateSelection("volumeprofile", elMap.get(id)?.group ?? null, id);
-    syncAll();
-  }
-
   toolbarController = new DrawingToolbarController({
     container,
     preset: "actions",
@@ -647,12 +636,15 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
       kind: "volumeprofile",
       datasetId,
       candleStore,
-      getSelectedId: () => selectedId,
+      getSelectedId: () => selection.getSelectedId(),
       findById: (id) => profiles.find((item) => item.id === id),
       append: (vp) => { profiles.push(vp); },
       onCreate: callbacks.onCreate,
       select: (id) => selectProfile(id),
-      deleteSelected: () => { if (selectedId) deleteProfile(selectedId); },
+      deleteSelected: () => {
+        const id = selection.getSelectedId();
+        if (id) deleteProfile(id);
+      },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
       syncAll,
       cancelDrawing: (silent?: boolean) => {
@@ -665,13 +657,7 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
     }),
     syncAll,
     isDragActive: () => dragActive,
-    onDeselect: () => {
-      if (selectedId === null) return;
-      selectedId = null;
-      removePanel();
-      toolbarController.hide();
-      syncAll();
-    },
+    onDeselect: () => selection.handleManagerDeselect(),
     purgeAll,
   });
 
@@ -831,25 +817,12 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
   chart.timeScale().subscribeVisibleLogicalRangeChange(refreshGhostAfterViewportChange);
   container.addEventListener("mousemove", handleMouseMove);
 
-  const onBgPointerDown = (e: PointerEvent) => {
-    if (manager.getMode() !== "none") return;
-    const t = e.target as Element;
-    if (
-      t.closest(".vp-panel") ||
-      t.closest(".rect-toolbar") ||
-      t.classList.contains("vp-hit-el") ||
-      t.classList.contains("vp-handle-el")
-    ) return;
-    if (selectedId) selectProfile(null);
-  };
-  container.addEventListener("pointerdown", onBgPointerDown);
-
   return () => {
     unregisterLifecycle();
     cleanupDrawingClick();
+    selection.destroy();
     try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(refreshGhostAfterViewportChange); } catch { }
     container.removeEventListener("mousemove", handleMouseMove);
-    container.removeEventListener("pointerdown", onBgPointerDown);
     toolbarController.destroy();
     removePanel();
     overlay.remove();

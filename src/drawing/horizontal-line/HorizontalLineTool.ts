@@ -10,6 +10,7 @@ import {
   runManagedDragSession,
 } from "../shared/ManagedDrawingTool";
 import type { ChartCandleStore, DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions } from "../shared/types";
+import { createSelectionController } from "../shared/selection";
 
 export type HorizontalLineCallbacks = DrawingCrudCallbacks<HorizontalLine>;
 
@@ -44,9 +45,21 @@ export function attachHorizontalLineTool(opts: ManagedDrawingToolOptions & {
 }): () => void {
   const { container, chart, series, candleStore, datasetId, pricePrecision, callbacks, manager } = opts;
   let lines = [...opts.horizontalLines];
-  let selectedId: string | null = null;
   let dragActive = false;
   const elementsById = new Map<string, HorizontalLineEls>();
+
+  const selection = createSelectionController<HorizontalLine>({
+    kind: "horizontalline",
+    manager,
+    container,
+    findById: (id) => lines.find((item) => item.id === id),
+    onShow: (line) => toolbarController.show(line),
+    onHide: () => toolbarController.hide(),
+    syncAll,
+    ignoreSelector: ".hline-hit, .hline-marker, .hline-price-label",
+    deselectWhileDrawing: true,
+  });
+  const selectLine = selection.select;
 
   function syncOne(line: HorizontalLine) {
     let els = elementsById.get(line.id);
@@ -55,6 +68,7 @@ export function attachHorizontalLineTool(opts: ManagedDrawingToolOptions & {
       elementsById.set(line.id, els);
     }
 
+    const selectedId = selection.getSelectedId();
     const y = series.priceToCoordinate(line.price);
     if (y == null) {
       els.line.style.display = "none";
@@ -102,7 +116,7 @@ export function attachHorizontalLineTool(opts: ManagedDrawingToolOptions & {
     lines[index] = { ...lines[index], ...patch };
     callbacks.onUpdate(lines[index]);
     syncAll();
-    if (selectedId === id) toolbarController.refresh();
+    if (selection.isSelected(id)) toolbarController.refresh();
   }
 
   function patchLineFromToolbar(line: HorizontalLine, patch: DrawingToolbarPatch) {
@@ -124,11 +138,7 @@ export function attachHorizontalLineTool(opts: ManagedDrawingToolOptions & {
       els.priceLabel.remove();
       elementsById.delete(id);
     }
-    if (selectedId === id) {
-      selectedId = null;
-      toolbarController.hide();
-      manager.clearSelection("horizontalline");
-    }
+    selection.handleDeleted(id);
     callbacks.onDelete(id);
   }
 
@@ -141,27 +151,7 @@ export function attachHorizontalLineTool(opts: ManagedDrawingToolOptions & {
     }
     elementsById.clear();
     lines = [];
-    selectedId = null;
-    toolbarController.hide();
-    manager.clearSelection("horizontalline");
-  }
-
-  function selectLine(id: string | null) {
-    if (!id) {
-      if (selectedId !== null) {
-        selectedId = null;
-        toolbarController.hide();
-        syncAll();
-      }
-      manager.clearSelection("horizontalline");
-      return;
-    }
-
-    selectedId = id;
-    const line = lines.find((item) => item.id === id);
-    if (line) toolbarController.show(line);
-    manager.activateSelection("horizontalline", null, id);
-    syncAll();
+    selection.reset();
   }
 
   function buildElements(line: HorizontalLine): HorizontalLineEls {
@@ -243,23 +233,21 @@ export function attachHorizontalLineTool(opts: ManagedDrawingToolOptions & {
       kind: "horizontalline",
       datasetId,
       candleStore,
-      getSelectedId: () => selectedId,
+      getSelectedId: () => selection.getSelectedId(),
       findById: (id) => lines.find((item) => item.id === id),
       append: (line) => { lines.push(line); },
       onCreate: callbacks.onCreate,
       select: (id) => selectLine(id),
-      deleteSelected: () => { if (selectedId) deleteLine(selectedId); },
+      deleteSelected: () => {
+        const id = selection.getSelectedId();
+        if (id) deleteLine(id);
+      },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
       syncAll,
     }),
     syncAll,
     isDragActive: () => dragActive,
-    onDeselect: () => {
-      if (selectedId === null) return;
-      selectedId = null;
-      toolbarController.hide();
-      syncAll();
-    },
+    onDeselect: () => selection.handleManagerDeselect(),
     purgeAll,
   });
 
@@ -289,20 +277,12 @@ export function attachHorizontalLineTool(opts: ManagedDrawingToolOptions & {
     },
   });
 
-  const onContainerPointerDown = (event: PointerEvent) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-    if (target.closest(".hline-toolbar, .hline-hit, .hline-marker, .hline-price-label")) return;
-    if (selectedId) selectLine(null);
-  };
-  container.addEventListener("pointerdown", onContainerPointerDown);
-
   syncAll();
 
   return () => {
     unregisterLifecycle();
     unbindCreateClick();
-    container.removeEventListener("pointerdown", onContainerPointerDown);
+    selection.destroy();
     toolbarController.destroy();
     for (const els of elementsById.values()) {
       els.line.remove();

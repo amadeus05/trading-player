@@ -12,6 +12,7 @@ import type { DrawingLineStyle } from "../shared/DrawingToolbar";
 import { createDrawingOverlay } from "../shared/overlay";
 import { bindDrawingPointerClick } from "../shared/drawingPointerClick";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
+import { createSelectionController } from "../shared/selection";
 
 export type FibonacciTrendExtensionCallbacks = DrawingCrudCallbacks<FibonacciTrendExtension>;
 
@@ -199,7 +200,6 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
   const overlay = createDrawingOverlay(container, chart, "fib-overlay");
   const { svg } = overlay;
 
-  let selectedId: string | null = null;
   let drawPoint1: { time: number; price: number } | null = null;
   let drawPoint2: { time: number; price: number } | null = null;
   let ghostGroup: SVGGElement | null = null;
@@ -276,17 +276,26 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     syncAll();
   }
 
+  const selection = createSelectionController<FibonacciTrendExtension>({
+    kind: "fibtrendext",
+    manager,
+    container,
+    findById: (id) => fibonacciTrendExtensions.find((item) => item.id === id),
+    getSelectionElement: (id) => elMap.get(id)?.group ?? null,
+    onShow: (fib) => createToolbar(fib),
+    onHide: () => removeToolbar(),
+    syncAll,
+    ignoreSelector: ".fib-trend-hit, .fib-level-hit, .fib-handle",
+  });
+  const selectFib = selection.select;
+
   function deleteFib(id: string) {
     fibonacciTrendExtensions = fibonacciTrendExtensions.filter((item) => item.id !== id);
     const els = elMap.get(id);
     els?.group.remove();
     els?.labelGroup.remove();
     elMap.delete(id);
-    if (selectedId === id) {
-      selectedId = null;
-      removeToolbar();
-      manager.clearSelection("fibtrendext");
-    }
+    selection.handleDeleted(id);
     callbacks.onDelete(id);
   }
 
@@ -297,11 +306,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     }
     elMap.clear();
     fibonacciTrendExtensions = [];
-    if (selectedId !== null) {
-      selectedId = null;
-      removeToolbar();
-    }
-    manager.clearSelection("fibtrendext");
+    selection.reset();
     syncAll();
   }
 
@@ -337,12 +342,15 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       kind: "fibtrendext",
       datasetId,
       candleStore,
-      getSelectedId: () => selectedId,
+      getSelectedId: () => selection.getSelectedId(),
       findById: (id) => fibonacciTrendExtensions.find((item) => item.id === id),
       append: (fib) => { fibonacciTrendExtensions.push(fib); },
       onCreate: callbacks.onCreate,
       select: (id) => selectFib(id),
-      deleteSelected: () => { if (selectedId) deleteFib(selectedId); },
+      deleteSelected: () => {
+        const id = selection.getSelectedId();
+        if (id) deleteFib(id);
+      },
       createFromClipboard: (data) => ({ ...data, id: crypto.randomUUID(), datasetId }),
       syncAll,
       cancelDrawing: (silent?: boolean) => {
@@ -357,31 +365,9 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     }),
     syncAll,
     isDragActive: () => dragActive,
-    onDeselect: () => {
-      if (selectedId === null) return;
-      selectedId = null;
-      removeToolbar();
-      syncAll();
-    },
+    onDeselect: () => selection.handleManagerDeselect(),
     purgeAll: purgeAllFib,
   });
-
-  function selectFib(id: string | null) {
-    if (!id) {
-      if (selectedId !== null) {
-        selectedId = null;
-        removeToolbar();
-        syncAll();
-      }
-      manager.clearSelection("fibtrendext");
-      return;
-    }
-    selectedId = id;
-    const fib = fibonacciTrendExtensions.find((item) => item.id === id);
-    if (fib) createToolbar(fib);
-    manager.activateSelection("fibtrendext", elMap.get(id)?.group ?? null, id);
-    syncAll();
-  }
 
   function buildFibTrendExtEls(fib: FibonacciTrendExtension): FibTrendExtEls {
     const group = overlay.createClippedGroup();
@@ -656,7 +642,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     }
     els.group.setAttribute("visibility", "visible");
     els.labelGroup.setAttribute("visibility", "visible");
-    renderFibGeometry(fib, els, p1, p2, p3, selectedId === fib.id);
+    renderFibGeometry(fib, els, p1, p2, p3, selection.isSelected(fib.id));
   }
 
   function syncAll() {
@@ -677,7 +663,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     const els = elMap.get(fib.id);
     if (!els) return;
     overlay.sync();
-    renderFibGeometry(fib, els, p1, p2, p3, selectedId === fib.id, "pixels");
+    renderFibGeometry(fib, els, p1, p2, p3, selection.isSelected(fib.id), "pixels");
   }
 
   function ensureGhostElements() {
@@ -983,18 +969,6 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     }
   }
 
-  function handleBackgroundClick(event: PointerEvent) {
-    if (manager.getMode() !== "none") return;
-    const target = event.target as Element;
-    if (
-      target.closest(".rect-toolbar")
-      || target.closest(".fib-trend-hit")
-      || target.closest(".fib-level-hit")
-      || target.closest(".fib-handle")
-    ) return;
-    if (selectedId) selectFib(null);
-  }
-
   syncAll();
 
   const onVisibleRangeChange = () => {
@@ -1013,8 +987,6 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     mode: "fibtrendext",
     onClick: handleDrawClick,
   });
-  container.addEventListener("pointerdown", handleBackgroundClick);
-
   return () => {
     cancelAnimationFrame(ghostRaf);
     scaleInteractionSync.destroy();
@@ -1026,7 +998,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     window.removeEventListener("pointerup", scaleInteractionSync.handlePointerUp);
     window.removeEventListener("pointercancel", scaleInteractionSync.handlePointerUp);
     window.removeEventListener("pointermove", handleDrawPointerMove);
-    container.removeEventListener("pointerdown", handleBackgroundClick);
+    selection.destroy();
     overlay.remove();
     toolbarController.destroy();
     removeToolbar();
