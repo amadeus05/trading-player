@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { Candle } from "../../types";
 import { DEFAULT_TIMEFRAME_MINUTES } from "../../shared/config/simulation";
 import { aggregateCandles, inferCandleTimeframeMinutes } from "../../shared/lib/market";
@@ -65,17 +65,36 @@ export function useReplayController({
 
   useEffect(() => {
     if (!playing) return;
-    const intervalId = window.setInterval(() => {
-      setIndex((current) => {
-        if (interactionActiveRef.current) return current;
-        if (current >= lastIndex) {
-          setPlaying(false);
-          return lastIndex;
-        }
-        return current + 1;
+    const intervalMs = Math.max(80, 800 / speed);
+    let cancelled = false;
+    let rafId = 0;
+    let lastTickAt = performance.now();
+
+    const loop = (now: number) => {
+      if (cancelled) return;
+      rafId = window.requestAnimationFrame(loop);
+      if (now - lastTickAt < intervalMs) return;
+      // Drop backlog instead of stacking setState — keeps the main thread responsive
+      // when a previous candle render/overlays still occupy the frame budget.
+      lastTickAt = now;
+      if (interactionActiveRef.current) return;
+      // Low-priority update so pointer/crosshair input wins over candle ticks.
+      startTransition(() => {
+        setIndex((current) => {
+          if (current >= lastIndex) {
+            setPlaying(false);
+            return lastIndex;
+          }
+          return current + 1;
+        });
       });
-    }, Math.max(80, 800 / speed));
-    return () => window.clearInterval(intervalId);
+    };
+
+    rafId = window.requestAnimationFrame(loop);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(rafId);
+    };
   }, [interactionActiveRef, lastIndex, playing, speed]);
 
   const changeTimeframe = (nextTimeframe: number, anchorTime = currentCandle?.time) => {

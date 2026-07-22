@@ -255,6 +255,9 @@ export function ReplayChart({
     vs.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     vs.setData(candleStore.candles.map(toVolumeData));
     let replayUpdateInProgress = false;
+    let lastPriceFitAt = 0;
+    let lastFittedLow = Number.NaN;
+    let lastFittedHigh = Number.NaN;
     const primePriceScaleInteraction = () => {
       const range = cs.priceScale().getVisibleRange();
       if (!range) return;
@@ -265,24 +268,43 @@ export function ReplayChart({
     // but keeps autoScale itself off — lightweight-charts refuses to start a vertical
     // price-axis drag while autoScale is on, so toggling it on/off for follow mode
     // left dragging permanently stuck once follow mode was turned off.
-    const fitPriceScaleToVisible = () => {
+    const fitPriceScaleToVisible = (force = false) => {
       const all = candleStore.candles;
       if (!all.length) return;
+      const now = performance.now();
+      // During rapid replay appends, refitting every tick starves pointer input.
+      if (!force && now - lastPriceFitAt < 100) return;
       const logicalRange = chart.timeScale().getVisibleLogicalRange();
-      let candlesInView = all;
+      let from = 0;
+      let to = all.length - 1;
       if (logicalRange) {
-        const from = Math.max(0, Math.floor(logicalRange.from));
-        const to = Math.min(all.length - 1, Math.ceil(logicalRange.to));
-        if (to >= from) candlesInView = all.slice(from, to + 1);
+        from = Math.max(0, Math.floor(logicalRange.from));
+        to = Math.min(all.length - 1, Math.ceil(logicalRange.to));
+        if (to < from) return;
       }
-      if (!candlesInView.length) return;
-      const low = Math.min(...candlesInView.map((c) => c.low));
-      const high = Math.max(...candlesInView.map((c) => c.high));
+      let low = Infinity;
+      let high = -Infinity;
+      for (let i = from; i <= to; i += 1) {
+        const candle = all[i];
+        if (candle.low < low) low = candle.low;
+        if (candle.high > high) high = candle.high;
+      }
       if (!Number.isFinite(low) || !Number.isFinite(high)) return;
+      // Skip no-op fits when the visible high/low barely moved.
+      if (
+        !force
+        && Math.abs(low - lastFittedLow) < 1e-8
+        && Math.abs(high - lastFittedHigh) < 1e-8
+      ) {
+        return;
+      }
       const span = high - low;
       const padding = span > 0 ? span * 0.08 : Math.max(Math.abs(high) * 0.01, 1);
       cs.priceScale().applyOptions({ autoScale: false });
       cs.priceScale().setVisibleRange({ from: low - padding, to: high + padding });
+      lastPriceFitAt = now;
+      lastFittedLow = low;
+      lastFittedHigh = high;
     };
     const applyReplayIndex = (
       nextIndex: number,
@@ -336,11 +358,17 @@ export function ReplayChart({
         followRealtime.current = shouldFollowRealtime;
         renderedIndex.current = nextIndex;
         if (followCandleRef.current) {
-          fitPriceScaleToVisible();
+          fitPriceScaleToVisible(!canAppendOneBar);
         } else if (!canAppendOneBar && !forcedRange) {
           primePriceScaleInteraction();
         }
-        drawingManager.scheduleOverlaySync();
+        // Full jumps need an immediate overlay sync; per-bar playback must throttle
+        // or pointer/crosshair input freezes on every tick at high speed.
+        if (canAppendOneBar) {
+          drawingManager.scheduleOverlaySyncThrottled(120);
+        } else {
+          drawingManager.scheduleOverlaySync();
+        }
       } finally {
         replayUpdateInProgress = false;
       }
@@ -397,7 +425,8 @@ export function ReplayChart({
           callbacksRef.current.onBarrierChange(id, kind, price),
         onEntryMarkerChange: (id, price) =>
           callbacksRef.current.onEntryMarkerChange(id, price),
-        onFrame: closedTradeOverlay.sync,
+        // closedTradeOverlay is registered on its own; avoid syncing it twice per frame.
+        onFrame: () => {},
       });
       unregisterClosedTradeSync = drawingManager.registerOverlaySync(closedTradeOverlay.sync);
       unregisterPriceMarkerSync = drawingManager.registerOverlaySync(priceMarkers.sync);
@@ -742,7 +771,9 @@ export function ReplayChart({
     chartRuntimeRef.current?.setDrawingMode(drawingMode);
   }, [drawingMode]);
 
-  useLayoutEffect(() => {
+  // useEffect (not useLayoutEffect): layout-sync on every replay tick blocks paint
+  // and pointer events at high speed, making the crosshair feel stuck to candle ticks.
+  useEffect(() => {
     if (prevReplayIndexRef.current === index) return;
     prevReplayIndexRef.current = index;
     chartRuntimeRef.current?.applyReplayIndex(index, candles, null, selectingStartRef.current);

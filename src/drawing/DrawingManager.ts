@@ -43,6 +43,8 @@ export class DrawingManager {
   private overlayLoopTokens = new Set<symbol>();
   private overlayLoopId = 0;
   private pendingOverlaySyncFrame = 0;
+  private lastOverlaySyncAt = 0;
+  private throttledOverlaySyncTimer = 0;
   private clipboard: DrawingClipboardItem | null = null;
   private drawingsVisible = true;
   private readonly onKeyDown: (event: KeyboardEvent) => void;
@@ -182,15 +184,38 @@ export class DrawingManager {
 
   /**
    * Sync overlays after lightweight-charts has applied data/viewport changes.
+   * Double-rAF waits for the chart layout pass; coalesced so burst callers share one sync.
    */
   scheduleOverlaySync(): void {
+    // Continuous interaction loop already syncs every frame.
+    if (this.overlayLoopId) return;
     cancelAnimationFrame(this.pendingOverlaySyncFrame);
     this.pendingOverlaySyncFrame = requestAnimationFrame(() => {
       this.pendingOverlaySyncFrame = requestAnimationFrame(() => {
         this.pendingOverlaySyncFrame = 0;
+        this.lastOverlaySyncAt = performance.now();
         this.syncOverlays();
       });
     });
+  }
+
+  /**
+   * Coalesce overlay syncs during high-frequency replay ticks so pointer input
+   * is not starved by syncing every drawing on every candle.
+   */
+  scheduleOverlaySyncThrottled(minIntervalMs = 120): void {
+    if (this.overlayLoopId) return;
+    const elapsed = performance.now() - this.lastOverlaySyncAt;
+    if (elapsed >= minIntervalMs && !this.pendingOverlaySyncFrame) {
+      this.scheduleOverlaySync();
+      return;
+    }
+    if (this.throttledOverlaySyncTimer) return;
+    const wait = Math.max(0, minIntervalMs - elapsed);
+    this.throttledOverlaySyncTimer = window.setTimeout(() => {
+      this.throttledOverlaySyncTimer = 0;
+      this.scheduleOverlaySync();
+    }, wait);
   }
 
   activateSelection(kind: DrawingSelectionKind, element: SVGElement | null, id?: string | null): void {
@@ -238,9 +263,11 @@ export class DrawingManager {
     this.clearSelection();
     cancelAnimationFrame(this.overlayLoopId);
     cancelAnimationFrame(this.pendingOverlaySyncFrame);
+    window.clearTimeout(this.throttledOverlaySyncTimer);
     this.overlayLoopTokens.clear();
     this.overlayLoopId = 0;
     this.pendingOverlaySyncFrame = 0;
+    this.throttledOverlaySyncTimer = 0;
     this.overlaySyncById.clear();
     this.modeChangeListeners.clear();
     this.bridgesByKind.clear();
