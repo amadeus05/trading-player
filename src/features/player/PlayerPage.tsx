@@ -112,18 +112,32 @@ export function PlayerPage() {
   const { baseAsset, quoteAsset } = getMarketAssets(activeDataset?.name);
   const {
     candles: raw,
+    intrabarCandles,
     loading: candlesLoading,
     loadingMore: candlesLoadingMore,
     hasMore: hasMoreCandles,
     loadMore: loadMoreCandles,
+    loadEarlier: loadEarlierCandles,
     loadAroundTime: loadCandlesAroundTime,
+    ensureIntrabarAround,
   } = useActiveMarketCandles(
     dataset,
     catalog,
     candleCacheRef,
     initialTimeframe,
   );
-  const pricePrecision = useMemo(() => inferPricePrecision(raw), [raw]);
+  // Точность цены — константа символа, а не выборки. Фиксируем на датасет от
+  // первого непустого окна: иначе изменение окна свечей меняло бы точность, а она
+  // зависимость эффекта создания графика → график пересоздавался бы и прыгал.
+  const pricePrecisionCacheRef = useRef<Map<string, number>>(new Map());
+  const pricePrecision = useMemo(() => {
+    const cached = pricePrecisionCacheRef.current.get(dataset);
+    if (cached != null) return cached;
+    if (!raw.length) return 2;
+    const precision = inferPricePrecision(raw);
+    pricePrecisionCacheRef.current.set(dataset, precision);
+    return precision;
+  }, [dataset, raw]);
   const {
     candles,
     currentCandle: cur,
@@ -160,6 +174,14 @@ export function PlayerPage() {
     if (!shouldPrefetchMarketCandles(raw, cur?.time, prefetchMarketCandleThresholdForTimeframe(tf))) return;
     void loadMoreCandles();
   }, [candlesLoadingMore, cur?.time, hasMoreCandles, loadMoreCandles, raw, tf]);
+  // График оттащили левее первой свечи: догружаем недостающие бары ТФ экрана.
+  const handleNeedEarlierCandles = useCallback((missingBars: number) => {
+    void loadEarlierCandles(missingBars);
+  }, [loadEarlierCandles]);
+  // 5м-окно вокруг головы воспроизведения — для intrabar-резолвера SL/TP.
+  useEffect(() => {
+    if (cur?.time != null) void ensureIntrabarAround(cur.time);
+  }, [cur?.time, ensureIntrabarAround]);
   useEffect(() => {
     if (pendingReplayTime == null || !raw.length) return;
     const last = raw.at(-1)!.time;
@@ -240,7 +262,7 @@ export function PlayerPage() {
     datasetId: dataset,
     state,
     setState,
-    rawCandles: raw,
+    rawCandles: intrabarCandles,
     currentCandle: cur,
     timeframe: tf,
     settings: simulationSettings,
@@ -350,7 +372,7 @@ export function PlayerPage() {
               {candles.length ? (
                 <ReplayChart
                   candles={candles}
-                  rawCandles={raw}
+                  rawCandles={intrabarCandles}
                   index={replayIndex}
                   barriers={chartDisplay.barriers}
                   trades={chartDisplay.trades}
@@ -373,6 +395,7 @@ export function PlayerPage() {
                   chartViewportRef={chartViewportRef}
                   deleteAllDrawingsRef={deleteAllDrawingsRef}
                   onDrawingComplete={() => setDrawingMode("none")}
+                  onNeedEarlierCandles={handleNeedEarlierCandles}
                   onInteractionChange={(active) => { chartInteractionActive.current = active; }}
                 />
               ) : (

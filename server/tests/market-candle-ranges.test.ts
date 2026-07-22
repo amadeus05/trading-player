@@ -80,7 +80,7 @@ test("next market candle range starts after the last loaded candle", () => {
   });
 });
 
-test("replay start range always includes full prehistory from catalog start", () => {
+test("replay start range loads a window instead of the full dataset prefix", () => {
   const range = buildReplayStartMarketCandleRange(
     {
       from: START,
@@ -90,8 +90,9 @@ test("replay start range always includes full prehistory from catalog start", ()
     5,
   );
 
+  // 80 баров предыстории назад от цели; хвост левее лениво догружает loadEarlier
   assert.deepEqual(range, {
-    from: START,
+    from: START + (5_000 - 80) * MARKET_CANDLE_INTERVAL_MS,
     to: START + 7_000 * MARKET_CANDLE_INTERVAL_MS,
   });
 });
@@ -112,7 +113,7 @@ test("replay start range clamps prehistory near the catalog start", () => {
   });
 });
 
-test("replay start range keeps full prehistory near the catalog end", () => {
+test("replay start range keeps the window near the catalog end", () => {
   const range = buildReplayStartMarketCandleRange(
     {
       from: START,
@@ -122,13 +123,14 @@ test("replay start range keeps full prehistory near the catalog end", () => {
     5,
   );
 
+  // 80 баров назад от цели, форвард обрезан по концу каталога
   assert.deepEqual(range, {
-    from: START,
+    from: START + (99 - 80) * MARKET_CANDLE_INTERVAL_MS,
     to: START + 100 * MARKET_CANDLE_INTERVAL_MS,
   });
 });
 
-test("replay start range expands future context for high timeframes", () => {
+test("replay start range expands both windows for high timeframes", () => {
   const range = buildReplayStartMarketCandleRange(
     {
       from: START,
@@ -138,8 +140,9 @@ test("replay start range expands future context for high timeframes", () => {
     1_440,
   );
 
+  // назад: 80 дневных баров × 288 базовых свечей = 23040; вперёд: 60 × 288 = 17280
   assert.deepEqual(range, {
-    from: START,
+    from: START + (80_000 - 23_040) * MARKET_CANDLE_INTERVAL_MS,
     to: START + 97_280 * MARKET_CANDLE_INTERVAL_MS,
   });
 });

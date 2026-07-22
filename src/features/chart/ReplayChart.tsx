@@ -89,6 +89,8 @@ interface ReplayChartProps {
   followCandle: boolean;
   chartViewportRef?: MutableRefObject<ChartViewportRef | null>;
   onDrawingComplete: () => void;
+  /** Вьюпорт ушёл левее первой свечи: missingBars — сколько баров не хватает до края рамки. */
+  onNeedEarlierCandles?: (missingBars: number) => void;
   deleteAllDrawingsRef?: MutableRefObject<(() => void) | null>;
 }
 
@@ -117,6 +119,7 @@ export function ReplayChart({
   followCandle,
   chartViewportRef,
   onDrawingComplete,
+  onNeedEarlierCandles,
   deleteAllDrawingsRef,
 }: ReplayChartProps) {
   const ref = useRef<HTMLDivElement>(null);
@@ -170,6 +173,7 @@ export function ReplayChart({
     onEntryMarkerChange,
     drawingActions,
     onDrawingComplete,
+    onNeedEarlierCandles,
   });
   callbacksRef.current = {
     onBarrierChange,
@@ -177,6 +181,7 @@ export function ReplayChart({
     onEntryMarkerChange,
     drawingActions,
     onDrawingComplete,
+    onNeedEarlierCandles,
   };
   // Stable primitive so prefetch-driven candle appends (same array identity
   // semantics aside, new reference / same interval) don't recreate the chart.
@@ -318,12 +323,30 @@ export function ReplayChart({
       const shouldFollowRealtime = followCandleRef.current || followRealtime.current;
       const previousVisible = candleStore.candles;
       const delta = renderedIndex.current == null ? 0 : nextSafeIndex - renderedIndex.current;
-      const preservedRange = forcedRange
+      // Догрузка истории влево prepend'ит свечи: логические индексы графика
+      // сдвигаются на prependedBars, и сохранённый viewport надо сдвинуть с ними,
+      // иначе картинка прыгнет назад. Prepend валиден, только если прежняя первая
+      // свеча всё ещё присутствует на позиции prependedBars (иначе это смена данных).
+      const prevFirstTime = previousVisible[0]?.time;
+      let prependedBars = 0;
+      if (prevFirstTime != null && nextVisible.length && nextVisible[0].time < prevFirstTime) {
+        while (prependedBars < nextVisible.length && nextVisible[prependedBars].time < prevFirstTime) {
+          prependedBars += 1;
+        }
+        if (nextVisible[prependedBars]?.time !== prevFirstTime) prependedBars = 0;
+      }
+      let preservedRange = forcedRange
         ?? (preserveViewport
           ? savedLogicalRange.current ?? chart.timeScale().getVisibleLogicalRange()
           : shouldFollowRealtime
             ? null
             : savedLogicalRange.current ?? chart.timeScale().getVisibleLogicalRange());
+      if (preservedRange && prependedBars > 0) {
+        preservedRange = {
+          from: preservedRange.from + prependedBars,
+          to: preservedRange.to + prependedBars,
+        } as LogicalRange;
+      }
       const canAppendOneBar = delta === 1
         && nextVisible.length === previousVisible.length + 1
         && previousVisible.length > 0
@@ -381,9 +404,42 @@ export function ReplayChart({
       savedPriceRange.current = cs.priceScale().getVisibleRange();
       followRealtime.current = Math.abs(range.to - (candleStore.candles.length - 1)) < 0.75;
     };
+    // Пустота слева от первой свечи: |from| логического диапазона — это ровно
+    // столько баров, сколько не хватает до края рамки. Догрузка строго ПОСЛЕ
+    // отпускания мыши: замена данных посреди зажатого пана дёргает график.
+    let earlierRequestTimer = 0;
+    let earlierPointerHeld = false;
+    let earlierCheckAfterRelease = false;
+    const requestEarlierIfNeeded = () => {
+      if (earlierPointerHeld) {
+        earlierCheckAfterRelease = true;
+        return;
+      }
+      const range = chart.timeScale().getVisibleLogicalRange();
+      if (!range || range.from >= -0.5) return;
+      callbacksRef.current.onNeedEarlierCandles?.(Math.ceil(-range.from));
+    };
+    const onEarlierPointerDown = () => {
+      earlierPointerHeld = true;
+    };
+    const onEarlierPointerUp = () => {
+      earlierPointerHeld = false;
+      if (earlierCheckAfterRelease) {
+        earlierCheckAfterRelease = false;
+        window.clearTimeout(earlierRequestTimer);
+        earlierRequestTimer = window.setTimeout(requestEarlierIfNeeded, 120);
+      }
+    };
+    ref.current.addEventListener("pointerdown", onEarlierPointerDown, { capture: true });
+    window.addEventListener("pointerup", onEarlierPointerUp);
+    window.addEventListener("pointercancel", onEarlierPointerUp);
     const onVisibleRangeChange = () => {
       syncViewportState();
-      if (!replayUpdateInProgress) drawingManager.scheduleOverlaySync();
+      if (!replayUpdateInProgress) {
+        drawingManager.scheduleOverlaySync();
+        window.clearTimeout(earlierRequestTimer);
+        earlierRequestTimer = window.setTimeout(requestEarlierIfNeeded, 250);
+      }
     };
     chart.timeScale().subscribeVisibleLogicalRangeChange(onVisibleRangeChange);
     if (!restoreDrawings) syncViewportState();
@@ -735,6 +791,10 @@ export function ReplayChart({
       cancelAnimationFrame(deferredTimeRangeFrame);
       chart.unsubscribeClick(selectStart);
       try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRangeChange); } catch { }
+      window.clearTimeout(earlierRequestTimer);
+      ref.current?.removeEventListener("pointerdown", onEarlierPointerDown, { capture: true });
+      window.removeEventListener("pointerup", onEarlierPointerUp);
+      window.removeEventListener("pointercancel", onEarlierPointerUp);
       syncViewportState();
       cleanupTrendLines();
       cleanupHorizontalLines();

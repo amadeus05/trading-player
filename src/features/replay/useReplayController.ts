@@ -63,6 +63,26 @@ export function useReplayController({
     setIndex((current) => Math.max(0, Math.min(current, candles.length - 1)));
   }, [candles.length]);
 
+  // Догрузка истории влево prepend'ит свечи — позиция плеера индексная, поэтому
+  // компенсируем сдвиг, чтобы текущая свеча осталась той же. Настоящий prepend
+  // отличаем от смены датасета/таймфрейма тем, что прежняя первая свеча
+  // по-прежнему присутствует в новом массиве на позиции shift.
+  const prevAggregatedRef = useRef<{ timeframe: number; firstTime: number | null }>({
+    timeframe,
+    firstTime: null,
+  });
+  useEffect(() => {
+    const firstTime = candles[0]?.time ?? null;
+    const prev = prevAggregatedRef.current;
+    prevAggregatedRef.current = { timeframe, firstTime };
+    if (prev.timeframe !== timeframe) return;
+    if (firstTime == null || prev.firstTime == null || firstTime >= prev.firstTime) return;
+    let shift = 0;
+    while (shift < candles.length && candles[shift].time < prev.firstTime) shift += 1;
+    if (shift === 0 || candles[shift]?.time !== prev.firstTime) return;
+    setIndex((current) => current + shift);
+  }, [candles, timeframe]);
+
   useEffect(() => {
     if (!playing) return;
     const intervalMs = Math.max(80, 800 / speed);

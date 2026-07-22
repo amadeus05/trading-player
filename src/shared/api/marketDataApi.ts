@@ -40,16 +40,65 @@ export async function fetchMarketCatalog(): Promise<MarketCatalogItem[]> {
   return response.json() as Promise<MarketCatalogItem[]>;
 }
 
+interface MarketDownloadJob {
+  id: string;
+  status: string;
+  error?: string;
+}
+
+/**
+ * Докачивает диапазон 5м-свечей с биржи в локальную базу и ждёт завершения
+ * джобы. true — джоба завершилась успешно (в т.ч. если данных за диапазон
+ * на бирже нет), false — ошибка или таймаут.
+ */
+export async function downloadMarketRange(
+  category: string,
+  symbol: string,
+  fromMs: number,
+  toMs: number,
+  timeoutMs = 120_000,
+): Promise<boolean> {
+  try {
+    const response = await fetch("/api/market/download", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ category, symbol: symbol.toUpperCase(), from: fromMs, to: toMs }),
+    });
+    if (!response.ok) return false;
+    const job = await response.json() as MarketDownloadJob;
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const poll = await fetch(`/api/market/jobs/${job.id}`);
+      if (!poll.ok) return false;
+      const current = await poll.json() as MarketDownloadJob;
+      if (current.status === "completed") return true;
+      if (current.status === "failed") return false;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/** Минуты → строка таймфрейма сервера (server/domain/Candle.ts); неизвестное → 5m. */
+const MINUTES_TO_TIMEFRAME: Record<number, string> = {
+  5: "5m", 10: "10m", 15: "15m", 30: "30m",
+  60: "1h", 120: "2h", 180: "3h", 240: "4h",
+  360: "6h", 720: "12h", 1440: "1d",
+};
+
 export async function fetchMarketCandles(
   category: string,
   symbol: string,
   from: number,
   to: number,
+  timeframeMinutes = 5,
 ): Promise<Candle[]> {
   const params = new URLSearchParams({
     category,
     symbol: symbol.toUpperCase(),
-    timeframe: "5m",
+    timeframe: MINUTES_TO_TIMEFRAME[timeframeMinutes] ?? "5m",
     from: String(from),
     to: String(to),
   });
