@@ -67,7 +67,6 @@ export type ChartViewportRef = {
 
 interface ReplayChartProps {
   candles: Candle[];
-  rawCandles: Candle[];
   index: number;
   barriers: Barrier[];
   trades: Trade[];
@@ -98,7 +97,6 @@ interface ReplayChartProps {
 
 export function ReplayChart({
   candles,
-  rawCandles,
   index,
   barriers,
   trades,
@@ -128,8 +126,6 @@ export function ReplayChart({
   const ref = useRef<HTMLDivElement>(null);
   const candlesRef = useRef(candles);
   candlesRef.current = candles;
-  const rawCandlesRef = useRef(rawCandles);
-  rawCandlesRef.current = rawCandles;
   const selectingStartRef = useRef(selectingStart);
   selectingStartRef.current = selectingStart;
   const followCandleRef = useRef(followCandle);
@@ -768,7 +764,7 @@ export function ReplayChart({
       chart,
       series: cs,
       candleStore: drawingCandleStore,
-      getRawCandles: () => rawCandlesRef.current,
+      getProfileCandles: () => candleStore.candles,
       getReplayEndTime: () => {
         const lastVisibleCandle = candleStore.candles.at(-1);
         if (!lastVisibleCandle) return null;

@@ -386,7 +386,6 @@ export function PlayerPage() {
               {candles.length ? (
                 <ReplayChart
                   candles={candles}
-                  rawCandles={intrabarCandles}
                   index={replayIndex}
                   barriers={chartDisplay.barriers}
                   trades={chartDisplay.trades}

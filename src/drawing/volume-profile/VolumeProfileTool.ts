@@ -85,14 +85,19 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
   chart: IChartApi;
   series: ISeriesApi<"Candlestick">;
   candleStore: ChartCandleStore;
-  getRawCandles: () => Candle[];
+  /**
+   * Свечи, по которым считается гистограмма. Это свечи самого графика, а не 5м:
+   * 5м-окно живёт вокруг головы воспроизведения и историю не покрывает, так что
+   * профиль по выбранному в прошлом диапазону оставался бы пустым.
+   */
+  getProfileCandles: () => Candle[];
   getReplayEndTime: () => number | null;
   volumeProfiles: VolumeProfile[];
   drawingMode: DrawingMode;
   datasetId: string;
   callbacks: VolumeProfileCallbacks;
 }): () => void {
-  const { container, chart, series, candleStore, getRawCandles, getReplayEndTime, datasetId, callbacks, manager } = opts;
+  const { container, chart, series, candleStore, getProfileCandles, getReplayEndTime, datasetId, callbacks, manager } = opts;
   let profiles = [...opts.volumeProfiles];
 
   const getPlotWidthLocal = () => getPlotWidth(chart);
@@ -121,10 +126,10 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
   function getComputed(vp: VolumeProfile): VolumeProfileResult | null {
     const window = getAvailableWindow(vp);
     if (!window) return null;
-    const raw = getRawCandles();
-    const fromIndex = lowerBoundByTime(raw, window.left);
-    const toIndex = upperBoundByTime(raw, window.right);
-    const windowCandles = fromIndex < toIndex ? raw.slice(fromIndex, toIndex) : [];
+    const source = getProfileCandles();
+    const fromIndex = lowerBoundByTime(source, window.left);
+    const toIndex = upperBoundByTime(source, window.right);
+    const windowCandles = fromIndex < toIndex ? source.slice(fromIndex, toIndex) : [];
     const sig = `${window.left}|${window.right}|${vp.rows}|${vp.valueAreaPct}|${vp.splitMode}|${windowCandles.length}|${windowCandles.at(-1)?.time ?? 0}`;
     const cached = computedCache.get(vp.id);
     if (cached && cached.sig === sig) return cached.result;
