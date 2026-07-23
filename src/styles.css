@@ -347,6 +347,9 @@ main {
   padding: 8px 2px 8px 4px;
   border-right: 1px solid #1c1f28;
   background: #0d0f15;
+  /* Вбок рельса не прокручивается никогда: кнопки уже неё, а overflow-y: auto
+     сам по себе переводит overflow-x в auto — и лишний пиксель давал полосу. */
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
