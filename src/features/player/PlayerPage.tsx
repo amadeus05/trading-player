@@ -193,6 +193,11 @@ export function PlayerPage() {
     if (!pendingTimeframeChange || !raw.length) return;
     const last = raw.at(-1)!.time;
     if (pendingTimeframeChange.replayTime > last) return;
+    // Ждём окно именно в НОВОМ разрешении: старые свечи это время тоже покрывают,
+    // и без проверки индекс считался бы по свечам прежнего таймфрейма — график
+    // уезжал в произвольное место.
+    const loadedTf = raw.length > 1 ? Math.round((raw[1].time - raw[0].time) / 60) : null;
+    if (loadedTf != null && loadedTf !== pendingTimeframeChange.timeframe) return;
     changeTimeframe(pendingTimeframeChange.timeframe, pendingTimeframeChange.replayTime);
     setState((current) => ({
       ...current,
