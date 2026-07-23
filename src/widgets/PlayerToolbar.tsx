@@ -1,4 +1,5 @@
 import { Button, Select } from "antd";
+import { Globe2 } from "lucide-react";
 import { ChartFocusIcon } from "./ChartFocusIcon";
 import type { MarketDatasetOption } from "../features/datasets/useMarketCatalog";
 import { formatTimeframe } from "../shared/lib/market";
@@ -13,6 +14,8 @@ interface PlayerToolbarProps {
   onTimeframeChange: (timeframe: number) => void;
   chartFullscreenActive?: boolean;
   onToggleChartFullscreen?: () => void;
+  tradingSessionsActive?: boolean;
+  onToggleTradingSessions?: () => void;
 }
 
 export function PlayerToolbar({
@@ -24,6 +27,8 @@ export function PlayerToolbar({
   onTimeframeChange,
   chartFullscreenActive = false,
   onToggleChartFullscreen,
+  tradingSessionsActive = false,
+  onToggleTradingSessions,
 }: PlayerToolbarProps) {
   return (
     <div className="toolbar">
@@ -48,6 +53,18 @@ export function PlayerToolbar({
           </Button>
         ))}
       </div>
+      {onToggleTradingSessions ? (
+        <Button
+          type="text"
+          className={`drawing-tool-btn ${tradingSessionsActive ? "is-active" : ""}`}
+          aria-label="Торговые сессии"
+          aria-pressed={tradingSessionsActive}
+          title={tradingSessionsActive ? "Скрыть торговые сессии" : "Показать торговые сессии (Сидней, Токио, Лондон, Нью-Йорк)"}
+          onClick={onToggleTradingSessions}
+        >
+          <Globe2 size={18} />
+        </Button>
+      ) : null}
       </div>
       <div className="toolbarPriceScaleSlot">
         {onToggleChartFullscreen ? (

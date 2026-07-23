@@ -359,6 +359,15 @@ export function PlayerPage() {
             onTimeframeChange={handleTimeframeChange}
             chartFullscreenActive={chartFullscreenActive}
             onToggleChartFullscreen={toggleChartFullscreen}
+            tradingSessionsActive={simulationSettings.showTradingSessions}
+            onToggleTradingSessions={() => setState((current) => ({
+              ...current,
+              settings: {
+                ...DEFAULT_SIMULATION_SETTINGS,
+                ...current.settings,
+                showTradingSessions: !simulationSettings.showTradingSessions,
+              },
+            }))}
           />
           <div className="chartArea">
             <DrawingToolsRail
@@ -389,6 +398,7 @@ export function PlayerPage() {
                   entryMarker={chartDisplay.entryMarker}
                   onEntryMarkerChange={moveEntryMarker}
                   showClosedTradeOverlays={simulationSettings.showClosedTradeOverlays}
+                  showTradingSessions={simulationSettings.showTradingSessions}
                   markersEditable={chartDisplay.markersEditable}
                   drawings={drawings}
                   drawingActions={drawingActions}
