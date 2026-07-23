@@ -208,5 +208,16 @@ export function useTradingSimulation({
     void message.success("Сделка удалена");
   };
 
-  return { workingTrades, cancelOrder, closeTrade, deleteTrade, placeOrder };
+  // Разметка на графике создаётся только вместе со сделкой и живёт под её id,
+  // поэтому чистится целиком — осиротевших барьеров остаться не может.
+  const deleteAllTrades = () => {
+    setState((current) => ({
+      ...current,
+      trades: [],
+      annotations: [],
+    }));
+    void message.success("Все сделки удалены");
+  };
+
+  return { workingTrades, cancelOrder, closeTrade, deleteTrade, deleteAllTrades, placeOrder };
 }

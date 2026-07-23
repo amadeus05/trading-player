@@ -57,6 +57,7 @@ interface PlayerModalsProps {
   onCancelOrder: (id: string) => void;
   onCloseTrade: (trade: Trade) => void;
   onDeleteTrade: (id: string) => void;
+  onDeleteAllTrades: () => void;
 }
 
 export function PlayerModals({
@@ -82,6 +83,7 @@ export function PlayerModals({
   onCancelOrder,
   onCloseTrade,
   onDeleteTrade,
+  onDeleteAllTrades,
 }: PlayerModalsProps) {
   const [journalPeriod, setJournalPeriod] = useState<JournalPeriod>("all");
   const [journalDateRange, setJournalDateRange] = useState<[Dayjs, Dayjs] | null>(null);
@@ -287,8 +289,22 @@ export function PlayerModals({
       >
         <div className="journalAnalytics">
           <div className="journalTopBar">
-            <b>Аналитика сделок</b>
-            <span>{filteredTrades.length} сделок в текущем фильтре</span>
+            <div>
+              <b>Аналитика сделок</b>
+              <span>{filteredTrades.length} сделок в текущем фильтре</span>
+            </div>
+            <Popconfirm
+              title="Удалить все сделки?"
+              description={`Будут удалены все ${trades.length} сделок и их разметка на графике, включая скрытые фильтром. Отменить нельзя.`}
+              okText="Удалить всё"
+              cancelText="Отмена"
+              okButtonProps={{ danger: true }}
+              onConfirm={onDeleteAllTrades}
+            >
+              <Button danger disabled={!trades.length} icon={<Trash2 size={14} />}>
+                Удалить все сделки{trades.length ? ` (${trades.length})` : ""}
+              </Button>
+            </Popconfirm>
           </div>
           <div className="journalFilters">
             <Select<JournalPeriod>

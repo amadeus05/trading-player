@@ -261,6 +261,7 @@ export function PlayerPage() {
     cancelOrder,
     closeTrade,
     deleteTrade,
+    deleteAllTrades,
     placeOrder,
   } = useTradingSimulation({
     enabled: hydrated,
@@ -506,6 +507,7 @@ export function PlayerPage() {
         onCancelOrder={cancelOrder}
         onCloseTrade={closeTrade}
         onDeleteTrade={deleteTrade}
+        onDeleteAllTrades={deleteAllTrades}
       />
     </div>
   );
