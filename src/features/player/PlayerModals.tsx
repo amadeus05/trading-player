@@ -3,7 +3,7 @@ import dayjs from "dayjs";
 import { Button, DatePicker, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tag } from "antd";
 import type { TableProps } from "antd";
 import type { Dayjs } from "dayjs";
-import { Download, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import type { AccountSettings, AmbiguousExitPolicy, Candle, SimulationSettings, Trade } from "../../types";
 import { formatDateTime, formatNumber, formatTimeframe } from "../../shared/lib/market";
 import {
@@ -16,76 +16,6 @@ type JournalPeriod = "all" | "today" | "week" | "month" | "custom";
 
 const EQUITY_CHART_WIDTH = 360;
 const EQUITY_CHART_HEIGHT = 116;
-
-function downloadTextFile(filename: string, content: string, type: string) {
-  const blob = new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-function escapeCsvValue(value: string | number | undefined): string {
-  const text = value == null ? "" : String(value);
-  return /[",\n\r]/.test(text) ? `"${text.replaceAll("\"", "\"\"")}"` : text;
-}
-
-function buildTradesCsv(trades: Trade[], datasetNameById: Map<string, string>): string {
-  const headers = [
-    "id",
-    "dataset",
-    "side",
-    "timeframe",
-    "status",
-    "entryTime",
-    "exitTime",
-    "entry",
-    "exit",
-    "size",
-    "leverage",
-    "sl",
-    "tp",
-    "outcome",
-    "grossResult",
-    "fees",
-    "result",
-  ];
-  const rows = trades.map((trade) => [
-    trade.id,
-    trade.datasetId ? datasetNameById.get(trade.datasetId) ?? trade.datasetId : "Unknown",
-    trade.side,
-    trade.timeframeMinutes ? formatTimeframe(trade.timeframeMinutes) : "Unknown",
-    trade.status,
-    trade.entryTime,
-    trade.exitTime,
-    trade.entry,
-    trade.exit,
-    trade.size,
-    trade.leverage,
-    trade.sl,
-    trade.tp,
-    trade.outcome,
-    trade.grossResult,
-    trade.fees,
-    trade.result,
-  ]);
-  return [headers, ...rows]
-    .map((row) => row.map(escapeCsvValue).join(","))
-    .join("\n");
-}
-
-function buildAnalyticsJson(
-  analytics: ReturnType<typeof calculateTradeAnalytics>,
-  trades: Trade[],
-): string {
-  return JSON.stringify({
-    generatedAt: new Date().toISOString(),
-    analytics,
-    trades,
-  }, null, 2);
-}
 
 function buildEquityPath(curve: Array<{ equity: number }>): string {
   if (curve.length === 0) return "";
@@ -214,20 +144,6 @@ export function PlayerModals({
   );
   const formatSigned = (value: number) => `${value >= 0 ? "+" : ""}${formatNumber(value)}`;
   const formatNullable = (value: number | null, suffix = "") => value == null ? "—" : `${formatNumber(value)}${suffix}`;
-  const exportCsv = () => {
-    downloadTextFile(
-      `trades-${dayjs().format("YYYY-MM-DD-HHmm")}.csv`,
-      buildTradesCsv(filteredTrades, datasetNameById),
-      "text/csv;charset=utf-8",
-    );
-  };
-  const exportJson = () => {
-    downloadTextFile(
-      `trade-analytics-${dayjs().format("YYYY-MM-DD-HHmm")}.json`,
-      buildAnalyticsJson(analytics, filteredTrades),
-      "application/json;charset=utf-8",
-    );
-  };
   const columns: TableProps<Trade>["columns"] = [
     { title: "Вход", dataIndex: "entryTime", render: formatDateTime },
     {
@@ -371,14 +287,8 @@ export function PlayerModals({
       >
         <div className="journalAnalytics">
           <div className="journalTopBar">
-            <div>
-              <b>Аналитика сделок</b>
-              <span>{filteredTrades.length} сделок в текущем фильтре</span>
-            </div>
-            <Space size={8}>
-              <Button icon={<Download size={14} />} onClick={exportCsv}>CSV</Button>
-              <Button icon={<Download size={14} />} onClick={exportJson}>JSON</Button>
-            </Space>
+            <b>Аналитика сделок</b>
+            <span>{filteredTrades.length} сделок в текущем фильтре</span>
           </div>
           <div className="journalFilters">
             <Select<JournalPeriod>

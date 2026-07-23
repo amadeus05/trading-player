@@ -1283,13 +1283,6 @@ g[data-channel-id].selected .pc-edge-line {
 }
 
 .journalTopBar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.journalTopBar>div {
   display: grid;
   gap: 3px;
 }
