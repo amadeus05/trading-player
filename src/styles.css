@@ -339,11 +339,12 @@ main {
 .drawing-rail {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  /* Кнопки выровнены по левому краю, справа остаётся колонка под стрелки групп. */
+  align-items: flex-start;
   flex-shrink: 0;
   gap: 2px;
-  width: 42px;
-  padding: 8px 2px;
+  width: 50px;
+  padding: 8px 2px 8px 4px;
   border-right: 1px solid #1c1f28;
   background: #0d0f15;
   overflow-y: auto;
@@ -353,7 +354,7 @@ main {
   flex-shrink: 0;
   width: 24px;
   height: 1px;
-  margin: 4px 0;
+  margin: 4px 0 4px 6px;
   background: #282b35;
 }
 
@@ -405,56 +406,91 @@ main {
 .drawing-tool-group {
   position: relative;
   flex-shrink: 0;
+  width: 36px;
 }
 
 .drawing-tool-group .drawing-tool-btn {
   position: relative;
 }
 
+/* Стрелка «есть список» — отдельная кликабельная зона справа от иконки,
+   в собственной колонке рейла (как в TradingView), а не прилеплена к иконке. */
 .drawing-tool-caret {
   position: absolute;
-  right: 3px;
-  bottom: 3px;
-  width: 0;
-  height: 0;
-  border-left: 4px solid transparent;
-  border-bottom: 4px solid #787b86;
-  pointer-events: none;
+  left: 100%;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Узкая полоса под маленькую стрелку. */
+  width: 10px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0 3px 3px 0;
+  background: transparent;
+  color: #d1d4dc;
+  cursor: pointer;
+  /* Скрыта, пока не навели на инструмент, — как в TradingView. */
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
 }
 
+.drawing-tool-caret__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.drawing-tool-caret svg {
+  display: block;
+}
+
+/* Появляется при наведении на инструмент и остаётся, пока открыт список. */
 .drawing-tool-group:hover .drawing-tool-caret,
-.drawing-tool-btn.is-active .drawing-tool-caret {
-  border-bottom-color: #d1d4dc;
+.drawing-tool-group.is-open .drawing-tool-caret {
+  opacity: 1;
+}
+
+.drawing-tool-caret:hover {
+  background: #2a2e39;
+  color: #ffffff;
+}
+
+.drawing-tool-btn.is-open {
+  background: #363a45 !important;
+  color: #ffffff !important;
 }
 
 .drawing-tool-flyout {
   position: fixed;
   z-index: 2000;
-  min-width: 240px;
-  padding: 6px;
-  border-radius: 6px;
-  background: #1e222d;
+  min-width: 268px;
+  padding: 6px 0;
+  border-radius: 8px;
+  background: #1a1d26;
   border: 1px solid #2a2e39;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 .drawing-tool-flyout__title {
-  padding: 4px 10px 6px;
+  padding: 8px 14px 6px;
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #787b86;
+  color: #6b6f7d;
 }
 
 .drawing-tool-flyout__item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  padding: 6px 10px;
+  min-height: 34px;
+  padding: 6px 14px;
   border: 0;
-  border-radius: 4px;
   background: transparent;
   color: #d1d4dc;
   font-size: 13px;
@@ -463,15 +499,16 @@ main {
 }
 
 .drawing-tool-flyout__item .drawing-tool-icon {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
+  color: #c7cad3;
 }
 
 .drawing-tool-flyout__item .drawing-tool-icon svg,
 .drawing-tool-flyout__item .drawing-tool-icon__svg {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
 }
 
 .drawing-tool-flyout__label {
@@ -481,23 +518,33 @@ main {
 
 .drawing-tool-flyout__shortcut {
   flex-shrink: 0;
-  margin-left: 16px;
+  margin-left: 24px;
   font-size: 12px;
-  color: #787b86;
+  color: #6b6f7d;
   white-space: nowrap;
+}
+
+.drawing-tool-flyout__item:hover {
+  background: #262a36;
+  color: #f0f3fa;
+}
+
+.drawing-tool-flyout__item:hover .drawing-tool-icon {
+  color: #f0f3fa;
 }
 
 .drawing-tool-flyout__item:hover .drawing-tool-flyout__shortcut {
   color: #9598a1;
 }
 
-.drawing-tool-flyout__item:hover {
-  background: #2a2e39;
-  color: #f0f3fa;
+/* Выбранный инструмент — подсветка с акцентной полосой слева, как в TV. */
+.drawing-tool-flyout__item.is-active {
+  background: #22262f;
+  color: #ffffff;
+  box-shadow: inset 2px 0 0 #2962ff;
 }
 
-.drawing-tool-flyout__item.is-active {
-  background: #363a45;
+.drawing-tool-flyout__item.is-active .drawing-tool-icon {
   color: #ffffff;
 }
 

@@ -95,80 +95,99 @@ interface ToolGroupButtonProps {
 
 function ToolGroupButton({ group, drawingMode, activeTool, onSelect }: ToolGroupButtonProps) {
   const anchorRef = useRef<HTMLDivElement>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [flyout, setFlyout] = useState<{ top: number; left: number } | null>(null);
+  /** Кнопка «в фокусе» — уже выбрана кликом; со второго клика начинает открывать меню. */
+  const [focused, setFocused] = useState(false);
 
   const groupActive = group.tools.some((tool) => tool.mode === drawingMode);
   const displayTool = groupActive
     ? (drawingMode as ToolMode)
     : activeTool;
-
-  const clearCloseTimer = () => {
-    if (closeTimer.current) {
-      clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  };
+  // Как в TradingView: у иконки тултип конкретного инструмента, у стрелки — группы.
+  const displayToolLabel = group.tools.find((tool) => tool.mode === displayTool)?.label ?? group.label;
 
   const openFlyout = () => {
-    clearCloseTimer();
     const el = anchorRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    setFlyout({ top: rect.top, left: rect.right + 6 });
+    // Отступ считаем от правого края рейла, а не кнопки: стрелка вынесена за
+    // границы группы (absolute left:100%), и меню налезало бы на неё.
+    const railRight = el.closest(".drawing-rail")?.getBoundingClientRect().right ?? rect.right;
+    setFlyout({ top: rect.top, left: railRight + 8 });
   };
 
-  const scheduleClose = () => {
-    clearCloseTimer();
-    closeTimer.current = setTimeout(() => setFlyout(null), 120);
-  };
-
-  useEffect(() => () => clearCloseTimer(), []);
-
-  // Close the flyout on any pointer interaction outside the group/flyout so a
-  // lingering flyout can never sit over the chart and swallow drawing clicks.
-  useEffect(() => {
-    if (!flyout) return;
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Element | null;
-      if (target?.closest(".drawing-tool-group, .drawing-tool-flyout")) return;
-      clearCloseTimer();
+  /**
+   * Как в TradingView: первый клик по иконке просто выбирает текущий инструмент
+   * группы, а каждый следующий открывает/закрывает выпадающее меню — пока фокус
+   * с кнопки не снят кликом мимо.
+   */
+  const handleClick = () => {
+    if (!focused) {
+      setFocused(true);
       setFlyout(null);
+      onSelect(displayTool);
+      return;
+    }
+    if (flyout) setFlyout(null);
+    else openFlyout();
+  };
+
+  // Клик мимо группы и её меню снимает фокус: следующий клик снова выбирает.
+  useEffect(() => {
+    if (!focused && !flyout) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      const insideGroup = target != null && anchorRef.current?.contains(target);
+      const insideFlyout = target instanceof Element && target.closest(".drawing-tool-flyout") != null;
+      if (insideGroup || insideFlyout) return;
+      setFlyout(null);
+      setFocused(false);
     };
     document.addEventListener("pointerdown", onPointerDown, true);
     return () => document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [flyout]);
+  }, [focused, flyout]);
 
-  const toggleDisplayTool = () => {
-    clearCloseTimer();
+  // Выбрали инструмент из другой группы — фокус с этой снят.
+  useEffect(() => {
+    if (groupActive) return;
+    setFocused(false);
     setFlyout(null);
-    onSelect(displayTool);
+  }, [groupActive]);
+
+  /** Стрелка — отдельная зона: открывает/закрывает список сразу, как в TradingView. */
+  const toggleFlyout = () => {
+    setFocused(true);
+    if (flyout) setFlyout(null);
+    else openFlyout();
   };
 
   return (
-    <div
-      ref={anchorRef}
-      className="drawing-tool-group"
-      onMouseEnter={openFlyout}
-      onMouseLeave={scheduleClose}
-    >
+    <div ref={anchorRef} className={`drawing-tool-group ${flyout ? "is-open" : ""}`}>
       <Button
         type="text"
-        className={`drawing-tool-btn ${groupActive ? "is-active" : ""}`}
-        onClick={toggleDisplayTool}
-        title={group.label}
+        className={`drawing-tool-btn ${groupActive ? "is-active" : ""} ${flyout ? "is-open" : ""}`}
+        onClick={handleClick}
+        title={displayToolLabel}
       >
         <DrawingToolIcon mode={displayTool} />
-        <span className="drawing-tool-caret" aria-hidden="true" />
       </Button>
+      <button
+        type="button"
+        className="drawing-tool-caret"
+        title={group.label}
+        aria-label={`${group.label}: открыть список`}
+        aria-expanded={flyout != null}
+        onClick={toggleFlyout}
+      >
+        <span role="img" className="drawing-tool-caret__icon" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 16" width="5" height="8">
+            <path d="M.6 1.4l1.4-1.4 8 8-8 8-1.4-1.4 6.389-6.532-6.389-6.668z" fill="currentColor" />
+          </svg>
+        </span>
+      </button>
       {flyout &&
         createPortal(
-          <div
-            className="drawing-tool-flyout"
-            style={{ top: flyout.top, left: flyout.left }}
-            onMouseEnter={clearCloseTimer}
-            onMouseLeave={scheduleClose}
-          >
+          <div className="drawing-tool-flyout" style={{ top: flyout.top, left: flyout.left }}>
             <div className="drawing-tool-flyout__title">{group.label}</div>
             {group.tools.map((tool) => (
               <button
@@ -242,7 +261,9 @@ export function DrawingToolsRail({
             group={group}
             drawingMode={drawingMode}
             activeTool={lastUsed[group.id]}
-            onSelect={toggleDrawingMode}
+            // Группа выбирает инструмент напрямую (без toggle): повторный клик по
+            // иконке открывает меню, а не снимает выбор — как в TradingView.
+            onSelect={onDrawingModeChange}
           />
         ),
       )}
