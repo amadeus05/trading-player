@@ -66,7 +66,7 @@ export function ReplayControls({
           value={speed}
           disabled={startJumpPending}
           onChange={onSpeedChange}
-          options={[1, 5, 10].map((value) => ({ value, label: `${value}×` }))}
+          options={[1, 2, 3, 4, 5, 10].map((value) => ({ value, label: `${value}×` }))}
           style={{ width: 70 }}
         />
       </div>
