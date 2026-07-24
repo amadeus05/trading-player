@@ -161,6 +161,7 @@ export function PlayerPage() {
     step,
   } = useReplayController({
     rawCandles: raw,
+    intrabarCandles,
     interactionActiveRef: chartInteractionActive,
     initialTimeframe,
   });

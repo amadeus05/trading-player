@@ -5,8 +5,35 @@ import { aggregateCandles, inferCandleTimeframeMinutes } from "../../shared/lib/
 
 interface UseReplayControllerOptions {
   rawCandles: Candle[];
+  /** 5м-свечи вокруг головы: из них собирается незакрытая свеча текущего ТФ. */
+  intrabarCandles?: Candle[];
   interactionActiveRef: RefObject<boolean>;
   initialTimeframe?: number;
+}
+
+/**
+ * Незакрытая свеча текущего ТФ: собирается только из тех 5м-баров, что уже
+ * проиграны. Без неё переход на старший ТФ показывал бы бакет целиком — стоя в
+ * 00:30 на 5м и уйдя на дневку, ты увидел бы хаи и лои всего дня, которых ещё
+ * не было.
+ */
+function buildPartialCandle(intrabar: Candle[], bucketStart: number, now: number): Candle | null {
+  let open: number | null = null;
+  let high = -Infinity;
+  let low = Infinity;
+  let close = 0;
+  let volume = 0;
+  for (const bar of intrabar) {
+    if (bar.time < bucketStart) continue;
+    if (bar.time > now) break;
+    if (open == null) open = bar.open;
+    if (bar.high > high) high = bar.high;
+    if (bar.low < low) low = bar.low;
+    close = bar.close;
+    volume += bar.volume;
+  }
+  if (open == null || !Number.isFinite(high) || !Number.isFinite(low)) return null;
+  return { time: bucketStart, open, high, low, close, volume };
 }
 
 interface AggregationCache {
@@ -16,6 +43,7 @@ interface AggregationCache {
 
 export function useReplayController({
   rawCandles,
+  intrabarCandles = [],
   interactionActiveRef,
   initialTimeframe = DEFAULT_TIMEFRAME_MINUTES,
 }: UseReplayControllerOptions) {
@@ -64,7 +92,6 @@ export function useReplayController({
   );
   const lastIndex = Math.max(0, candles.length - 1);
   const replayIndex = Math.max(0, Math.min(Number.isFinite(index) ? index : 0, lastIndex));
-  const currentCandle = candles[replayIndex];
   const candlesRef = useRef(candles);
   candlesRef.current = candles;
   const timeframeRef = useRef(timeframe);
@@ -84,6 +111,25 @@ export function useReplayController({
     const span = next != null && next > time ? next - time : timeframeRef.current * 60;
     return time + span - 1;
   };
+
+  // Если голова стоит внутри текущего бакета (пришли с младшего ТФ), показываем
+  // не готовую свечу, а собранную из уже проигранных 5м-баров. Если голова на
+  // конце свечи — она закрыта, подменять нечего.
+  const displayCandles = useMemo(() => {
+    const base = candles[replayIndex];
+    const now = playheadTimeRef.current;
+    if (!base || now == null || !intrabarCandles.length) return candles;
+    const end = candleEndTime(candles, replayIndex);
+    if (end == null || now >= end) return candles;
+    const partial = buildPartialCandle(intrabarCandles, base.time, now);
+    if (!partial) return candles;
+    const next = candles.slice();
+    next[replayIndex] = partial;
+    return next;
+    // candleEndTime читает timeframeRef — пересчёт по candles/индексу достаточен.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candles, intrabarCandles, replayIndex]);
+  const currentCandle = displayCandles[replayIndex];
 
   // Ставим время головы по индексу в ТЕКУЩЕМ таймфрейме. Вызывается из тех же
   // мест, что и setIndex при настоящем перемещении.
@@ -224,7 +270,7 @@ export function useReplayController({
   };
 
   return {
-    candles,
+    candles: displayCandles,
     currentCandle,
     datePickerOpen,
     focusRevision,
