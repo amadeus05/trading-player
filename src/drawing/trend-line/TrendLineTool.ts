@@ -6,7 +6,7 @@
 
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { TrendLine } from "../../types";
-import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
+import { logicalToCoordinateFloat, pointToPixel, snapXToNearestCandle, timeToLogical, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
 import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
 import { lineLabelLayout } from "../shared/lineLabelLayout";
@@ -380,6 +380,26 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       return;
     }
     els.group.setAttribute("visibility", "visible");
+
+    // Вертикальную линию сажаем на свечу текущего ТФ, внутри которой лежит её
+    // время. Хранится центр свечи с ТФ рисования: на другом ТФ это время попадает
+    // в середину бакета, и timeToX поставил бы линию между свечами. Берём именно
+    // «содержащую» свечу (floor), а не ближайшую: округление вперёд уводило линию
+    // за последнюю раскрытую свечу — на 3ч она повисала в пустоте справа.
+    if (tl.point1.time === tl.point2.time && candleStore.candles.length) {
+      const logical = timeToLogical(tl.point1.time, candleStore.candles);
+      const barIndex = logical == null ? null : Math.floor(logical);
+      // Только если время попадает в реально загруженную свечу. Зажимать нельзя:
+      // линии из-за пределов окна прилипали бы к краю графика вместо того, чтобы
+      // оставаться за экраном.
+      if (barIndex != null && barIndex >= 0 && barIndex < candleStore.candles.length) {
+        const snappedX = logicalToCoordinateFloat(chart, barIndex);
+        if (snappedX != null) {
+          p1.x = snappedX;
+          p2.x = snappedX;
+        }
+      }
+    }
 
     const isSelected = selection.isSelected(tl.id);
 
