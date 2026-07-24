@@ -155,6 +155,7 @@ export function ReplayChart({
       forcedRange?: LogicalRange | null,
       preserveViewport?: boolean,
     ) => void;
+    refreshLastCandle: (candle: Candle) => void;
     syncOverlays: () => void;
     setDrawingsVisible: (visible: boolean) => void;
     setDrawingMode: (mode: DrawingMode) => void;
@@ -649,6 +650,18 @@ export function ReplayChart({
     ref.current.addEventListener("wheel", zoomPriceScale, { capture: true, passive: false });
     chartRuntimeRef.current = {
       applyReplayIndex,
+      // Точечное обновление последнего бара: незакрытая свеча пересобирается,
+      // когда доезжает 5м-окно. Гонять ради этого applyReplayIndex нельзя — там
+      // вьюпорт, догрузка истории и события диапазона, и на перезагрузке данных
+      // это уходит в бесконечный цикл с прыгающим графиком.
+      refreshLastCandle: (candle: Candle) => {
+        const current = candleStore.candles;
+        if (!current.length) return;
+        candleStore.candles = [...current.slice(0, -1), candle];
+        cs.update(toCandlestickData(candle));
+        vs.update(toVolumeData(candle));
+        drawingManager.scheduleOverlaySync();
+      },
       syncOverlays: () => drawingManager.scheduleOverlaySync(),
       setDrawingsVisible: (visible) => drawingManager.setDrawingsVisible(visible),
       setDrawingMode: (mode) => {
@@ -876,16 +889,28 @@ export function ReplayChart({
 
   // useEffect (not useLayoutEffect): layout-sync on every replay tick blocks paint
   // and pointer events at high speed, making the crosshair feel stuck to candle ticks.
-  // Реагируем и на смену массива свечей, а не только индекса: незакрытая свеча
-  // старшего ТФ собирается, когда доедет 5м-окно, а индекс при этом не меняется.
-  // С проверкой только по индексу график навсегда оставался с полной свечой,
-  // то есть показывал хай и лой, которых в этот момент ещё не было.
   const prevAppliedCandlesRef = useRef(candles);
   useEffect(() => {
-    if (prevReplayIndexRef.current === index && prevAppliedCandlesRef.current === candles) return;
+    const indexChanged = prevReplayIndexRef.current !== index;
+    const previous = prevAppliedCandlesRef.current;
     prevReplayIndexRef.current = index;
     prevAppliedCandlesRef.current = candles;
-    chartRuntimeRef.current?.applyReplayIndex(index, candles, null, selectingStartRef.current);
+    if (indexChanged) {
+      chartRuntimeRef.current?.applyReplayIndex(index, candles, null, selectingStartRef.current);
+      return;
+    }
+    if (previous === candles) return;
+    // Индекс тот же, массив другой. Нас интересует только один случай: собралась
+    // незакрытая свеча, когда доехало 5м-окно, — состав тот же, изменились
+    // значения последнего бара. Обновляем его точечно. Всё остальное (прыжок,
+    // перезагрузка окна, догрузка истории) обрабатывают свои пути, и дёргать
+    // тут applyReplayIndex нельзя: он трогает вьюпорт и на смене данных
+    // зацикливался, из-за чего график непрерывно прыгал.
+    const safeIndex = Math.min(index, candles.length - 1);
+    const nextCandle = candles[safeIndex];
+    if (!nextCandle || previous.length !== candles.length) return;
+    if (previous[safeIndex]?.time !== nextCandle.time) return;
+    chartRuntimeRef.current?.refreshLastCandle(nextCandle);
   }, [index, candles]);
 
   useLayoutEffect(() => {
