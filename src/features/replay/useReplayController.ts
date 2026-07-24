@@ -54,6 +54,9 @@ export function useReplayController({
   const [selectingStart, setSelectingStart] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [focusRevision, setFocusRevision] = useState(0);
+  // Время головы живёт в ref, но достройка текущей свечи двигает его без смены
+  // индекса — счётчик нужен, чтобы такой шаг вызвал перерисовку.
+  const [playheadTick, setPlayheadTick] = useState(0);
   const aggregationCacheRef = useRef<AggregationCache | null>(null);
   // Реальное время головы воспроизведения. Позиция плеера индексная, но индекс
   // привязан к таймфрейму; чтобы 1ч→1д→1ч не терял прогресс внутри дня, держим
@@ -96,6 +99,8 @@ export function useReplayController({
   candlesRef.current = candles;
   const timeframeRef = useRef(timeframe);
   timeframeRef.current = timeframe;
+  const replayIndexRef = useRef(replayIndex);
+  replayIndexRef.current = replayIndex;
 
   /**
    * Конец свечи — момент, в котором она закрыта и целиком известна. Именно он и
@@ -118,17 +123,17 @@ export function useReplayController({
   const displayCandles = useMemo(() => {
     const base = candles[replayIndex];
     const now = playheadTimeRef.current;
+    const end = base ? candleEndTime(candles, replayIndex) : null;
     if (!base || now == null || !intrabarCandles.length) return candles;
-    const end = candleEndTime(candles, replayIndex);
     if (end == null || now >= end) return candles;
     const partial = buildPartialCandle(intrabarCandles, base.time, now);
     if (!partial) return candles;
     const next = candles.slice();
     next[replayIndex] = partial;
     return next;
-    // candleEndTime читает timeframeRef — пересчёт по candles/индексу достаточен.
+    // playheadTick — достройка свечи двигает время головы без смены индекса.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, intrabarCandles, replayIndex]);
+  }, [candles, intrabarCandles, replayIndex, playheadTick]);
   const currentCandle = displayCandles[replayIndex];
 
   // Ставим время головы по индексу в ТЕКУЩЕМ таймфрейме. Вызывается из тех же
@@ -138,6 +143,35 @@ export function useReplayController({
     if (end != null) playheadTimeRef.current = end;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * Один шаг воспроизведения. Если текущая свеча ещё не закрыта (мы внутри
+   * бакета после перехода со младшего ТФ), сначала достраиваем её до конца —
+   * иначе «следующая свеча» перепрыгивала недостроенную, та молча становилась
+   * полной, и сразу появлялась ещё одна.
+   */
+  const advanceRef = useRef<() => void>(() => {});
+  advanceRef.current = () => {
+    const source = candlesRef.current;
+    const idx = replayIndexRef.current;
+    const last = source.length - 1;
+    const now = playheadTimeRef.current;
+    const end = candleEndTime(source, idx);
+    if (end != null && now != null && now < end) {
+      playheadTimeRef.current = end;
+      setPlayheadTick((tick) => tick + 1);
+      return;
+    }
+    if (idx >= last) {
+      setPlaying(false);
+      return;
+    }
+    const next = idx + 1;
+    // Обновляем сразу: на высокой скорости тик может прийти раньше ре-рендера.
+    replayIndexRef.current = next;
+    commitPlayhead(next);
+    setIndex(next);
+  };
 
   // Первичная инициализация: до первого перемещения голова стоит на стартовой
   // свече. Смена датасета сбрасывает playhead в null (см. setIndexExternal) —
@@ -189,17 +223,7 @@ export function useReplayController({
       lastTickAt = now;
       if (interactionActiveRef.current) return;
       // Low-priority update so pointer/crosshair input wins over candle ticks.
-      startTransition(() => {
-        setIndex((current) => {
-          if (current >= lastIndex) {
-            setPlaying(false);
-            return lastIndex;
-          }
-          const next = current + 1;
-          commitPlayhead(next);
-          return next;
-        });
-      });
+      startTransition(() => advanceRef.current());
     };
 
     rafId = window.requestAnimationFrame(loop);
@@ -250,11 +274,7 @@ export function useReplayController({
     if (key === "random") selectIndex(Math.floor(Math.random() * Math.max(1, lastIndex)));
   };
 
-  const step = () => setIndex((current) => {
-    const next = Math.min(current + 1, lastIndex);
-    commitPlayhead(next);
-    return next;
-  });
+  const step = () => advanceRef.current();
   const reset = () => {
     setPlaying(false);
     const next = Math.min(120, lastIndex);
