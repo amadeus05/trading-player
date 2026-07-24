@@ -27,6 +27,13 @@ export function useReplayController({
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [focusRevision, setFocusRevision] = useState(0);
   const aggregationCacheRef = useRef<AggregationCache | null>(null);
+  // Реальное время головы воспроизведения. Позиция плеера индексная, но индекс
+  // привязан к таймфрейму; чтобы 1ч→1д→1ч не терял прогресс внутри дня, держим
+  // отдельно настоящее время и восстанавливаем позицию из него при смене ТФ.
+  // Обновляется ТОЛЬКО в реальных перемещениях (шаг/play/выбор/reset) синхронно,
+  // не через эффект: иначе промежуточный ре-рендер при догрузке окна писал бы
+  // сюда случайную свечу со ещё не поправленным индексом.
+  const playheadTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
     setTimeframe(initialTimeframe);
@@ -58,6 +65,24 @@ export function useReplayController({
   const lastIndex = Math.max(0, candles.length - 1);
   const replayIndex = Math.max(0, Math.min(Number.isFinite(index) ? index : 0, lastIndex));
   const currentCandle = candles[replayIndex];
+  const candlesRef = useRef(candles);
+  candlesRef.current = candles;
+
+  // Ставим время головы по индексу в ТЕКУЩЕМ таймфрейме. Вызывается из тех же
+  // мест, что и setIndex при настоящем перемещении.
+  const commitPlayhead = useCallback((targetIndex: number) => {
+    const time = candlesRef.current[targetIndex]?.time;
+    if (time != null) playheadTimeRef.current = time;
+  }, []);
+
+  // Первичная инициализация: до первого перемещения голова стоит на стартовой
+  // свече. Смена датасета сбрасывает playhead в null (см. resetPlayhead) — тогда
+  // этот эффект переустановит его уже по свече нового датасета.
+  useEffect(() => {
+    if (playheadTimeRef.current == null && currentCandle?.time != null) {
+      playheadTimeRef.current = currentCandle.time;
+    }
+  }, [currentCandle]);
 
   useEffect(() => {
     setIndex((current) => Math.max(0, Math.min(current, candles.length - 1)));
@@ -105,7 +130,9 @@ export function useReplayController({
             setPlaying(false);
             return lastIndex;
           }
-          return current + 1;
+          const next = current + 1;
+          commitPlayhead(next);
+          return next;
         });
       });
     };
@@ -115,9 +142,9 @@ export function useReplayController({
       cancelled = true;
       window.cancelAnimationFrame(rafId);
     };
-  }, [interactionActiveRef, lastIndex, playing, speed]);
+  }, [commitPlayhead, interactionActiveRef, lastIndex, playing, speed]);
 
-  const changeTimeframe = (nextTimeframe: number, anchorTime = currentCandle?.time) => {
+  const changeTimeframe = (nextTimeframe: number, anchorTime = playheadTimeRef.current ?? currentCandle?.time) => {
     const nextCandles = getAggregatedCandles(nextTimeframe);
     let nextIndex = 0;
     if (anchorTime != null) {
@@ -126,14 +153,21 @@ export function useReplayController({
         nextIndex = candidate;
       }
     }
+    // playhead намеренно не трогаем: индекс уедет на открытие свечи нового ТФ,
+    // а настоящее время головы должно остаться, иначе обратное переключение
+    // вернёт в начало периода.
     setTimeframe(nextTimeframe);
     setIndex(nextIndex);
     setFocusRevision((current) => current + 1);
   };
 
+  const getPlayheadTime = useCallback(() => playheadTimeRef.current, []);
+
   const selectIndex = (nextIndex: number) => {
     setPlaying(false);
-    setIndex(Math.max(0, Math.min(nextIndex, lastIndex)));
+    const clamped = Math.max(0, Math.min(nextIndex, lastIndex));
+    commitPlayhead(clamped);
+    setIndex(clamped);
     setSelectingStart(false);
     setFocusRevision((current) => current + 1);
   };
@@ -151,10 +185,23 @@ export function useReplayController({
     if (key === "random") selectIndex(Math.floor(Math.random() * Math.max(1, lastIndex)));
   };
 
-  const step = () => setIndex((current) => Math.min(current + 1, lastIndex));
+  const step = () => setIndex((current) => {
+    const next = Math.min(current + 1, lastIndex);
+    commitPlayhead(next);
+    return next;
+  });
   const reset = () => {
     setPlaying(false);
-    setIndex(Math.min(120, lastIndex));
+    const next = Math.min(120, lastIndex);
+    commitPlayhead(next);
+    setIndex(next);
+  };
+
+  // Внешняя репозиция (смена датасета) — сбрасываем playhead, чтобы он взялся
+  // заново по свече нового датасета, а не остался от прежнего.
+  const setIndexExternal = (value: number) => {
+    playheadTimeRef.current = null;
+    setIndex(value);
   };
 
   return {
@@ -169,11 +216,12 @@ export function useReplayController({
     speed,
     timeframe,
     changeTimeframe,
+    getPlayheadTime,
     handleStartAction,
     reset,
     selectTime,
     setDatePickerOpen,
-    setIndex,
+    setIndex: setIndexExternal,
     setPlaying,
     setSpeed,
     step,

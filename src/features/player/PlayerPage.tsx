@@ -150,6 +150,7 @@ export function PlayerPage() {
     speed,
     timeframe: tf,
     changeTimeframe,
+    getPlayheadTime,
     handleStartAction: handleReplayStartAction,
     reset,
     selectTime: selectReplayTime,
@@ -317,7 +318,9 @@ export function PlayerPage() {
     }));
   }
   const handleTimeframeChange = useCallback((nextTimeframe: number) => {
-    const replayTime = cur?.time;
+    // Настоящее время головы, а не открытие текущей свечи ТФ: на старших ТФ оно
+    // схлопывалось на начало периода, и переключение теряло прогресс внутри дня.
+    const replayTime = getPlayheadTime() ?? cur?.time;
     setPlaying(false);
     if (replayTime == null) {
       changeTimeframe(nextTimeframe);
@@ -328,7 +331,7 @@ export function PlayerPage() {
     void loadCandlesAroundTime(replayTime, nextTimeframe).then((loaded) => {
       if (!loaded) setPendingTimeframeChange(null);
     });
-  }, [changeTimeframe, cur?.time, loadCandlesAroundTime, setPlaying, setState]);
+  }, [changeTimeframe, cur?.time, getPlayheadTime, loadCandlesAroundTime, setPlaying, setState]);
   const handleMarketOpen = useCallback((market: Dataset) => {
     candleCacheRef.current.set(market.id, market.candles);
     void refreshCatalog();
