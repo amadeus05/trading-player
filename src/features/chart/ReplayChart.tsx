@@ -876,9 +876,15 @@ export function ReplayChart({
 
   // useEffect (not useLayoutEffect): layout-sync on every replay tick blocks paint
   // and pointer events at high speed, making the crosshair feel stuck to candle ticks.
+  // Реагируем и на смену массива свечей, а не только индекса: незакрытая свеча
+  // старшего ТФ собирается, когда доедет 5м-окно, а индекс при этом не меняется.
+  // С проверкой только по индексу график навсегда оставался с полной свечой,
+  // то есть показывал хай и лой, которых в этот момент ещё не было.
+  const prevAppliedCandlesRef = useRef(candles);
   useEffect(() => {
-    if (prevReplayIndexRef.current === index) return;
+    if (prevReplayIndexRef.current === index && prevAppliedCandlesRef.current === candles) return;
     prevReplayIndexRef.current = index;
+    prevAppliedCandlesRef.current = candles;
     chartRuntimeRef.current?.applyReplayIndex(index, candles, null, selectingStartRef.current);
   }, [index, candles]);
 
