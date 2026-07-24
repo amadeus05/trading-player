@@ -67,22 +67,41 @@ export function useReplayController({
   const currentCandle = candles[replayIndex];
   const candlesRef = useRef(candles);
   candlesRef.current = candles;
+  const timeframeRef = useRef(timeframe);
+  timeframeRef.current = timeframe;
+
+  /**
+   * Конец свечи — момент, в котором она закрыта и целиком известна. Именно он и
+   * есть «сейчас» для плеера: стоя на часовой свече 13:00, ты видел весь час,
+   * значит текущее время 13:59:59, а не 13:00. Если брать открытие, переход на
+   * младший ТФ откатывал бы голову в начало периода и уже показанные свечи
+   * снова становились бы будущим.
+   */
+  const candleEndTime = (source: Candle[], targetIndex: number): number | null => {
+    const time = source[targetIndex]?.time;
+    if (time == null) return null;
+    const next = source[targetIndex + 1]?.time;
+    const span = next != null && next > time ? next - time : timeframeRef.current * 60;
+    return time + span - 1;
+  };
 
   // Ставим время головы по индексу в ТЕКУЩЕМ таймфрейме. Вызывается из тех же
   // мест, что и setIndex при настоящем перемещении.
   const commitPlayhead = useCallback((targetIndex: number) => {
-    const time = candlesRef.current[targetIndex]?.time;
-    if (time != null) playheadTimeRef.current = time;
+    const end = candleEndTime(candlesRef.current, targetIndex);
+    if (end != null) playheadTimeRef.current = end;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Первичная инициализация: до первого перемещения голова стоит на стартовой
-  // свече. Смена датасета сбрасывает playhead в null (см. resetPlayhead) — тогда
-  // этот эффект переустановит его уже по свече нового датасета.
+  // свече. Смена датасета сбрасывает playhead в null (см. setIndexExternal) —
+  // тогда этот эффект переустановит его уже по свече нового датасета.
   useEffect(() => {
-    if (playheadTimeRef.current == null && currentCandle?.time != null) {
-      playheadTimeRef.current = currentCandle.time;
+    if (playheadTimeRef.current == null) {
+      const end = candleEndTime(candlesRef.current, replayIndex);
+      if (end != null) playheadTimeRef.current = end;
     }
-  }, [currentCandle]);
+  }, [currentCandle, replayIndex]);
 
   useEffect(() => {
     setIndex((current) => Math.max(0, Math.min(current, candles.length - 1)));
