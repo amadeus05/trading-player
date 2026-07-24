@@ -180,10 +180,15 @@ export function PlayerPage() {
   const handleNeedEarlierCandles = useCallback((missingBars: number) => {
     void loadEarlierCandles(missingBars);
   }, [loadEarlierCandles]);
-  // 5м-окно вокруг головы воспроизведения — для intrabar-резолвера SL/TP.
+  // 5м-окно вокруг головы: из него собирается незакрытая свеча и работает
+  // intrabar-резолвер SL/TP. Смена ТФ обнуляет окно, но время текущей свечи при
+  // этом может не измениться — например, 12:00 это граница и часа, и четырёх
+  // часов. По одному лишь cur.time эффект тогда не срабатывал, окно оставалось
+  // пустым, и старший ТФ показывал полную свечу вместо незакрытой. Поэтому
+  // следим ещё за таймфреймом и за самим фактом пустого окна.
   useEffect(() => {
     if (cur?.time != null) void ensureIntrabarAround(cur.time);
-  }, [cur?.time, ensureIntrabarAround]);
+  }, [cur?.time, tf, intrabarCandles.length, ensureIntrabarAround]);
   useEffect(() => {
     if (pendingReplayTime == null || !raw.length) return;
     const last = raw.at(-1)!.time;
