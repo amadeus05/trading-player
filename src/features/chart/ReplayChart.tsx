@@ -134,9 +134,19 @@ export function ReplayChart({
   const savedLogicalRange = useRef<LogicalRange | null>(null);
   const savedPriceRange = useRef<PriceRange | null>(null);
   const savedCandleInterval = useRef<number | null>(null);
+  // Рамка, которую мы намеренно выставили (фокус/смена ТФ). На свежем монтаже
+  // график ещё не разложил layout и обрезает её до прижатой к правому краю —
+  // сохраняем намерение, а не фактический диапазон, иначе cleanup решит, что
+  // пользователь «следует за реальным временем», и закрепит край.
+  const pendingFocusRange = useRef<LogicalRange | null>(null);
   const renderedIndex = useRef<number | null>(null);
   const followRealtime = useRef(true);
-  const appliedFocusRevision = useRef(focusRevision);
+  // Заведомо «непринятая» ревизия: на переключении ТФ вверх candles на кадр
+  // пустеет, PlayerPage размонтирует график, и все ref'ы сбрасываются. Если
+  // считать фокус уже применённым, свежий монтаж уходит в scrollToPosition и
+  // липнет к правому краю — вниз окно ставилось, вверх нет. Требуем фокус и на
+  // первом монтаже, чтобы рамка была одинаковой в обе стороны.
+  const appliedFocusRevision = useRef(focusRevision - 1);
   const appliedDrawingRestoreRevision = useRef(drawingRestoreRevision);
   const chartRuntimeRef = useRef<{
     applyReplayIndex: (
@@ -399,6 +409,10 @@ export function ReplayChart({
     };
     const syncViewportState = () => {
       if (replayUpdateInProgress) return;
+      // Пока действует выставленная нами рамка и пользователь её не трогал, не
+      // даём ещё не разложенному графику подменить намерение: он отдаёт диапазон,
+      // прижатый к последней свече, и отсюда включалось «следование за краем».
+      if (pendingFocusRange.current) return;
       const range = chart.timeScale().getVisibleLogicalRange();
       if (!range) return;
       savedLogicalRange.current = range;
@@ -524,8 +538,13 @@ export function ReplayChart({
       initialRange = restoreViewportRange;
       followRealtime.current = false;
     }
+    if (initialRange) pendingFocusRange.current = initialRange;
     applyReplayIndex(safeIndex, liveCandles, initialRange, restoreDrawings);
-    if (timeframeChanged && initialRange) {
+    // Переприменяем окно кадром позже при любом initialRange, а не только при
+    // timeframeChanged: на свежем монтаже графика (переключение ТФ вверх)
+    // setVisibleLogicalRange до раскладки layout не приживается, график
+    // остаётся прижатым к правому краю, и следующий прогон это закрепляет.
+    if (initialRange) {
       deferredTimeRangeFrame = requestAnimationFrame(() => {
         chart.timeScale().setVisibleLogicalRange(initialRange!);
         primePriceScaleInteraction();
@@ -599,6 +618,8 @@ export function ReplayChart({
     let chartInteractionWheelTimer = 0;
     const markManualViewportInteraction = () => {
       followRealtime.current = false;
+      // Пользователь сам подвигал график — намерение по рамке больше не актуально.
+      pendingFocusRange.current = null;
     };
     const startChartInteractionOverlayLoop = () => {
       markManualViewportInteraction();
@@ -790,10 +811,17 @@ export function ReplayChart({
       if (deleteAllDrawingsRef) deleteAllDrawingsRef.current = null;
       chartAlive = false;
       const range = chart.timeScale().getVisibleLogicalRange();
-      savedLogicalRange.current = range;
+      // Если рамку выставляли мы и пользователь её не трогал — переносим дальше
+      // именно её, а не то, что успел показать ещё не разложенный график.
+      savedLogicalRange.current = pendingFocusRange.current ?? range;
       savedPriceRange.current = cs.priceScale().getVisibleRange();
-      savedCandleInterval.current = candleInterval;
-      if (range) followRealtime.current = Math.abs(range.to - (candleStore.candles.length - 1)) < 0.75;
+      // Между сменой ТФ есть кадр, где новых свечей ещё нет и candleInterval === null.
+      // Если дать ему затереть сохранённый интервал, сравнение timeframeChanged на
+      // следующем прогоне потеряет базу, фокус не сработает и график прилипнет к
+      // правому краю — переключение «вверх» вело себя иначе, чем «вниз».
+      if (candleInterval != null) savedCandleInterval.current = candleInterval;
+      if (pendingFocusRange.current) followRealtime.current = false;
+      else if (range) followRealtime.current = Math.abs(range.to - (candleStore.candles.length - 1)) < 0.75;
       ref.current?.removeEventListener("pointerdown", startChartInteractionOverlayLoop, { capture: true });
       window.removeEventListener("pointerup", stopChartInteractionOverlayLoopNow);
       window.removeEventListener("pointercancel", stopChartInteractionOverlayLoopNow);
