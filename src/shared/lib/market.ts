@@ -5,8 +5,15 @@ const QUOTE_ASSETS = ["USDT", "USDC", "BUSD", "USD", "BTC", "ETH"] as const;
 export const formatNumber = (value: number) =>
   value.toLocaleString("en-US", { maximumFractionDigits: 2 });
 
+/**
+ * Всё время в приложении — рыночное UTC, как и ось графика (lightweight-charts
+ * рисует её в UTC). Без явной зоны часы плеера показывали местное время, и
+ * «начало суток» на часах не совпадало с началом дневной свечи: летом на три
+ * часа. На младших ТФ это почти незаметно, а на 1д уводило в предыдущие сутки.
+ */
 export const formatDateTime = (timestamp: number) =>
   new Date(timestamp * 1_000).toLocaleString("ru-RU", {
+    timeZone: "UTC",
     day: "2-digit",
     month: "short",
     hour: "2-digit",
@@ -15,6 +22,7 @@ export const formatDateTime = (timestamp: number) =>
 
 export const formatMarketDate = (timestampMs: number) =>
   new Date(timestampMs).toLocaleDateString("ru-RU", {
+    timeZone: "UTC",
     day: "2-digit",
     month: "short",
     year: "numeric",

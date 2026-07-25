@@ -274,7 +274,9 @@ export function PlayerModals({
           maxDate={replayDateRange ? dayjs(replayDateRange.to - 1) : candles.at(-1) ? dayjs(candles.at(-1)!.time * 1_000) : undefined}
           onChange={(value) => {
             if (!value) return;
-            onReplayTimeSelect(value.startOf("day").unix());
+            // Полночь именно по UTC: startOf("day") даёт местную, и прыжок
+            // попадал в предыдущие сутки рынка — на дневке это целая свеча мимо.
+            onReplayTimeSelect(Date.UTC(value.year(), value.month(), value.date()) / 1_000);
             onDatePickerClose();
           }}
         />
