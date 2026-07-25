@@ -548,11 +548,11 @@ export function ReplayChart({
     if (initialRange) {
       deferredTimeRangeFrame = requestAnimationFrame(() => {
         chart.timeScale().setVisibleLogicalRange(initialRange!);
-        primePriceScaleInteraction();
-      });
-    } else if (forceFocus) {
-      deferredTimeRangeFrame = requestAnimationFrame(() => {
-        primePriceScaleInteraction();
+        // Считаем ценовой диапазон по самим свечам, а не через
+        // primePriceScaleInteraction: тот берёт текущий видимый диапазон, а после
+        // прыжка автомасштаб пересчитаться ещё не успел — защёлкивался диапазон
+        // от прошлой позиции, и график оказывался пустым в чужих ценах.
+        fitPriceScaleToVisible(true);
       });
     }
     appliedFocusRevision.current = focusRevision;
