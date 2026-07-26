@@ -12,6 +12,7 @@ export const DEFAULT_SIMULATION_SETTINGS: SimulationSettings = {
   stopSlippagePct: 0.05,
   showClosedTradeOverlays: true,
   showTradingSessions: false,
+  showCci: false,
   followCandle: false,
   ambiguousExitPolicy: "conservative",
 };

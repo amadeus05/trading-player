@@ -380,6 +380,15 @@ export function PlayerPage() {
                 showTradingSessions: !simulationSettings.showTradingSessions,
               },
             }))}
+            cciActive={simulationSettings.showCci}
+            onToggleCci={() => setState((current) => ({
+              ...current,
+              settings: {
+                ...DEFAULT_SIMULATION_SETTINGS,
+                ...current.settings,
+                showCci: !simulationSettings.showCci,
+              },
+            }))}
           />
           <div className="chartArea">
             <DrawingToolsRail
@@ -410,6 +419,7 @@ export function PlayerPage() {
                   onEntryMarkerChange={moveEntryMarker}
                   showClosedTradeOverlays={simulationSettings.showClosedTradeOverlays}
                   showTradingSessions={simulationSettings.showTradingSessions}
+                  showCci={simulationSettings.showCci}
                   markersEditable={chartDisplay.markersEditable}
                   drawings={drawings}
                   drawingActions={drawingActions}

@@ -1,5 +1,5 @@
 import { Button, Select } from "antd";
-import { Globe2 } from "lucide-react";
+import { Activity, Globe2 } from "lucide-react";
 import { ChartFocusIcon } from "./ChartFocusIcon";
 import type { MarketDatasetOption } from "../features/datasets/useMarketCatalog";
 import { formatTimeframe } from "../shared/lib/market";
@@ -16,6 +16,8 @@ interface PlayerToolbarProps {
   onToggleChartFullscreen?: () => void;
   tradingSessionsActive?: boolean;
   onToggleTradingSessions?: () => void;
+  cciActive?: boolean;
+  onToggleCci?: () => void;
 }
 
 export function PlayerToolbar({
@@ -29,6 +31,8 @@ export function PlayerToolbar({
   onToggleChartFullscreen,
   tradingSessionsActive = false,
   onToggleTradingSessions,
+  cciActive = false,
+  onToggleCci,
 }: PlayerToolbarProps) {
   return (
     <div className="toolbar">
@@ -63,6 +67,18 @@ export function PlayerToolbar({
           onClick={onToggleTradingSessions}
         >
           <Globe2 size={18} />
+        </Button>
+      ) : null}
+      {onToggleCci ? (
+        <Button
+          type="text"
+          className={`drawing-tool-btn ${cciActive ? "is-active" : ""}`}
+          aria-label="Индикатор CCI"
+          aria-pressed={cciActive}
+          title={cciActive ? "Скрыть CCI" : "Показать CCI (7) в отдельной панели"}
+          onClick={onToggleCci}
+        >
+          <Activity size={18} />
         </Button>
       ) : null}
       </div>
