@@ -194,51 +194,29 @@ export function useReplayController({
     setIndex((current) => Math.max(0, Math.min(current, candles.length - 1)));
   }, [candles.length]);
 
-  // Позиция плеера индексная, а окно свечей заменяется целиком: прыжок на свечу
-  // перезагружает его вокруг новой точки (ради форвард-буфера), догрузка влево
-  // prepend'ит. После замены прежний индекс молча указывает на ДРУГУЮ свечу:
-  // окно сдвинулось вперёд на N проигранных баров — и все «обрезанные» свечи
-  // снова оказывались позади головы, первый же тик play дорисовывал их разом.
-  // Поэтому после каждой замены массива заново находим свечу по времени головы.
-  const prevAggregatedRef = useRef<{ timeframe: number; datasetId: string; candles: Candle[] | null }>({
-    timeframe,
-    datasetId,
-    candles: null,
-  });
-  // Время головы принадлежит конкретному инструменту: у другого своя история и
-  // свой ценовой диапазон. Без сброса ре-анкор находил это время в новой истории
-  // и уводил индекс далеко вперёд — проигрывать после переключения было нечего.
+  // Время головы принадлежит конкретному инструменту: у другого своя история.
   useEffect(() => {
     playheadTimeRef.current = null;
   }, [datasetId]);
+
+  // Догрузка истории влево prepend'ит свечи — позиция плеера индексная, поэтому
+  // компенсируем сдвиг, чтобы текущая свеча осталась той же. Настоящий prepend
+  // отличаем от смены датасета/таймфрейма тем, что прежняя первая свеча
+  // по-прежнему присутствует в новом массиве на позиции shift.
+  const prevAggregatedRef = useRef<{ timeframe: number; firstTime: number | null }>({
+    timeframe,
+    firstTime: null,
+  });
   useEffect(() => {
+    const firstTime = candles[0]?.time ?? null;
     const prev = prevAggregatedRef.current;
-    prevAggregatedRef.current = { timeframe, datasetId, candles };
-    if (prev.candles === candles || prev.candles == null) return;
-    // Смену ТФ ведёт changeTimeframe со своим якорем, смену датасета — сброс
-    // позиции в PlayerPage. В обоих случаях переносить старую точку нельзя.
-    if (prev.timeframe !== timeframe || prev.datasetId !== datasetId) return;
-    const anchor = playheadTimeRef.current;
-    if (anchor == null || !candles.length) return;
-    // Последняя свеча, начавшаяся не позже головы (голова — конец свечи).
-    let low = 0;
-    let high = candles.length - 1;
-    let found = -1;
-    while (low <= high) {
-      const mid = (low + high) >> 1;
-      if (candles[mid].time <= anchor) {
-        found = mid;
-        low = mid + 1;
-      } else {
-        high = mid - 1;
-      }
-    }
-    if (found < 0) return;
-    setIndex((current) => {
-      const safe = Math.max(0, Math.min(current, candles.length - 1));
-      // Индекс всё ещё указывает на ту же свечу — не трогаем (обычный append).
-      return candles[safe]?.time === candles[found].time ? safe : found;
-    });
+    prevAggregatedRef.current = { timeframe, firstTime };
+    if (prev.timeframe !== timeframe) return;
+    if (firstTime == null || prev.firstTime == null || firstTime >= prev.firstTime) return;
+    let shift = 0;
+    while (shift < candles.length && candles[shift].time < prev.firstTime) shift += 1;
+    if (shift === 0 || candles[shift]?.time !== prev.firstTime) return;
+    setIndex((current) => current + shift);
   }, [candles, timeframe]);
 
   // Дошли до конца загруженных свечей — воспроизведение останавливается.

@@ -167,6 +167,11 @@ export function PlayerPage() {
     initialTimeframe,
   });
   const [pendingReplayTime, setPendingReplayTime] = useState<number | null>(null);
+  // Окно данных под выбранное время уже приехало. Без этого флага выбор
+  // применялся к СТАРОМУ окну, если оно тоже покрывало нужное время: индекс
+  // считался для него, а потом приезжало новое окно — и тот же номер означал
+  // уже другую свечу. Отсюда после второго прыжка раскрывалась куча свечей.
+  const [pendingJumpReady, setPendingJumpReady] = useState(false);
   const [pendingTimeframeChange, setPendingTimeframeChange] = useState<{
     timeframe: number;
     replayTime: number;
@@ -191,12 +196,13 @@ export function PlayerPage() {
     if (cur?.time != null) void ensureIntrabarAround(cur.time);
   }, [cur?.time, tf, intrabarCandles.length, ensureIntrabarAround]);
   useEffect(() => {
-    if (pendingReplayTime == null || !raw.length) return;
+    if (pendingReplayTime == null || !pendingJumpReady || !raw.length) return;
     const last = raw.at(-1)!.time;
     if (pendingReplayTime > last) return;
     selectReplayTime(pendingReplayTime);
     setPendingReplayTime(null);
-  }, [pendingReplayTime, raw, selectReplayTime]);
+    setPendingJumpReady(false);
+  }, [pendingJumpReady, pendingReplayTime, raw, selectReplayTime]);
   useEffect(() => {
     if (!pendingTimeframeChange || !raw.length) return;
     // Ждём окно именно в НОВОМ разрешении: старые свечи это время тоже покрывают,
@@ -218,8 +224,10 @@ export function PlayerPage() {
   const selectReplayTimeWithData = useCallback((time: number, timeframeMinutes = tf) => {
     setPlaying(false);
     setPendingReplayTime(time);
+    setPendingJumpReady(false);
     void loadCandlesAroundTime(time, timeframeMinutes).then((loaded) => {
-      if (!loaded) setPendingReplayTime(null);
+      if (loaded) setPendingJumpReady(true);
+      else setPendingReplayTime(null);
     });
   }, [loadCandlesAroundTime, setPlaying, tf]);
   const handleStartAction = useCallback((key: string) => {
