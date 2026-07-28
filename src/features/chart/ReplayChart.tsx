@@ -216,6 +216,24 @@ export function ReplayChart({
     if (!visible.length) return;
     const candleStore = { candles: visible as Candle[] };
     const drawingCandleStore = { candles: liveCandles as Candle[] };
+    /**
+     * Годится ли ценовой диапазон для текущих свечей. Мало проверить, что он
+     * корректно сформирован: после пересоздания графика (смена датасета) шкала
+     * возвращает диапазон от ПРЕЖНИХ данных — он валиден, но из другой ценовой
+     * области. Защёлкнув его, мы уводили свечи за экран: оставались видны только
+     * объёмы (у них своя шкала), и лечилось это лишь двойным кликом по шкале.
+     */
+    const priceRangeFitsCandles = (range: PriceRange | null | undefined): range is PriceRange => {
+      if (!range || !Number.isFinite(range.from) || !Number.isFinite(range.to) || range.from === range.to) return false;
+      let low = Infinity;
+      let high = -Infinity;
+      for (const candle of candleStore.candles) {
+        if (candle.low < low) low = candle.low;
+        if (candle.high > high) high = candle.high;
+      }
+      if (!Number.isFinite(low) || !Number.isFinite(high)) return false;
+      return Math.max(range.from, range.to) >= low && Math.min(range.from, range.to) <= high;
+    };
     const chart = createChart(ref.current, {
       autoSize: true,
       layout: { background: { color: "#0d0f15" }, textColor: "#7f8494" },
@@ -261,7 +279,9 @@ export function ReplayChart({
       priceFormat: { type: "price", precision: pricePrecision, minMove: 10 ** -pricePrecision },
     });
     cs.setData(candleStore.candles.map(toCandlestickData));
-    if (restorePriceRange) {
+    // Сохранённый диапазон переживает смену датасета — применяем только если он
+    // действительно про эти свечи.
+    if (priceRangeFitsCandles(restorePriceRange)) {
       cs.priceScale().applyOptions({ autoScale: false });
       cs.priceScale().setVisibleRange(restorePriceRange);
     }
@@ -277,17 +297,13 @@ export function ReplayChart({
     let lastFittedHigh = Number.NaN;
     const primePriceScaleInteraction = () => {
       const range = cs.priceScale().getVisibleRange();
-      // Проверять надо и содержимое, а не только сам объект: from/to бывают
-      // пустыми, пока шкала не посчитана. Раньше autoScale успевал выключиться,
-      // а setVisibleRange падал с "Value is null" — шкала оставалась запертой
-      // без валидного диапазона, и график пропадал с экрана.
-      if (range && Number.isFinite(range.from) && Number.isFinite(range.to) && range.from !== range.to) {
+      if (priceRangeFitsCandles(range)) {
         cs.priceScale().applyOptions({ autoScale: false });
         cs.priceScale().setVisibleRange(range);
         return;
       }
-      // Диапазона ещё нет — считаем его из самих свечей. Автомасштаб она тоже
-      // выключает, так что перетаскивание шкалы не ломается.
+      // Диапазон отсутствует или не про эти свечи — считаем его из самих свечей.
+      // Автомасштаб она тоже выключает, так что перетаскивание шкалы не ломается.
       fitPriceScaleToVisible(true);
     };
     // Fits the price scale to whatever candles are on screen, like autoScale would,

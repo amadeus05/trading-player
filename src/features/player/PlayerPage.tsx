@@ -162,6 +162,7 @@ export function PlayerPage() {
   } = useReplayController({
     rawCandles: raw,
     intrabarCandles,
+    datasetId: dataset,
     interactionActiveRef: chartInteractionActive,
     initialTimeframe,
   });

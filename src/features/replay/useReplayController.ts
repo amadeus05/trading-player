@@ -7,6 +7,8 @@ interface UseReplayControllerOptions {
   rawCandles: Candle[];
   /** 5м-свечи вокруг головы: из них собирается незакрытая свеча текущего ТФ. */
   intrabarCandles?: Candle[];
+  /** Нужен, чтобы не переносить позицию между разными инструментами. */
+  datasetId?: string;
   interactionActiveRef: RefObject<boolean>;
   initialTimeframe?: number;
 }
@@ -44,6 +46,7 @@ interface AggregationCache {
 export function useReplayController({
   rawCandles,
   intrabarCandles = [],
+  datasetId = "",
   interactionActiveRef,
   initialTimeframe = DEFAULT_TIMEFRAME_MINUTES,
 }: UseReplayControllerOptions) {
@@ -197,16 +200,24 @@ export function useReplayController({
   // окно сдвинулось вперёд на N проигранных баров — и все «обрезанные» свечи
   // снова оказывались позади головы, первый же тик play дорисовывал их разом.
   // Поэтому после каждой замены массива заново находим свечу по времени головы.
-  const prevAggregatedRef = useRef<{ timeframe: number; candles: Candle[] | null }>({
+  const prevAggregatedRef = useRef<{ timeframe: number; datasetId: string; candles: Candle[] | null }>({
     timeframe,
+    datasetId,
     candles: null,
   });
+  // Время головы принадлежит конкретному инструменту: у другого своя история и
+  // свой ценовой диапазон. Без сброса ре-анкор находил это время в новой истории
+  // и уводил индекс далеко вперёд — проигрывать после переключения было нечего.
+  useEffect(() => {
+    playheadTimeRef.current = null;
+  }, [datasetId]);
   useEffect(() => {
     const prev = prevAggregatedRef.current;
-    prevAggregatedRef.current = { timeframe, candles };
+    prevAggregatedRef.current = { timeframe, datasetId, candles };
     if (prev.candles === candles || prev.candles == null) return;
-    // Смену ТФ ведёт changeTimeframe со своим якорем — не вмешиваемся.
-    if (prev.timeframe !== timeframe) return;
+    // Смену ТФ ведёт changeTimeframe со своим якорем, смену датасета — сброс
+    // позиции в PlayerPage. В обоих случаях переносить старую точку нельзя.
+    if (prev.timeframe !== timeframe || prev.datasetId !== datasetId) return;
     const anchor = playheadTimeRef.current;
     if (anchor == null || !candles.length) return;
     // Последняя свеча, начавшаяся не позже головы (голова — конец свечи).
