@@ -80,7 +80,7 @@ export function useTradingSimulation({
     notification.open({
       placement: "topRight",
       type: profitable ? "success" : "error",
-      message: `Сделка закрыта · ${outcome}`,
+      title: `Сделка закрыта · ${outcome}`,
       description: (
         <div className="close-notification">
           <b>{trade.side}</b>
