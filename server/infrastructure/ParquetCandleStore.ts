@@ -1,5 +1,5 @@
 import { mkdir, rm, rename, writeFile, readdir, stat } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import type { Candle, Timeframe } from "../domain/Candle.js";
@@ -30,6 +30,27 @@ export class ParquetCandleStore implements CandleRepository {
 
   private glob(category: MarketCategory, symbol: string): string {
     return sqlPath(join(this.marketDir(category, symbol), "*", "*.parquet"));
+  }
+
+  /**
+   * Есть ли хоть один parquet под символом. Проверять существование папки мало:
+   * writeMonth создаёт её ДО записи, поэтому оборванная закачка оставляет пустой
+   * каталог — read_parquet на нём падает с "No files found that match the
+   * pattern", и запрос свечей отдавал 500 вместо пустого ответа.
+   */
+  private hasParquet(category: MarketCategory, symbol: string): boolean {
+    const dir = this.marketDir(category, symbol);
+    if (!existsSync(dir)) return false;
+    try {
+      for (const year of readdirSync(dir)) {
+        const yearDir = join(dir, year);
+        if (!statSync(yearDir).isDirectory()) continue;
+        if (readdirSync(yearDir).some((file) => file.endsWith(".parquet"))) return true;
+      }
+    } catch {
+      return false;
+    }
+    return false;
   }
 
   async covered(request: DownloadRequest): Promise<boolean> {
@@ -93,7 +114,7 @@ export class ParquetCandleStore implements CandleRepository {
     const bucket = timeframeMs(timeframe);
     const factor = bucket / BASE_INTERVAL_MS;
     const glob = this.glob(category, symbol);
-    if (!existsSync(this.marketDir(category, symbol))) return [];
+    if (!this.hasParquet(category, symbol)) return [];
     const alignedFrom = Math.floor(from / bucket) * bucket;
     const rows = await this.runner.run(`
       WITH source AS (
