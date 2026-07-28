@@ -3,15 +3,9 @@ import {
   CandlestickSeries,
   CrosshairMode,
   createChart,
-  createSeriesMarkers,
   HistogramSeries,
-  LineSeries,
-  LineStyle,
   type CandlestickData,
   type HistogramData,
-  type ISeriesApi,
-  type ISeriesMarkersPluginApi,
-  type LineData,
   type LogicalRange,
   type MouseEventParams,
   type Time,
@@ -35,8 +29,6 @@ import {
   type DrawingMode,
 } from "../../drawing";
 import { attachClosedTradeOverlay } from "./closedTradeOverlay";
-import { CCI_DEFAULTS, computeCci, computeLastCci, type IndicatorPoint } from "./computeCci";
-import { computeDivergences, divergenceKey, type DivergenceKind } from "./computeDivergences";
 import { attachSessionsOverlay } from "./sessionsOverlay";
 import { attachPriceMarkers } from "./priceMarkers";
 import type { DrawingActions, DrawingCollections } from "../drawings/useDrawingCollections";
@@ -88,7 +80,6 @@ interface ReplayChartProps {
   onEntryMarkerChange: (id: string, price: number) => void;
   showClosedTradeOverlays: boolean;
   showTradingSessions: boolean;
-  showCci: boolean;
   markersEditable: boolean;
   drawings: DrawingCollections;
   drawingActions: DrawingActions;
@@ -119,7 +110,6 @@ export function ReplayChart({
   onEntryMarkerChange,
   showClosedTradeOverlays,
   showTradingSessions,
-  showCci,
   markersEditable,
   drawings,
   drawingActions,
@@ -281,87 +271,6 @@ export function ReplayChart({
     });
     vs.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     vs.setData(candleStore.candles.map(toVolumeData));
-    // CCI живёт в отдельной панели: диапазон ±300 на ценовую шкалу не наложить.
-    let cciSeries: ISeriesApi<"Line"> | null = null;
-    let cciPaneApi: ReturnType<typeof chart.addPane> | null = null;
-    let cciMarkers: ISeriesMarkersPluginApi<Time> | null = null;
-    const divergenceLines = new Map<string, ISeriesApi<"Line">>();
-    const DIVERGENCE_COLORS: Record<DivergenceKind, string> = { bull: "#2bd9a8", bear: "#ff5c73" };
-    const cciPoint = (point: { time: number; value: number }): LineData<UTCTimestamp> => ({
-      time: point.time as UTCTimestamp,
-      value: point.value,
-    });
-    /**
-     * Дивергенции пересобираются по ключу отрезка: за один шаг обычно добавляется
-     * ноль или одна линия, а не перерисовывается весь набор.
-     */
-    const syncDivergences = (visible: Candle[], points: IndicatorPoint[]) => {
-      if (!cciSeries || !cciPaneApi) return;
-      const found = computeDivergences(visible, points);
-      const liveKeys = new Set(found.map(divergenceKey));
-      for (const [key, series] of divergenceLines) {
-        if (liveKeys.has(key)) continue;
-        chart.removeSeries(series);
-        divergenceLines.delete(key);
-      }
-      for (const divergence of found) {
-        const key = divergenceKey(divergence);
-        if (divergenceLines.has(key)) continue;
-        const line = cciPaneApi.addSeries(LineSeries, {
-          color: DIVERGENCE_COLORS[divergence.kind],
-          lineWidth: 2,
-          priceLineVisible: false,
-          lastValueVisible: false,
-          crosshairMarkerVisible: false,
-        });
-        line.setData([
-          { time: divergence.fromTime as UTCTimestamp, value: divergence.fromValue },
-          { time: divergence.toTime as UTCTimestamp, value: divergence.toValue },
-        ]);
-        divergenceLines.set(key, line);
-      }
-      // Метки должны идти по возрастанию времени и без дублей.
-      const markers = [...found]
-        .sort((left, right) => left.toTime - right.toTime)
-        .filter((divergence, index, list) => index === 0 || list[index - 1].toTime !== divergence.toTime)
-        .map((divergence) => ({
-          time: divergence.toTime as UTCTimestamp,
-          position: divergence.kind === "bull" ? ("belowBar" as const) : ("aboveBar" as const),
-          color: DIVERGENCE_COLORS[divergence.kind],
-          shape: "circle" as const,
-          text: divergence.kind === "bull" ? "Bull" : "Bear",
-        }));
-      cciMarkers?.setMarkers(markers);
-    };
-    if (showCci) {
-      const cciPane = chart.addPane();
-      cciPaneApi = cciPane;
-      cciSeries = cciPane.addSeries(LineSeries, {
-        color: "#ffd600",
-        lineWidth: 1,
-        priceLineVisible: false,
-        priceFormat: { type: "price", precision: 2, minMove: 0.01 },
-      });
-      const band = (price: number, color: string) => cciSeries?.createPriceLine({
-        price,
-        color,
-        lineWidth: 1,
-        lineStyle: LineStyle.Dashed,
-        axisLabelVisible: false,
-        title: "",
-      });
-      band(CCI_DEFAULTS.upperBand, "#787b86");
-      band(0, "#5d606b");
-      band(CCI_DEFAULTS.lowerBand, "#787b86");
-      const initialCci = computeCci(candleStore.candles, CCI_DEFAULTS.length);
-      cciSeries.setData(initialCci.map(cciPoint));
-      cciMarkers = createSeriesMarkers(cciSeries);
-      syncDivergences(candleStore.candles, initialCci);
-      // Пропорции задаём после того, как в панели появилась серия с данными:
-      // на пустой панели размер не применяется.
-      chart.panes()[0]?.setStretchFactor(3);
-      cciPane.setStretchFactor(1);
-    }
     let replayUpdateInProgress = false;
     let lastPriceFitAt = 0;
     let lastFittedLow = Number.NaN;
@@ -486,21 +395,9 @@ export function ReplayChart({
           const appended = nextVisible[nextVisible.length - 1];
           cs.update(toCandlestickData(appended));
           vs.update(toVolumeData(appended));
-          // Новый бар меняет только последнее значение CCI — считаем его одно.
-          const lastCci = computeLastCci(nextVisible, CCI_DEFAULTS.length);
-          if (lastCci && cciSeries) {
-            cciSeries.update(cciPoint(lastCci));
-            // Новый бар мог подтвердить пивот, а с ним и дивергенцию.
-            syncDivergences(nextVisible, computeCci(nextVisible, CCI_DEFAULTS.length));
-          }
         } else {
           cs.setData(nextVisible.map(toCandlestickData));
           vs.setData(nextVisible.map(toVolumeData));
-          if (cciSeries) {
-            const points = computeCci(nextVisible, CCI_DEFAULTS.length);
-            cciSeries.setData(points.map(cciPoint));
-            syncDivergences(nextVisible, points);
-          }
         }
 
         // Запоминаем рамку, которую сами выставили. Читать её обратно через
@@ -803,13 +700,9 @@ export function ReplayChart({
       refreshLastCandle: (candle: Candle) => {
         const current = candleStore.candles;
         if (!current.length) return;
-        const next = [...current.slice(0, -1), candle];
-        candleStore.candles = next;
+        candleStore.candles = [...current.slice(0, -1), candle];
         cs.update(toCandlestickData(candle));
         vs.update(toVolumeData(candle));
-        // Незакрытая свеча меняется — CCI последнего бара пересчитываем вместе с ней.
-        const lastCci = computeLastCci(next, CCI_DEFAULTS.length);
-        if (lastCci) cciSeries?.update(cciPoint(lastCci));
         drawingManager.scheduleOverlaySync();
       },
       syncOverlays: () => drawingManager.scheduleOverlaySync(),
@@ -1015,9 +908,7 @@ export function ReplayChart({
       chartRuntimeRef.current = null;
       if (chartViewportRef) chartViewportRef.current = null;
     };
-    // showCci пересоздаёт график: панель добавляется и убирается вместе с ним.
-    // Вьюпорт при этом сохраняется через savedLogicalRange, как при смене ТФ.
-  }, [candleInterval, focusRevision, pricePrecision, datasetId, drawingRestoreRevision, chartViewportRef, showCci]);
+  }, [candleInterval, focusRevision, pricePrecision, datasetId, drawingRestoreRevision, chartViewportRef]);
 
   const prevOverlayKeyRef = useRef("");
   useLayoutEffect(() => {
