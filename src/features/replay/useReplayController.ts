@@ -99,8 +99,9 @@ export function useReplayController({
   candlesRef.current = candles;
   const timeframeRef = useRef(timeframe);
   timeframeRef.current = timeframe;
-  const replayIndexRef = useRef(replayIndex);
-  replayIndexRef.current = replayIndex;
+  // Конец текущей свечи — нужен шагу, чтобы понять, закрыта она или достраивается.
+  // Значение производное, отставание максимум на один рендер само себя исправляет.
+  const currentEndRef = useRef<number | null>(null);
 
   /**
    * Конец свечи — момент, в котором она закрыта и целиком известна. Именно он и
@@ -116,6 +117,7 @@ export function useReplayController({
     const span = next != null && next > time ? next - time : timeframeRef.current * 60;
     return time + span - 1;
   };
+  currentEndRef.current = candleEndTime(candles, replayIndex);
 
   // Если голова стоит внутри текущего бакета (пришли с младшего ТФ), показываем
   // не готовую свечу, а собранную из уже проигранных 5м-баров. Если голова на
@@ -152,25 +154,27 @@ export function useReplayController({
    */
   const advanceRef = useRef<() => void>(() => {});
   advanceRef.current = () => {
-    const source = candlesRef.current;
-    const idx = replayIndexRef.current;
-    const last = source.length - 1;
     const now = playheadTimeRef.current;
-    const end = candleEndTime(source, idx);
+    const end = currentEndRef.current;
     if (end != null && now != null && now < end) {
       playheadTimeRef.current = end;
       setPlayheadTick((tick) => tick + 1);
       return;
     }
-    if (idx >= last) {
-      setPlaying(false);
-      return;
-    }
-    const next = idx + 1;
-    // Обновляем сразу: на высокой скорости тик может прийти раньше ре-рендера.
-    replayIndexRef.current = next;
-    commitPlayhead(next);
-    setIndex(next);
+    // Функциональное обновление, а не индекс из ref: React применяет его к
+    // актуальному состоянию, поэтому шаг всегда ровно +1, даже если тик пришёл
+    // раньше ре-рендера. С ref индекс мог разъехаться с состоянием и один тик
+    // перебрасывал плеер на сотни свечей вперёд.
+    setIndex((current) => {
+      const source = candlesRef.current;
+      const last = source.length - 1;
+      const safe = Math.max(0, Math.min(current, last));
+      if (safe >= last) return safe;
+      const next = safe + 1;
+      const nextEnd = candleEndTime(source, next);
+      if (nextEnd != null) playheadTimeRef.current = nextEnd;
+      return next;
+    });
   };
 
   // Первичная инициализация: до первого перемещения голова стоит на стартовой
@@ -187,25 +191,51 @@ export function useReplayController({
     setIndex((current) => Math.max(0, Math.min(current, candles.length - 1)));
   }, [candles.length]);
 
-  // Догрузка истории влево prepend'ит свечи — позиция плеера индексная, поэтому
-  // компенсируем сдвиг, чтобы текущая свеча осталась той же. Настоящий prepend
-  // отличаем от смены датасета/таймфрейма тем, что прежняя первая свеча
-  // по-прежнему присутствует в новом массиве на позиции shift.
-  const prevAggregatedRef = useRef<{ timeframe: number; firstTime: number | null }>({
+  // Позиция плеера индексная, а окно свечей заменяется целиком: прыжок на свечу
+  // перезагружает его вокруг новой точки (ради форвард-буфера), догрузка влево
+  // prepend'ит. После замены прежний индекс молча указывает на ДРУГУЮ свечу:
+  // окно сдвинулось вперёд на N проигранных баров — и все «обрезанные» свечи
+  // снова оказывались позади головы, первый же тик play дорисовывал их разом.
+  // Поэтому после каждой замены массива заново находим свечу по времени головы.
+  const prevAggregatedRef = useRef<{ timeframe: number; candles: Candle[] | null }>({
     timeframe,
-    firstTime: null,
+    candles: null,
   });
   useEffect(() => {
-    const firstTime = candles[0]?.time ?? null;
     const prev = prevAggregatedRef.current;
-    prevAggregatedRef.current = { timeframe, firstTime };
+    prevAggregatedRef.current = { timeframe, candles };
+    if (prev.candles === candles || prev.candles == null) return;
+    // Смену ТФ ведёт changeTimeframe со своим якорем — не вмешиваемся.
     if (prev.timeframe !== timeframe) return;
-    if (firstTime == null || prev.firstTime == null || firstTime >= prev.firstTime) return;
-    let shift = 0;
-    while (shift < candles.length && candles[shift].time < prev.firstTime) shift += 1;
-    if (shift === 0 || candles[shift]?.time !== prev.firstTime) return;
-    setIndex((current) => current + shift);
+    const anchor = playheadTimeRef.current;
+    if (anchor == null || !candles.length) return;
+    // Последняя свеча, начавшаяся не позже головы (голова — конец свечи).
+    let low = 0;
+    let high = candles.length - 1;
+    let found = -1;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      if (candles[mid].time <= anchor) {
+        found = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+    if (found < 0) return;
+    setIndex((current) => {
+      const safe = Math.max(0, Math.min(current, candles.length - 1));
+      // Индекс всё ещё указывает на ту же свечу — не трогаем (обычный append).
+      return candles[safe]?.time === candles[found].time ? safe : found;
+    });
   }, [candles, timeframe]);
+
+  // Дошли до конца загруженных свечей — воспроизведение останавливается.
+  // Отдельным эффектом, а не внутри шага: шаг теперь функциональный апдейт, а
+  // вызывать setPlaying из него — побочный эффект во время рендера.
+  useEffect(() => {
+    if (playing && replayIndex >= lastIndex) setPlaying(false);
+  }, [playing, replayIndex, lastIndex]);
 
   useEffect(() => {
     if (!playing) return;
@@ -231,7 +261,7 @@ export function useReplayController({
       cancelled = true;
       window.cancelAnimationFrame(rafId);
     };
-  }, [commitPlayhead, interactionActiveRef, lastIndex, playing, speed]);
+  }, [interactionActiveRef, lastIndex, playing, speed]);
 
   const changeTimeframe = (nextTimeframe: number, anchorTime = playheadTimeRef.current ?? currentCandle?.time) => {
     const nextCandles = getAggregatedCandles(nextTimeframe);

@@ -368,9 +368,18 @@ export function ReplayChart({
     let lastFittedHigh = Number.NaN;
     const primePriceScaleInteraction = () => {
       const range = cs.priceScale().getVisibleRange();
-      if (!range) return;
-      cs.priceScale().applyOptions({ autoScale: false });
-      cs.priceScale().setVisibleRange(range);
+      // Проверять надо и содержимое, а не только сам объект: from/to бывают
+      // пустыми, пока шкала не посчитана. Раньше autoScale успевал выключиться,
+      // а setVisibleRange падал с "Value is null" — шкала оставалась запертой
+      // без валидного диапазона, и график пропадал с экрана.
+      if (range && Number.isFinite(range.from) && Number.isFinite(range.to) && range.from !== range.to) {
+        cs.priceScale().applyOptions({ autoScale: false });
+        cs.priceScale().setVisibleRange(range);
+        return;
+      }
+      // Диапазона ещё нет — считаем его из самих свечей. Автомасштаб она тоже
+      // выключает, так что перетаскивание шкалы не ломается.
+      fitPriceScaleToVisible(true);
     };
     // Fits the price scale to whatever candles are on screen, like autoScale would,
     // but keeps autoScale itself off — lightweight-charts refuses to start a vertical
@@ -421,6 +430,11 @@ export function ReplayChart({
       preserveViewport = false,
     ) => {
       if (!allCandles.length) return;
+      // Обычное обновление (без навязанной рамки) — значит момент фокуса позади.
+      // Снимаем флаг, иначе syncViewportState останется выключенным навсегда, а
+      // savedLogicalRange застрянет на устаревшем значении: пишем один диапазон,
+      // читаем предыдущий, и вьюпорт начинает дёргаться между двумя на каждом тике.
+      if (forcedRange == null) pendingFocusRange.current = null;
       const nextSafeIndex = Math.max(0, Math.min(nextIndex, allCandles.length - 1));
       const nextVisible = allCandles.slice(0, nextSafeIndex + 1);
       const shouldFollowRealtime = followCandleRef.current || followRealtime.current;
@@ -437,6 +451,15 @@ export function ReplayChart({
           prependedBars += 1;
         }
         if (nextVisible[prependedBars]?.time !== prevFirstTime) prependedBars = 0;
+      } else if (prevFirstTime != null && nextVisible.length && nextVisible[0].time > prevFirstTime) {
+        // Симметричный случай: окно заменили на сдвинутое вперёд (перезагрузка
+        // вокруг выбранной свечи), слева выпало N баров — логические индексы
+        // уменьшились, рамку двигаем влево, чтобы картинка осталась на месте.
+        let dropped = 0;
+        while (dropped < previousVisible.length && previousVisible[dropped].time < nextVisible[0].time) {
+          dropped += 1;
+        }
+        prependedBars = previousVisible[dropped]?.time === nextVisible[0].time ? -dropped : 0;
       }
       let preservedRange = forcedRange
         ?? (preserveViewport
@@ -444,7 +467,7 @@ export function ReplayChart({
           : shouldFollowRealtime
             ? null
             : savedLogicalRange.current ?? chart.timeScale().getVisibleLogicalRange());
-      if (preservedRange && prependedBars > 0) {
+      if (preservedRange && prependedBars !== 0) {
         preservedRange = {
           from: preservedRange.from + prependedBars,
           to: preservedRange.to + prependedBars,
@@ -480,18 +503,27 @@ export function ReplayChart({
           }
         }
 
+        // Запоминаем рамку, которую сами выставили. Читать её обратно через
+        // getVisibleLogicalRange() сразу после записи нельзя: кадр ещё не прошёл
+        // и возвращается предыдущее значение. Из-за этого savedLogicalRange
+        // застревал на устаревшем диапазоне, и на следующем тике график
+        // восстанавливал его — отсюда скачки масштаба и прижатие к правому краю.
+        let appliedRange: LogicalRange | null = null;
         if (preservedRange) {
           chart.timeScale().setVisibleLogicalRange(preservedRange);
+          appliedRange = preservedRange;
         } else if (!preserveViewport && shouldFollowRealtime && nextVisible.length > 1) {
           // scrollToRealTime() is always animated, which keeps firing visible-range
           // change events for ~1s and starves the overlay sync (each event reschedules
           // it 2 frames out). scrollToPosition(0, false) reaches the same edge instantly.
           chart.timeScale().scrollToPosition(0, false);
         } else if (!preserveViewport) {
-          chart.timeScale().setVisibleLogicalRange(defaultFocusRange(nextSafeIndex));
+          appliedRange = defaultFocusRange(nextSafeIndex);
+          chart.timeScale().setVisibleLogicalRange(appliedRange);
         }
 
-        savedLogicalRange.current = chart.timeScale().getVisibleLogicalRange() ?? preservedRange;
+        // Ветка scrollToPosition своей рамки не задаёт — только там читаем факт.
+        savedLogicalRange.current = appliedRange ?? chart.timeScale().getVisibleLogicalRange();
         savedPriceRange.current = cs.priceScale().getVisibleRange();
         followRealtime.current = shouldFollowRealtime;
         renderedIndex.current = nextIndex;
@@ -656,6 +688,11 @@ export function ReplayChart({
         // прыжка автомасштаб пересчитаться ещё не успел — защёлкивался диапазон
         // от прошлой позиции, и график оказывался пустым в чужих ценах.
         fitPriceScaleToVisible(true);
+        // Рамка применена на разложенном графике. Сохраняем именно её, а не
+        // прочитанное значение, и снимаем флаг — дальше syncViewportState снова
+        // следит за реальным диапазоном.
+        savedLogicalRange.current = initialRange;
+        pendingFocusRange.current = null;
       });
     }
     appliedFocusRevision.current = focusRevision;
@@ -675,7 +712,12 @@ export function ReplayChart({
     if (ref.current) layoutObserver.observe(ref.current);
     const timeScaleHeight = Math.max(28, chart.timeScale().height());
     let chartAlive = true;
+    // chartAlive обязателен: обработчик может пережить график, а обращение к
+    // серии уничтоженного графика падает внутри библиотеки ("Value is null" из
+    // getPane). Причём падало уже ПОСЛЕ выключения autoScale — шкала оставалась
+    // запертой без диапазона. У zoomPriceScale такая защита была, у этих двух нет.
     const markManualScale = (event: PointerEvent) => {
+      if (!chartAlive) return;
       const element = ref.current;
       if (!element) return;
       const bounds = element.getBoundingClientRect();
@@ -684,6 +726,7 @@ export function ReplayChart({
       }
     };
     const resetManualScale = (event: MouseEvent) => {
+      if (!chartAlive) return;
       const element = ref.current;
       if (!element) return;
       const bounds = element.getBoundingClientRect();
