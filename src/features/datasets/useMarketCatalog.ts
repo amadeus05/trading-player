@@ -8,6 +8,8 @@ export type MarketDatasetOption = {
   category: string;
   from: number;
   to: number;
+  /** Число базовых 5м-свечей в датасете — из него считается объём любого ТФ. */
+  baseCandles: number;
   name: string;
   label: string;
 };
@@ -19,6 +21,7 @@ function buildDatasetOptions(catalog: MarketCatalogItem[]): MarketDatasetOption[
     category: item.category,
     from: item.from,
     to: item.to,
+    baseCandles: item.candles,
     name: `${item.symbol} · Bybit`,
     label: `${item.symbol} · ${formatMarketDate(item.from)} — ${formatMarketDate(item.to - 1)}`,
   }));

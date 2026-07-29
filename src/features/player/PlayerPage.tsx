@@ -166,6 +166,20 @@ export function PlayerPage() {
     interactionActiveRef: chartInteractionActive,
     initialTimeframe,
   });
+  // Счётчик в баре плеера показывает положение во ВСЁМ датасете, а не в
+  // загруженном окне: окно подгружается кусками и его размер прыгал, создавая
+  // впечатление, что истории всего пара тысяч свечей.
+  const datasetCandleCount = useMemo(() => {
+    if (!activeDataset) return candles.length;
+    const factor = Math.max(1, Math.round(tf / 5));
+    return Math.max(1, Math.floor(activeDataset.baseCandles / factor));
+  }, [activeDataset, candles.length, tf]);
+  const replayPosition = useMemo(() => {
+    if (!activeDataset || cur?.time == null) return replayIndex + 1;
+    const bucketMs = tf * 60_000;
+    const passed = Math.floor((cur.time * 1_000 - activeDataset.from) / bucketMs) + 1;
+    return Math.max(1, Math.min(passed, datasetCandleCount));
+  }, [activeDataset, cur?.time, datasetCandleCount, replayIndex, tf]);
   const [pendingReplayTime, setPendingReplayTime] = useState<number | null>(null);
   // Окно данных под выбранное время уже приехало. Без этого флага выбор
   // применялся к СТАРОМУ окну, если оно тоже покрывало нужное время: индекс
@@ -447,8 +461,8 @@ export function PlayerPage() {
             playing={playing}
             speed={speed}
             currentCandle={cur}
-            replayIndex={replayIndex}
-            candleCount={candles.length}
+            replayPosition={replayPosition}
+            datasetCandleCount={datasetCandleCount}
             startJumpPending={startJumpPending}
             onMarketOpen={handleMarketOpen}
             onStartAction={handleStartAction}

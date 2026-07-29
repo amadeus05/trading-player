@@ -9,8 +9,9 @@ interface ReplayControlsProps {
   playing: boolean;
   speed: number;
   currentCandle?: Candle;
-  replayIndex: number;
-  candleCount: number;
+  /** Позиция головы и объём датасета — считаются от его границ, а не от загруженного окна. */
+  replayPosition: number;
+  datasetCandleCount: number;
   startJumpPending?: boolean;
   onMarketOpen: (market: Dataset) => void;
   onStartAction: (key: string) => void;
@@ -25,8 +26,8 @@ export function ReplayControls({
   playing,
   speed,
   currentCandle,
-  replayIndex,
-  candleCount,
+  replayPosition,
+  datasetCandleCount,
   startJumpPending = false,
   onMarketOpen,
   onStartAction,
@@ -80,7 +81,7 @@ export function ReplayControls({
         <div className="clock">
           <Clock3 size={15} />
           {currentCandle ? formatDateTime(currentCandle.time) : "—"}
-          <span>{replayIndex + 1} / {candleCount}</span>
+          <span>{replayPosition.toLocaleString("ru-RU")} / {datasetCandleCount.toLocaleString("ru-RU")}</span>
         </div>
       </div>
       <div className="replayPriceScaleSlot">
