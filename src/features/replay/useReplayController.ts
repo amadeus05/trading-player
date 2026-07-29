@@ -280,9 +280,28 @@ export function useReplayController({
     setFocusRevision((current) => current + 1);
   };
 
+  /**
+   * Свеча, СОДЕРЖАЩАЯ это время, то есть последняя с открытием <= time.
+   * Прежний `findIndex(c => c.time >= time)` брал следующую, когда время падало
+   * внутрь бакета (а при случайном прыжке так почти всегда): голова вставала на
+   * бар правее, и слева за краем рамки оставался лишний бар — он и вылезал при
+   * панорамировании.
+   */
   const selectTime = (time: number) => {
-    const foundIndex = candles.findIndex((candle) => candle.time >= time);
-    selectIndex(foundIndex === -1 ? lastIndex : foundIndex);
+    let low = 0;
+    let high = candles.length - 1;
+    let found = -1;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      if (candles[mid].time <= time) {
+        found = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+    // Время левее всей загруженной истории — встаём на первую свечу.
+    selectIndex(found < 0 ? 0 : found);
   };
 
   const handleStartAction = (key: string) => {
