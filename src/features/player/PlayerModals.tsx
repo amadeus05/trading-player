@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import dayjs from "dayjs";
-import { Button, DatePicker, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tag } from "antd";
+import { Button, DatePicker, InputNumber, Modal, Select, Space, Switch, Table, Tag } from "antd";
 import type { TableProps } from "antd";
 import type { Dayjs } from "dayjs";
 import { Trash2 } from "lucide-react";
 import type { AccountSettings, AmbiguousExitPolicy, Candle, SimulationSettings, Trade } from "../../types";
 import { formatDateTime, formatNumber, formatTimeframe } from "../../shared/lib/market";
+import { useConfirmDelete } from "../../shared/ui/useConfirmDelete";
 import {
   calculateTradeAnalytics,
   filterTradesForAnalytics,
@@ -85,6 +86,7 @@ export function PlayerModals({
   onDeleteTrade,
   onDeleteAllTrades,
 }: PlayerModalsProps) {
+  const confirmDelete = useConfirmDelete();
   const [journalPeriod, setJournalPeriod] = useState<JournalPeriod>("all");
   const [journalDateRange, setJournalDateRange] = useState<[Dayjs, Dayjs] | null>(null);
   const [journalDatasetId, setJournalDatasetId] = useState<string>("all");
@@ -196,18 +198,19 @@ export function PlayerModals({
               {trade.status === "PENDING" ? "Отменить" : "Закрыть"}
             </Button>
           )}
-          <Popconfirm
-            title="Удалить сделку?"
-            description="Сделка и её разметка будут удалены."
-            okText="Удалить"
-            cancelText="Отмена"
-            okButtonProps={{ danger: true }}
-            onConfirm={() => onDeleteTrade(trade.id)}
+          <Button
+            className="journalActionBtn"
+            danger
+            size="small"
+            icon={<Trash2 size={14} />}
+            onClick={() => confirmDelete({
+              title: "Удалить сделку?",
+              content: "Сделка и её разметка будут удалены.",
+              onConfirm: () => onDeleteTrade(trade.id),
+            })}
           >
-            <Button className="journalActionBtn" danger size="small" icon={<Trash2 size={14} />}>
-              Удалить
-            </Button>
-          </Popconfirm>
+            Удалить
+          </Button>
         </Space>
       ),
     },
@@ -295,18 +298,19 @@ export function PlayerModals({
               <b>Аналитика сделок</b>
               <span>{filteredTrades.length} сделок в текущем фильтре</span>
             </div>
-            <Popconfirm
-              title="Удалить все сделки?"
-              description={`Будут удалены все ${trades.length} сделок и их разметка на графике, включая скрытые фильтром. Отменить нельзя.`}
-              okText="Удалить всё"
-              cancelText="Отмена"
-              okButtonProps={{ danger: true }}
-              onConfirm={onDeleteAllTrades}
+            <Button
+              danger
+              disabled={!trades.length}
+              icon={<Trash2 size={14} />}
+              onClick={() => confirmDelete({
+                title: "Удалить все сделки?",
+                content: `Сделок: ${trades.length}, включая скрытые фильтром. Удалятся вместе с разметкой на графике. Отменить нельзя.`,
+                okText: "Удалить всё",
+                onConfirm: onDeleteAllTrades,
+              })}
             >
-              <Button danger disabled={!trades.length} icon={<Trash2 size={14} />}>
-                Удалить все сделки{trades.length ? ` (${trades.length})` : ""}
-              </Button>
-            </Popconfirm>
+              Удалить все сделки{trades.length ? ` (${trades.length})` : ""}
+            </Button>
           </div>
           <div className="journalFilters">
             <Select<JournalPeriod>

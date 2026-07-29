@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Button, Popconfirm } from "antd";
+import { Button } from "antd";
 import { Redo2, Undo2 } from "lucide-react";
 import { DrawingToolIcon } from "../drawing/icons/DrawingToolIcon";
+import { useConfirmDelete } from "../shared/ui/useConfirmDelete";
 import showDrawingsIcon from "../drawing/icons/ui/hide-all-drawings.svg?raw";
 import hideDrawingsIcon from "../drawing/icons/ui/hide-all-drawings-off.svg?raw";
 import removeDrawingIcon from "../drawing/icons/ui/remove-drawing.svg?raw";
@@ -227,6 +228,7 @@ export function DrawingToolsRail({
   onRedoDrawings,
   onDeleteAllDrawings,
 }: DrawingToolsRailProps) {
+  const confirmDelete = useConfirmDelete();
   const toggleDrawingMode = (mode: DrawingMode) => {
     onDrawingModeChange(drawingMode === mode ? "none" : mode);
   };
@@ -297,27 +299,23 @@ export function DrawingToolsRail({
           dangerouslySetInnerHTML={{ __html: drawingsVisible ? showDrawingsIcon : hideDrawingsIcon }}
         />
       </Button>
-      <Popconfirm
-        title="Удалить все рисунки на графике?"
-        okText="Удалить"
-        cancelText="Отмена"
-        okButtonProps={{ danger: true }}
+      <Button
+        type="text"
+        className="drawing-tool-btn"
         disabled={drawingCount === 0}
-        onConfirm={onDeleteAllDrawings}
+        title={`Удалить все рисунки (${drawingCount}) · Ctrl+Shift+Delete`}
+        onClick={() => confirmDelete({
+          title: "Удалить все рисунки на графике?",
+          content: `Объектов на графике: ${drawingCount}. Отменить нельзя.`,
+          onConfirm: onDeleteAllDrawings,
+        })}
       >
-        <Button
-          type="text"
-          className="drawing-tool-btn"
-          disabled={drawingCount === 0}
-          title={`Удалить все рисунки (${drawingCount}) · Ctrl+Shift+Delete`}
-        >
-          <span
-            className="drawing-tool-icon"
-            aria-hidden="true"
-            dangerouslySetInnerHTML={{ __html: removeDrawingIcon }}
-          />
-        </Button>
-      </Popconfirm>
+        <span
+          className="drawing-tool-icon"
+          aria-hidden="true"
+          dangerouslySetInnerHTML={{ __html: removeDrawingIcon }}
+        />
+      </Button>
     </div>
   );
 }
