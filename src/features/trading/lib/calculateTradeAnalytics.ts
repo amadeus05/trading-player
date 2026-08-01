@@ -81,7 +81,7 @@ function matchesFilters(trade: Trade, filters: AnalyticsFilters): boolean {
     && (filters.outcome == null || trade.outcome === filters.outcome);
 }
 
-function tradeRisk(trade: Trade): number | null {
+export function tradeRisk(trade: Trade): number | null {
   const riskPerUnit = Math.abs(trade.entry - trade.sl);
   const risk = riskPerUnit * trade.size;
   return Number.isFinite(risk) && risk > 0 ? risk : null;

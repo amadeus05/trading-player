@@ -4,6 +4,7 @@ import type { AmbiguousExitPolicy, Candle, Dataset, SimulationSettings } from ".
 import type { DrawingMode } from "../../drawing";
 import { ReplayChart, type ChartViewportRef } from "../chart/ReplayChart";
 import { PlayerModals } from "./PlayerModals";
+import { JournalDrawer } from "../journal/JournalDrawer";
 import { ReplayControls } from "../replay/ReplayControls";
 import { AppHeader } from "../../widgets/AppHeader";
 import { PlayerToolbar } from "../../widgets/PlayerToolbar";
@@ -503,13 +504,10 @@ export function PlayerPage() {
       <PlayerModals
         settingsOpen={settingsOpen}
         datePickerOpen={datePickerOpen}
-        journalOpen={journal}
         settings={simulationSettings}
         account={accountSettings}
         candles={candles}
         replayDateRange={activeDataset ? { from: activeDataset.from, to: activeDataset.to } : undefined}
-        trades={state.trades}
-        datasetOptions={datasetOptions}
         onSettingsClose={() => setSettingsOpen(false)}
         onSettingsReset={() => setState((current) => ({
           ...current,
@@ -537,11 +535,21 @@ export function PlayerPage() {
         }))}
         onDatePickerClose={() => setDatePickerOpen(false)}
         onReplayTimeSelect={selectReplayTimeWithData}
-        onJournalClose={() => setJournal(false)}
+      />
+      <JournalDrawer
+        open={journal}
+        account={accountSettings}
+        trades={state.trades}
+        datasetOptions={datasetOptions}
+        onClose={() => setJournal(false)}
         onCancelOrder={cancelOrder}
         onCloseTrade={closeTrade}
         onDeleteTrade={deleteTrade}
         onDeleteAllTrades={deleteAllTrades}
+        onJumpToTrade={(trade) => {
+          setJournal(false);
+          selectReplayTimeWithData(trade.entryTime);
+        }}
       />
     </div>
   );
