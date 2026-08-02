@@ -1086,33 +1086,92 @@ g[data-channel-id].selected .pc-edge-line {
   position: absolute;
   right: 0;
   z-index: 8;
+  display: flex;
+  align-items: stretch;
   transform: translateY(-50%);
-  min-width: 82px;
-  width: 82px;
   height: 20px;
-  padding: 0 5px;
+  /* Ширина постоянная: метка прижата к правому краю, и без фиксации её левый
+     край ездил на каждом изменении числа знаков в сумме или цене. */
+  width: 188px;
+  padding: 0;
+  overflow: hidden;
   border: 0;
-  border-radius: 2px;
-  color: #07100d;
-  background: #2bd9a8;
-  font: 600 11px Inter, system-ui, sans-serif;
+  border-radius: 3px;
+  background: #0d1117;
+  box-shadow: 0 0 0 1px #2bd9a8;
+  font: 500 11px Inter, system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
-  line-height: 20px;
   white-space: nowrap;
-  text-align: center;
   cursor: ns-resize;
-  box-shadow: none;
   user-select: none;
   touch-action: none;
 }
 
-.barrier-handle.sl {
+/* Торец — тип метки на сплошной заливке, как ярлык у брокера.
+   Ширина фиксированная: остальные части меняются вместе с цифрами, и без этого
+   цветной блок дышал бы на каждом пересчёте. */
+.barrier-handle .barrier-cap {
+  display: flex;
+  flex: none;
+  width: 42px;
+  align-items: center;
+  justify-content: center;
+  background: #2bd9a8;
+  color: #07100d;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+
+/* Сумма — главное число, поэтому светлое и с воздухом по бокам. */
+.barrier-handle .barrier-amount {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 8px;
+  overflow: hidden;
+  color: #e8ebf2;
+}
+
+.barrier-handle .barrier-amount:empty {
+  display: none;
+}
+
+/* Цена вторична: приглушена и отделена волоском. */
+.barrier-handle .barrier-price {
+  display: flex;
+  flex: none;
+  width: 72px;
+  align-items: center;
+  justify-content: center;
+  border-left: 1px solid #242934;
+  color: #7b8497;
+}
+
+/* Цвет ведёт знак суммы, а не тип метки: стоп можно утащить в прибыль. */
+.barrier-handle.loss {
+  box-shadow: 0 0 0 1px #ff5c73;
+}
+
+.barrier-handle.loss .barrier-cap {
   background: #ff5c73;
   color: #fff;
 }
 
+.barrier-handle.loss .barrier-amount {
+  color: #ff8fa0;
+}
+
+.barrier-handle.gain .barrier-amount {
+  color: #2bd9a8;
+}
+
 .barrier-handle.entry {
-  width: 100px;
+  box-shadow: 0 0 0 1px #7c6cf2;
+}
+
+.barrier-handle.entry .barrier-cap {
   background: #7c6cf2;
   color: #fff;
 }
@@ -1120,7 +1179,6 @@ g[data-channel-id].selected .pc-edge-line {
 .barrier-handle:hover,
 .barrier-handle:active {
   filter: brightness(1.12);
-  outline: 2px solid #ffffff66;
 }
 
 .barrier-handle.read-only {
@@ -1131,8 +1189,8 @@ g[data-channel-id].selected .pc-edge-line {
 .barrier-handle.read-only:hover,
 .barrier-handle.read-only:active {
   filter: none;
-  outline: none;
 }
+
 
 .close-notification {
   display: grid;

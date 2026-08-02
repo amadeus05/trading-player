@@ -87,6 +87,7 @@ interface ReplayChartProps {
   focusRevision: number;
   onInteractionChange: (active: boolean) => void;
   pricePrecision: number;
+  quoteAsset: string;
   entryMarker?: { id: string; price: number };
   onEntryMarkerChange: (id: string, price: number) => void;
   showClosedTradeOverlays: boolean;
@@ -117,6 +118,7 @@ export function ReplayChart({
   focusRevision,
   onInteractionChange,
   pricePrecision,
+  quoteAsset,
   entryMarker,
   onEntryMarkerChange,
   showClosedTradeOverlays,
@@ -596,6 +598,7 @@ export function ReplayChart({
         entryMarker: props.entryMarker,
         editable: props.markersEditable,
         pricePrecision,
+        quoteAsset,
         onBarrierChange: (id, kind, price) =>
           callbacksRef.current.onBarrierChange(id, kind, price),
         onEntryMarkerChange: (id, price) =>
@@ -974,7 +977,10 @@ export function ReplayChart({
     // Compute a key from display-relevant fields only; ignores barrier.entryTime so
     // that every replay step does not trigger a full rebuild when TP/SL are unchanged.
     const barriersKey = barriers.map((b) => `${b.id}:${b.upper ?? ""}:${b.lower ?? ""}`).join("|");
-    const tradesKey = trades.map((t) => `${t.id}:${t.status}:${t.entry}:${t.tp ?? ""}:${t.sl ?? ""}:${t.exitTime ?? ""}:${t.exit ?? ""}`).join("|");
+    // size входит в ключ: метки TP/SL показывают сумму прибыли и убытка, а она
+    // считается из размера. Без него смена риска меняла объём тикета, ключ
+    // оставался прежним, и на метках висели суммы от прошлого размера.
+    const tradesKey = trades.map((t) => `${t.id}:${t.status}:${t.entry}:${t.size}:${t.tp ?? ""}:${t.sl ?? ""}:${t.exitTime ?? ""}:${t.exit ?? ""}`).join("|");
     const key = [barriersKey, tradesKey, entryMarker?.price ?? "", markersEditable, showClosedTradeOverlays, showTradingSessions].join(";");
     if (key === prevOverlayKeyRef.current) return;
     prevOverlayKeyRef.current = key;

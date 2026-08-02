@@ -12,6 +12,9 @@ interface UseChartDisplayStateOptions {
   tradeEditDraft: TradeEditDraft | null;
   currentCandle?: Candle;
   orderForm: OrderFormController;
+  /** Комиссии нужны черновику, чтобы метки TP/SL показывали сумму «в чистоте». */
+  makerFeePct: number;
+  takerFeePct: number;
 }
 
 export interface ChartDisplayState {
@@ -29,6 +32,8 @@ export function useChartDisplayState({
   tradeEditDraft,
   currentCandle,
   orderForm,
+  makerFeePct,
+  takerFeePct,
 }: UseChartDisplayStateOptions): ChartDisplayState {
   const {
     limitPrice,
@@ -38,6 +43,7 @@ export function useChartDisplayState({
     stopLoss,
     takeProfit,
     ticketPrice,
+    ticketQuantity,
   } = orderForm;
 
   return useMemo(() => {
@@ -70,7 +76,11 @@ export function useChartDisplayState({
           side: orderDraftSide,
           entryTime: currentCandle?.time ?? 0,
           entry: ticketPrice,
-          size: 0,
+          // Настоящий размер тикета, а не заглушка: из него метки TP/SL считают
+          // сумму прибыли и убытка ещё до того, как заявка выставлена.
+          size: ticketQuantity,
+          makerFeePct,
+          takerFeePct,
           sl: stopLoss,
           tp: takeProfit,
           status: "OPEN",
@@ -140,6 +150,9 @@ export function useChartDisplayState({
     stopLoss,
     takeProfit,
     ticketPrice,
+    ticketQuantity,
+    makerFeePct,
+    takerFeePct,
     tradeEditDraft,
     trades,
     workingTrades,

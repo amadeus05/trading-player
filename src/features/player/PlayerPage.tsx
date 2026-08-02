@@ -319,6 +319,8 @@ export function PlayerPage() {
     tradeEditDraft,
     currentCandle: cur,
     orderForm,
+    makerFeePct: simulationSettings.makerFeePct,
+    takerFeePct: simulationSettings.takerFeePct,
   });
   function updateSimulationSetting(
     key: Exclude<keyof SimulationSettings, "showClosedTradeOverlays" | "ambiguousExitPolicy">,
@@ -430,6 +432,7 @@ export function PlayerPage() {
                   onStartSelected={selectReplayTimeWithData}
                   focusRevision={focusRevision}
                   pricePrecision={pricePrecision}
+                  quoteAsset={quoteAsset}
                   entryMarker={chartDisplay.entryMarker}
                   onEntryMarkerChange={moveEntryMarker}
                   showClosedTradeOverlays={simulationSettings.showClosedTradeOverlays}
