@@ -190,7 +190,13 @@ export function useReplayController({
     }
   }, [currentCandle, replayIndex]);
 
+  // Подрезаем индекс под длину массива — но только когда свечи есть. На пустом
+  // массиве Math.min(120, -1) даёт -1, а Math.max поднимает до нуля: индекс
+  // намертво прибивался к первой свече ещё до прихода данных, и обратно его
+  // никто не поднимал. Поэтому свежая загрузка показывала одну свечу, а
+  // переключение монеты — 121-ю: там setIdx(120) вызывается уже с данными.
   useEffect(() => {
+    if (!candles.length) return;
     setIndex((current) => Math.max(0, Math.min(current, candles.length - 1)));
   }, [candles.length]);
 
@@ -203,21 +209,32 @@ export function useReplayController({
   // компенсируем сдвиг, чтобы текущая свеча осталась той же. Настоящий prepend
   // отличаем от смены датасета/таймфрейма тем, что прежняя первая свеча
   // по-прежнему присутствует в новом массиве на позиции shift.
-  const prevAggregatedRef = useRef<{ timeframe: number; firstTime: number | null }>({
+  const prevAggregatedRef = useRef<{ datasetId: string; timeframe: number; firstTime: number | null }>({
+    datasetId,
     timeframe,
     firstTime: null,
   });
   useEffect(() => {
     const firstTime = candles[0]?.time ?? null;
     const prev = prevAggregatedRef.current;
-    prevAggregatedRef.current = { timeframe, firstTime };
-    if (prev.timeframe !== timeframe) return;
+    const contextChanged = prev.datasetId !== datasetId || prev.timeframe !== timeframe;
+    // Смена инструмента — не prepend. Проверки «прежняя первая свеча нашлась на
+    // позиции shift» для этого мало: свечи выровнены по UTC, поэтому у другой
+    // монеты на той же метке почти наверняка тоже есть свеча. Так переход с SOL
+    // (история с 15 окт 2021) на BTC (с 25 мар 2020) уводил индекс на 163 745
+    // вперёд, и вместо начала открывался кусок графика в середине истории.
+    //
+    // Запоминаем при этом null, а не текущее первое время: свечи нового рынка
+    // приезжают отдельным рендером, и пара «новый датасет + первое время от
+    // старого» на следующем проходе снова выглядела бы настоящим prepend.
+    prevAggregatedRef.current = { datasetId, timeframe, firstTime: contextChanged ? null : firstTime };
+    if (contextChanged) return;
     if (firstTime == null || prev.firstTime == null || firstTime >= prev.firstTime) return;
     let shift = 0;
     while (shift < candles.length && candles[shift].time < prev.firstTime) shift += 1;
     if (shift === 0 || candles[shift]?.time !== prev.firstTime) return;
     setIndex((current) => current + shift);
-  }, [candles, timeframe]);
+  }, [candles, datasetId, timeframe]);
 
   // Дошли до конца загруженных свечей — воспроизведение останавливается.
   // Отдельным эффектом, а не внутри шага: шаг теперь функциональный апдейт, а

@@ -23,16 +23,39 @@ app.put("/api/state", (req, res) => {
   writeFileSync(stateFile, JSON.stringify(req.body, null, 2));
   res.json({ ok: true });
 });
+/**
+ * Порт открывается сразу, а инициализация хранилища идёт параллельно.
+ *
+ * Раньше listen стоял после await init(), и всё время, пока поднимался DuckDB
+ * WASM (несколько секунд), порта 4174 просто не существовало. Vite при этом
+ * успевал отдать страницу за 267 мс, браузер запрашивал /api/state и
+ * /api/market/catalog, прокси получал ECONNREFUSED и отвечал 502. Клиент эти
+ * запросы не повторяет, поэтому приложение оставалось с пустым каталогом до
+ * ручной перезагрузки.
+ *
+ * Теперь запрос в это окно не падает, а ждёт готовности. /api/state хранилища
+ * вообще не касается и отвечает немедленно.
+ */
 async function bootstrap() {
   const parquetStore = new ParquetCandleStore(join(dataRoot, "market"));
-  await parquetStore.init();
+  const storeReady = parquetStore.init();
   const marketService = new MarketDataService(
     new BybitKlineClient(), parquetStore, new RangePlanner(), new CandleValidator(), 8,
   );
-  const jobs=new DownloadJobManager(marketService);
-  app.use("/api/market", new MarketDataController(marketService,jobs).router);
-  app.get("/api/health", (_req, res) => res.json({ ok: true, marketData: "ready" }));
+  const jobs = new DownloadJobManager(marketService);
+  let ready = false;
+  void storeReady.then(() => { ready = true; });
+
+  app.use("/api/market", (_req, res, next) => {
+    storeReady.then(() => next()).catch((error: unknown) => {
+      console.error(error);
+      res.status(503).json({ error: "Хранилище свечей не поднялось" });
+    });
+  });
+  app.use("/api/market", new MarketDataController(marketService, jobs).router);
+  app.get("/api/health", (_req, res) => res.json({ ok: true, marketData: ready ? "ready" : "starting" }));
   app.listen(4174, () => console.log("Replay API: http://localhost:4174"));
+  await storeReady;
 }
 
 bootstrap().catch((error) => {

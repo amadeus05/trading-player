@@ -47,11 +47,19 @@ const toVolumeData = (candle: Candle): HistogramData<UTCTimestamp> => ({
   color: candle.close >= candle.open ? "#2bd9a855" : "#ff5c7355",
 });
 
-/** Stable bar width with whitespace — avoids stretching a single replay bar across the chart. */
-const defaultFocusRange = (barIndex: number) => ({
-  from: barIndex - 80,
-  to: barIndex + 20,
-} as LogicalRange);
+/**
+ * Stable bar width with whitespace — avoids stretching a single replay bar across the chart.
+ *
+ * Влево дальше первого бара не уезжаем. Иначе у начала датасета рамка смотрела
+ * в пустоту: на первой свече показывались 80 несуществующих слотов слева, свеча
+ * прижималась к правому краю, и выглядело так, будто график нарисован задом
+ * наперёд. Ширина остаётся той же, окно просто сдвигается вправо.
+ */
+const FOCUS_RANGE_BARS = 100;
+const defaultFocusRange = (barIndex: number) => {
+  const from = Math.max(-2, barIndex - 80);
+  return { from, to: from + FOCUS_RANGE_BARS } as LogicalRange;
+};
 
 const cloneDatasetItems = <Item extends { datasetId: string }>(items: Item[], datasetId: string): Item[] =>
   structuredClone(items.filter((item) => item.datasetId === datasetId));
@@ -140,6 +148,12 @@ export function ReplayChart({
   // пользователь «следует за реальным временем», и закрепит край.
   const pendingFocusRange = useRef<LogicalRange | null>(null);
   const renderedIndex = useRef<number | null>(null);
+  // Датасет, свечи которого сейчас на графике. Нужен, чтобы отличить смену
+  // монеты от обычного обновления: рамка, ценовой диапазон и компенсация
+  // догрузки истории имеют смысл только внутри одного датасета.
+  const datasetIdRef = useRef(datasetId);
+  datasetIdRef.current = datasetId;
+  const renderedDatasetId = useRef<string | null>(null);
   const followRealtime = useRef(true);
   // Заведомо «непринятая» ревизия: на переключении ТФ вверх candles на кадр
   // пустеет, PlayerPage размонтирует график, и все ref'ы сбрасываются. Если
@@ -355,6 +369,21 @@ export function ReplayChart({
       preserveViewport = false,
     ) => {
       if (!allCandles.length) return;
+      // Смена монеты — это не продолжение, а новый график. Всё накопленное
+      // относится к прежнему датасету: сохранённая рамка, ценовой диапазон,
+      // предыдущий состав свечей. Применять их к другому рынку нельзя — именно
+      // так на новой монете оказывалась рамка от старой, и свечи рисовались
+      // куском у правого края с пустотой слева.
+      const datasetChanged = renderedDatasetId.current != null
+        && renderedDatasetId.current !== datasetIdRef.current;
+      renderedDatasetId.current = datasetIdRef.current;
+      if (datasetChanged) {
+        renderedIndex.current = null;
+        savedLogicalRange.current = null;
+        savedPriceRange.current = null;
+        pendingFocusRange.current = null;
+        followRealtime.current = false;
+      }
       // Обычное обновление (без навязанной рамки) — значит момент фокуса позади.
       // Снимаем флаг, иначе syncViewportState останется выключенным навсегда, а
       // savedLogicalRange застрянет на устаревшем значении: пишем один диапазон,
@@ -362,8 +391,11 @@ export function ReplayChart({
       if (forcedRange == null) pendingFocusRange.current = null;
       const nextSafeIndex = Math.max(0, Math.min(nextIndex, allCandles.length - 1));
       const nextVisible = allCandles.slice(0, nextSafeIndex + 1);
-      const shouldFollowRealtime = followCandleRef.current || followRealtime.current;
-      const previousVisible = candleStore.candles;
+      const shouldFollowRealtime = !datasetChanged && (followCandleRef.current || followRealtime.current);
+      // На смене монеты прежний состав в расчёт не берём: сравнивать времена
+      // свечей разных рынков бессмысленно, и компенсация догрузки истории
+      // выдала бы мусорный сдвиг рамки.
+      const previousVisible = datasetChanged ? [] : candleStore.candles;
       const delta = renderedIndex.current == null ? 0 : nextSafeIndex - renderedIndex.current;
       // Догрузка истории влево prepend'ит свечи: логические индексы графика
       // сдвигаются на prependedBars, и сохранённый viewport надо сдвинуть с ними,
@@ -386,12 +418,16 @@ export function ReplayChart({
         }
         prependedBars = previousVisible[dropped]?.time === nextVisible[0].time ? -dropped : 0;
       }
+      // На смене монеты откат к getVisibleLogicalRange() недопустим: там всё ещё
+      // рамка прежнего рынка. Отдаём null, чтобы ниже встала defaultFocusRange.
       let preservedRange = forcedRange
-        ?? (preserveViewport
-          ? savedLogicalRange.current ?? chart.timeScale().getVisibleLogicalRange()
-          : shouldFollowRealtime
-            ? null
-            : savedLogicalRange.current ?? chart.timeScale().getVisibleLogicalRange());
+        ?? (datasetChanged
+          ? null
+          : preserveViewport
+            ? savedLogicalRange.current ?? chart.timeScale().getVisibleLogicalRange()
+            : shouldFollowRealtime
+              ? null
+              : savedLogicalRange.current ?? chart.timeScale().getVisibleLogicalRange());
       if (preservedRange && prependedBars !== 0) {
         preservedRange = {
           from: preservedRange.from + prependedBars,
@@ -430,7 +466,9 @@ export function ReplayChart({
           // change events for ~1s and starves the overlay sync (each event reschedules
           // it 2 frames out). scrollToPosition(0, false) reaches the same edge instantly.
           chart.timeScale().scrollToPosition(0, false);
-        } else if (!preserveViewport) {
+        } else if (!preserveViewport || datasetChanged) {
+          // datasetChanged проходит даже при preserveViewport: сохранять нечего,
+          // а без этой ветки рамка осталась бы от прежней монеты.
           appliedRange = defaultFocusRange(nextSafeIndex);
           chart.timeScale().setVisibleLogicalRange(appliedRange);
         }
@@ -440,8 +478,10 @@ export function ReplayChart({
         savedPriceRange.current = cs.priceScale().getVisibleRange();
         followRealtime.current = shouldFollowRealtime;
         renderedIndex.current = nextIndex;
-        if (followCandleRef.current) {
-          fitPriceScaleToVisible(!canAppendOneBar);
+        if (followCandleRef.current || datasetChanged) {
+          // Ценовая шкала прежнего рынка новому не годится: SOL живёт около 150,
+          // BTC около 6500, и со старым диапазоном свечи ушли бы за экран.
+          fitPriceScaleToVisible(true);
         } else if (!canAppendOneBar && !forcedRange) {
           primePriceScaleInteraction();
         }
@@ -949,13 +989,28 @@ export function ReplayChart({
   // useEffect (not useLayoutEffect): layout-sync on every replay tick blocks paint
   // and pointer events at high speed, making the crosshair feel stuck to candle ticks.
   const prevAppliedCandlesRef = useRef(candles);
+  const prevAppliedDatasetRef = useRef(datasetId);
   useEffect(() => {
     const indexChanged = prevReplayIndexRef.current !== index;
     const previous = prevAppliedCandlesRef.current;
+    const candlesChanged = previous !== candles;
+    // Смена монеты при том же индексе. Этот случай и оставлял на экране чужой
+    // график: индекс не менялся, а проверка ниже выходила по разной длине
+    // массивов — 558 684 свечи ETH против 239 895 у BTC, — и перерисовки не
+    // происходило вовсе. Заголовок и счётчик успевали обновиться, свечи нет.
+    const datasetChanged = prevAppliedDatasetRef.current !== datasetId;
     prevReplayIndexRef.current = index;
     prevAppliedCandlesRef.current = candles;
-    if (indexChanged) {
-      chartRuntimeRef.current?.applyReplayIndex(index, candles, null, selectingStartRef.current);
+    // Идентификатор датасета меняется раньше, чем приезжают его свечи: между
+    // этими рендерами candles ещё от прежнего рынка. Рисовать в этот момент —
+    // значит показать чужие свечи под новым заголовком. И отмечать датасет
+    // применённым тоже рано: следующий рендер счёл бы перерисовку ненужной, и
+    // чужой график остался бы висеть насовсем. Ждём настоящие свечи.
+    if (datasetChanged && !candlesChanged) return;
+    prevAppliedDatasetRef.current = datasetId;
+    if (datasetChanged || indexChanged) {
+      // На смене монеты сохранять вьюпорт нечего: он от прежнего рынка.
+      chartRuntimeRef.current?.applyReplayIndex(index, candles, null, !datasetChanged && selectingStartRef.current);
       return;
     }
     if (previous === candles) return;
@@ -970,7 +1025,7 @@ export function ReplayChart({
     if (!nextCandle || previous.length !== candles.length) return;
     if (previous[safeIndex]?.time !== nextCandle.time) return;
     chartRuntimeRef.current?.refreshLastCandle(nextCandle);
-  }, [index, candles]);
+  }, [index, candles, datasetId]);
 
   useLayoutEffect(() => {
     if (!followCandle) {
