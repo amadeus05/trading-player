@@ -137,6 +137,10 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     },
     onBeforeEdit: (id) => {
       if (!selection.isSelected(id)) selectLine(id);
+      // Пересинхронизируем перед открытием редактора: выделение меняет вид
+      // лейбла, и без этого он открывался по устаревшей позиции.
+      const line = trendLines.find((item) => item.id === id);
+      if (line) syncOne(line);
     },
     onCommit: (id, value) => {
       updateLine(id, { label: value, showLabel: Boolean(value) });
@@ -145,13 +149,28 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       const line = trendLines.find((item) => item.id === id);
       if (line) syncOne(line);
     },
-    emptyCaretAtEnd: true,
+    // Каретка в начало пустого лейбла — как в прямоугольнике: иначе она встаёт
+    // за «+ Add text», и первый же символ печатается в конец подсказки.
+    emptyCaretAtEnd: false,
   });
 
+  /** Короткая линия не должна зажимать текст в пару пикселей. */
+  const LABEL_MIN_WIDTH = 90;
+
+  /**
+   * Лейбл получает постоянную ширину — по длине самой линии, как у
+   * прямоугольника, где она берётся от фигуры.
+   *
+   * Без этого коробка растягивалась по тексту, а transform центрирует её по
+   * собственному размеру: любая смена содержимого — клик по placeholder, ввод
+   * буквы — сдвигала лейбл, и это читалось как «текст меняет размер и прыгает».
+   * Теперь коробка зависит только от геометрии линии, а текст ездит внутри неё.
+   */
   function applyLabelPosition(el: HTMLElement, p1: PixelPoint, p2: PixelPoint) {
     const layout = lineLabelLayout(p1, p2);
     el.style.left = `${layout.x}px`;
     el.style.top = `${layout.y}px`;
+    el.style.width = `${Math.max(LABEL_MIN_WIDTH, layout.length)}px`;
     el.style.transform = `translate(-50%, -50%) rotate(${layout.angle}deg)`;
   }
 

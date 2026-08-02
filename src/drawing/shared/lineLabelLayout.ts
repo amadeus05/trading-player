@@ -7,6 +7,8 @@ export interface LineLabelLayout {
   x: number;
   y: number;
   angle: number;
+  /** Длина линии в пикселях — по ней инструмент задаёт лейблу постоянную ширину. */
+  length: number;
 }
 
 const LABEL_LINE_GAP = 16;
@@ -32,5 +34,6 @@ export function lineLabelLayout(p1: PixelPoint, p2: PixelPoint, gap = LABEL_LINE
     x: xMid + normalX * gap,
     y: yMid + normalY * gap,
     angle,
+    length,
   };
 }
