@@ -650,7 +650,21 @@ main {
   opacity: 0.85;
 }
 
-.trend-line-label.is-placeholder {
+/*
+ * Пустая подсказка проявляется только под курсором. Выделенная линия иначе
+ * постоянно несёт на себе «+ Add text», а это разметка, а не содержание.
+ * Элемент остаётся на месте и ловит мышь при нулевой прозрачности, поэтому
+ * наводить есть куда.
+ */
+.trend-line-label.is-placeholder:not(.is-editing) {
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+/* Наведение на линию проявляет подсказку; собственный :hover нужен, чтобы она
+   не гасла, пока курсор переезжает с линии на неё. */
+.trend-line-label.is-placeholder:not(.is-editing).is-line-hovered,
+.trend-line-label.is-placeholder:not(.is-editing):hover {
   opacity: 0.85;
 }
 
@@ -665,8 +679,11 @@ main {
   box-shadow: none;
   font: 500 14px/1 system-ui, sans-serif;
   text-align: center;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  /* Подпись обрезается краем прямоугольника, а не переносится: при сжатии буквы
+     уходят по одной, как в TradingView. С переносом текст вместо этого множил
+     строки, упирался в высоту и пропадал целиком. */
+  white-space: nowrap;
+  overflow: hidden;
   pointer-events: all;
   cursor: text;
   user-select: text;
@@ -682,6 +699,9 @@ main {
   opacity: 1;
   caret-color: currentColor;
   min-width: 1px;
+  /* В открытом редакторе обрезать нельзя: набранное за краем стало бы
+     невидимым, а каретка уезжала бы из виду. */
+  overflow: visible;
 }
 
 .rectangle-label:focus {
@@ -895,8 +915,8 @@ g[data-channel-id].selected .pc-edge-line {
 .trend-toolbar {
   position: absolute;
   z-index: 10;
-  background: #1e222d;
-  border: 1px solid #2a2e39;
+  background: #11151d;
+  border: 1px solid #242934;
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   padding: 4px;
@@ -3191,11 +3211,14 @@ aside {
 .rect-toolbar {
   position: absolute;
   z-index: 10;
-  background: #1e222d;
-  border: 1px solid #2a2e39;
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-  padding: 4px;
+  /* Палитра приложения, а не TradingView: их #1e222d рассчитан на более светлый
+     фон графика, а на нашем #0d1117 панель выпирала. Те же поверхность и рамка,
+     что у журнала и остальных панелей. */
+  background: #11151d;
+  border: 1px solid #242934;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  padding: 3px;
   display: flex;
   user-select: none;
   pointer-events: all;
@@ -3204,14 +3227,19 @@ aside {
 .rect-toolbar-row {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
 }
 
+/*
+ * Не линия, а воздух. В панели TradingView групп нет визуально: иконки идут
+ * ровным рядом, разделены только промежутком. Разметку групп оставляем — она
+ * задаёт ритм и пригодится, если группировку захочется вернуть.
+ */
 .rect-toolbar-sep {
-  width: 1px;
+  width: 0;
   height: 16px;
-  background: #363a45;
-  margin: 0 4px;
+  background: transparent;
+  margin: 0 2px;
   flex-shrink: 0;
 }
 
@@ -3219,9 +3247,9 @@ aside {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
+  width: 18px;
   height: 28px;
-  color: #4c525e;
+  color: #5d606b;
   cursor: grab;
   flex-shrink: 0;
 }
@@ -3236,19 +3264,22 @@ aside {
   align-items: center;
   justify-content: center;
   gap: 3px;
-  width: 30px;
-  height: 32px;
-  padding: 3px 2px;
+  width: 28px;
+  height: 28px;
+  padding: 2px 2px;
   border: none;
   background: transparent;
-  border-radius: 4px;
+  border-radius: 5px;
   cursor: pointer;
-  color: #d1d4dc;
+  /* Приглушённее прежнего #d1d4dc: в панели TradingView иконки заметно тише
+     белого, ярким остаётся только цветной индикатор под ними. */
+  color: #b2b5be;
   flex-shrink: 0;
 }
 
 .rect-tb-color-btn:hover {
-  background: #2a2e39;
+  background: #242934;
+  border-radius: 5px;
 }
 
 .rect-tb-color-icon {
@@ -3294,24 +3325,25 @@ aside {
   align-items: center;
   gap: 5px;
   height: 28px;
-  padding: 0 6px;
+  padding: 0 5px;
   border: none;
   background: transparent;
-  border-radius: 4px;
-  color: #d1d4dc;
+  border-radius: 5px;
+  color: #b2b5be;
   cursor: pointer;
   flex-shrink: 0;
 }
 
 .rect-tb-width-btn:hover {
-  background: #2a2e39;
+  background: #242934;
+  border-radius: 5px;
 }
 
 .rect-tb-width-label {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
-  color: #d1d4dc;
+  color: #b2b5be;
   min-width: 22px;
   text-align: center;
 }
@@ -3321,36 +3353,38 @@ aside {
   z-index: 21;
   min-width: 104px;
   overflow: hidden;
-  padding: 4px 0;
-  border: 1px solid #2a2e39;
+  padding: 3px 0;
+  border: 1px solid #242934;
   border-radius: 8px;
-  background: #1e222d;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  background: #11151d;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
   pointer-events: all;
 }
 
 .rect-line-menu-item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
-  height: 40px;
-  padding: 0 14px;
+  height: 32px;
+  padding: 0 12px;
   border: 0;
   background: transparent;
-  color: #d1d4dc;
-  font: 600 14px/1 system-ui, sans-serif;
+  color: #b2b5be;
+  font: 500 13px/1 system-ui, sans-serif;
   white-space: nowrap;
   cursor: pointer;
 }
 
 .rect-line-menu-item:hover {
-  background: #2a2e39;
+  background: #242934;
 }
 
+/* Выбранный пункт подсвечиваем так же, как активную кнопку панели. Прежняя
+   белая заливка была из чужой светлой темы и на тёмном меню била по глазам. */
 .rect-line-menu-item.is-active {
-  background: #f1f1f1;
-  color: #101010;
+  background: rgba(41, 98, 255, 0.18);
+  color: #e8ebf2;
 }
 
 .rect-line-menu-icon {
@@ -3376,9 +3410,9 @@ aside {
   min-width: 248px;
   overflow: hidden;
   padding: 4px 0;
-  border: 1px solid #2a2e39;
+  border: 1px solid #242934;
   border-radius: 8px;
-  background: #1e222d;
+  background: #11151d;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
   pointer-events: all;
 }
@@ -3390,7 +3424,7 @@ aside {
 .rect-templates-sep {
   height: 1px;
   margin: 4px 0;
-  background: #2a2e39;
+  background: #242934;
 }
 
 .rect-templates-row {
@@ -3401,7 +3435,7 @@ aside {
 }
 
 .rect-templates-row:hover {
-  background: #2a2e39;
+  background: #242934;
 }
 
 .rect-templates-row .rect-line-menu-item,
@@ -3459,8 +3493,8 @@ aside {
   height: 28px;
   border: none;
   background: transparent;
-  color: #9598a1;
-  border-radius: 4px;
+  color: #b2b5be;
+  border-radius: 5px;
   cursor: pointer;
   flex-shrink: 0;
   padding: 0;
@@ -3475,8 +3509,8 @@ aside {
   height: 28px;
   border: none;
   background: transparent;
-  color: #9598a1;
-  border-radius: 4px;
+  color: #b2b5be;
+  border-radius: 5px;
   cursor: pointer;
   flex-shrink: 0;
   padding: 0;
@@ -3484,8 +3518,8 @@ aside {
 
 .rect-toolbar .rect-tb-icon-btn:hover,
 .rect-toolbar .rect-tb-style-btn:hover {
-  background: #2a2e39;
-  color: #d1d4dc;
+  background: #242934;
+  color: #e8ebf2;
 }
 
 .rect-toolbar button[data-active="1"] {
@@ -3539,8 +3573,8 @@ aside {
 .rect-palette {
   position: absolute;
   z-index: 20;
-  background: #1e222d;
-  border: 1px solid #2a2e39;
+  background: #11151d;
+  border: 1px solid #242934;
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
   padding: 10px;

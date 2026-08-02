@@ -25,7 +25,11 @@ export function lineLabelLayout(p1: PixelPoint, p2: PixelPoint, gap = LABEL_LINE
 
   let normalX = -dy / length;
   let normalY = dx / length;
-  if (normalY > 0) {
+  // Наклонные линии подписываем сверху. У вертикальной «сверху» не существует:
+  // нормаль горизонтальна, normalY равен нулю, и прежнее условие её не трогало —
+  // подпись уходила влево. Такую линию подписываем справа.
+  const vertical = Math.abs(normalY) < 1e-6;
+  if (vertical ? normalX < 0 : normalY > 0) {
     normalX = -normalX;
     normalY = -normalY;
   }

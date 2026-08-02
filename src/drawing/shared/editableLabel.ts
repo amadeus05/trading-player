@@ -6,7 +6,17 @@
  */
 
 export const LABEL_PLACEHOLDER = "+ Add text";
-const PLACEHOLDER_COLOR = "#d1d4dc";
+/**
+ * Подсказка внутри открытого редактора. Плюс — это приглашение «добавить», и
+ * когда поле уже открыто, он лишний: пользователь стоит курсором перед ним и
+ * начинает печатать прямо в него.
+ */
+const LABEL_PLACEHOLDER_EDITING = "Add text";
+/**
+ * Приглушённый серый из палитры рисования. Подсказка — это разметка, а не
+ * содержание: почти белый #d1d4dc читался как настоящая надпись на линии.
+ */
+const PLACEHOLDER_COLOR = "#787b86";
 
 export interface EditableLabelStoreOptions {
   container: HTMLElement;
@@ -81,7 +91,11 @@ export function createEditableLabelStore(options: EditableLabelStoreOptions): Ed
     if (!el) return;
     el.contentEditable = "false";
     el.classList.remove("is-editing");
-    options.onCommit(id, normalizeLabelValue(el.textContent ?? ""));
+    // Пустой лейбл узнаём по классу, а не по совпадению строки: класс снимается
+    // на первом же введённом символе. Вырезание текста подсказки затёрло бы
+    // ввод у того, кто честно напечатал «Add text».
+    const untouched = el.classList.contains("is-placeholder");
+    options.onCommit(id, untouched ? "" : normalizeLabelValue(el.textContent ?? ""));
   }
 
   function cancelEdit(id: string) {
@@ -97,6 +111,13 @@ export function createEditableLabelStore(options: EditableLabelStoreOptions): Ed
 
     el.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
+      // По placeholder браузер тоже ставит каретку — по месту нажатия, то есть
+      // в середину подсказки. Наша установка идёт отложенно, через два кадра, и
+      // кто окажется последним, зависит от везения: иногда курсор оказывался
+      // между буквами «+ Add text». Отменяем поведение по умолчанию, фокус
+      // ставим сами ниже. Для непустого лейбла не мешаем: там клик по месту —
+      // это ровно то, что нужно.
+      if (!options.getText(id).trim()) event.preventDefault();
       startEdit(id);
     });
     el.addEventListener("focus", () => {
@@ -114,6 +135,17 @@ export function createEditableLabelStore(options: EditableLabelStoreOptions): Ed
       el.classList.remove("is-placeholder");
       el.style.color = options.getTextColor(id);
       placeCaret(el, true);
+    });
+    // Страховка на всё, что не проходит через beforeinput выше: вставка из
+    // буфера приходит без data, и без этого класс подсказки остался бы висеть,
+    // а commitEdit счёл бы лейбл нетронутым и выбросил вставленный текст.
+    el.addEventListener("input", () => {
+      if (editingId !== id) return;
+      if (!el.classList.contains("is-placeholder")) return;
+      const text = el.textContent ?? "";
+      if (text === LABEL_PLACEHOLDER_EDITING || text === LABEL_PLACEHOLDER) return;
+      el.classList.remove("is-placeholder");
+      el.style.color = options.getTextColor(id);
     });
     el.addEventListener("keydown", (event) => {
       if (editingId !== id) return;
@@ -143,7 +175,7 @@ export function createEditableLabelStore(options: EditableLabelStoreOptions): Ed
 
     const hasText = Boolean(options.getText(id).trim());
     if (!hasText) {
-      el.textContent = LABEL_PLACEHOLDER;
+      el.textContent = LABEL_PLACEHOLDER_EDITING;
       el.classList.add("is-placeholder");
       el.style.color = PLACEHOLDER_COLOR;
     }

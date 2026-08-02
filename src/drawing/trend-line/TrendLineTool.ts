@@ -340,6 +340,17 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
 
     group.append(extLine, line, hitArea, handle1, handle2);
 
+    // Пустая подсказка проявляется по наведению на саму линию, а не на неё же:
+    // невидимую надпись искать мышью бессмысленно. Класс снимаем при уходе, но
+    // если курсор переехал на подсказку — её собственный :hover держит её на
+    // экране, так что дотянуться и кликнуть можно.
+    hitArea.addEventListener("pointerenter", () => {
+      labelStore.get(tl.id)?.classList.add("is-line-hovered");
+    });
+    hitArea.addEventListener("pointerleave", () => {
+      labelStore.get(tl.id)?.classList.remove("is-line-hovered");
+    });
+
     // Interaction: select on click
     hitArea.addEventListener("pointerdown", (e) => {
       if (!manager.canEditExistingDrawings()) return;

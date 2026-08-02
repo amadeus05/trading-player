@@ -20,6 +20,9 @@ export type RectangleCallbacks = DrawingCrudCallbacks<Rectangle>;
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
+/** Высота строки подписи (font: 14px/1) плюс пара пикселей на засечки. */
+const LABEL_MIN_HEIGHT = 16;
+
 type HandlePos = "tl" | "tc" | "tr" | "ml" | "mr" | "bl" | "bc" | "br";
 const HANDLE_POSITIONS: HandlePos[] = ["tl", "tc", "tr", "ml", "mr", "bl", "bc", "br"];
 
@@ -348,7 +351,12 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       el.style.display = "none";
       return;
     }
-    el.style.display = safe.w >= 70 && safe.h >= 28 ? "" : "none";
+    // По ширине не прячем вовсе: текст обрезается краем коробки, как в
+    // TradingView, — буквы уходят по одной по мере сжатия. По высоте прячем
+    // только когда не помещается сама строка: прежний порог 70×28 убирал
+    // подпись задолго до этого, и при отдалении графика текст пропадал целиком,
+    // хотя места под него ещё хватало.
+    el.style.display = safe.h >= LABEL_MIN_HEIGHT ? "" : "none";
   }
 
   function applyPixelBounds(els: RectEls, b: PixelBounds, rect: Rectangle, selected: boolean) {
