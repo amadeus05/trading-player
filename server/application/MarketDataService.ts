@@ -44,4 +44,8 @@ export class MarketDataService {
   read(category: MarketCategory, symbol: string, timeframe: Timeframe, from: number, to: number) {
     return this.store.read(category, symbol.toUpperCase(), timeframe, from, to);
   }
+
+  remove(category: MarketCategory, symbol: string) {
+    return this.store.remove(category, symbol.toUpperCase());
+  }
 }

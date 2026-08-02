@@ -14,6 +14,8 @@ interface ReplayControlsProps {
   datasetCandleCount: number;
   startJumpPending?: boolean;
   onMarketOpen: (market: Dataset) => void;
+  activeDatasetId?: string;
+  onHistoryDeleted?: (datasetId: string) => void;
   onStartAction: (key: string) => void;
   onReset: () => void;
   onPlayingChange: (playing: boolean) => void;
@@ -30,6 +32,8 @@ export function ReplayControls({
   datasetCandleCount,
   startJumpPending = false,
   onMarketOpen,
+  activeDatasetId,
+  onHistoryDeleted,
   onStartAction,
   onReset,
   onPlayingChange,
@@ -85,7 +89,7 @@ export function ReplayControls({
         </div>
       </div>
       <div className="replayPriceScaleSlot">
-        <HistoryManager onOpen={onMarketOpen} iconOnly />
+        <HistoryManager onOpen={onMarketOpen} iconOnly activeDatasetId={activeDatasetId} onDeleted={onHistoryDeleted} />
       </div>
     </div>
   );

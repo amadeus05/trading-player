@@ -21,6 +21,7 @@ export class MarketDataController {
     this.router.get("/jobs/:id",(req,res)=>{const job=this.jobs.get(req.params.id);job?res.json(job):res.status(404).json({error:"Job not found"})});
     this.router.get("/jobs/:id/events",this.jobEvents);
     this.router.get("/candles", this.candles);
+    this.router.delete("/history/:category/:symbol", this.removeHistory);
     this.router.get("/timeframes", (_req, res) => res.json(SUPPORTED_TIMEFRAMES));
   }
 
@@ -36,6 +37,16 @@ export class MarketDataController {
     res.setHeader("Content-Type","text/event-stream");res.setHeader("Cache-Control","no-cache");res.setHeader("Connection","keep-alive");res.flushHeaders();
     const unsubscribe=this.jobs.subscribe(id,(job)=>res.write(`data: ${JSON.stringify(job)}\n\n`));
     req.on("close",unsubscribe);
+  };
+
+  private removeHistory = async (req: Request, res: Response) => {
+    try {
+      const category = normalizeMarketCategory(req.params.category);
+      const symbol = normalizeMarketSymbol(req.params.symbol);
+      const removed = await this.service.remove(category, symbol);
+      if (!removed) { res.status(404).json({ error: "История не найдена" }); return; }
+      res.status(204).end();
+    } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : String(error) }); }
   };
 
   private candles = async (req: Request, res: Response) => {

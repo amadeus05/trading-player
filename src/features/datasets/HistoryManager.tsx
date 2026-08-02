@@ -15,8 +15,9 @@ import {
   type TableProps,
 } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
-import { BarChart3, Database, Download, RefreshCw } from "lucide-react";
-import type { Candle, Dataset } from "../../types";
+import { BarChart3, Database, Download, RefreshCw, Trash2 } from "lucide-react";
+import type { Dataset } from "../../types";
+import { useConfirmDelete } from "../../shared/ui/useConfirmDelete";
 
 interface CatalogItem {
   category: string;
@@ -37,16 +38,6 @@ interface DownloadJob {
   error?: string;
 }
 
-interface MarketCandleRow {
-  openTime?: number | string;
-  open_time?: number | string;
-  open: number | string;
-  high: number | string;
-  low: number | string;
-  close: number | string;
-  volume: number | string;
-}
-
 interface HistoryFormValues {
   category: string;
   symbol: string;
@@ -56,21 +47,31 @@ interface HistoryFormValues {
 interface HistoryManagerProps {
   onOpen: (market: Dataset) => void;
   iconOnly?: boolean;
+  /** Открытый сейчас датасет — чтобы предупредить, что удаляют историю под плеером. */
+  activeDatasetId?: string;
+  onDeleted?: (datasetId: string) => void;
 }
 
 const formatDate = (milliseconds: number) => dayjs(milliseconds).format("YYYY-MM-DD");
+
+/** Короткие диапазоны весят десятки килобайт и в мегабайтах выглядели как «0.0 MB». */
+const formatBytes = (bytes: number) => bytes < 1_024 * 1_024
+  ? `${Math.max(1, Math.round(bytes / 1_024))} KB`
+  : `${(bytes / 1_024 / 1_024).toFixed(1)} MB`;
 
 const readError = async (response: Response) => {
   const payload = await response.json() as { error?: string };
   return payload.error ?? `HTTP ${response.status}`;
 };
 
-export function HistoryManager({ onOpen, iconOnly = false }: HistoryManagerProps) {
+export function HistoryManager({ onOpen, iconOnly = false, activeDatasetId, onDeleted }: HistoryManagerProps) {
   const { message } = AntApp.useApp();
+  const confirmDelete = useConfirmDelete();
   const [open, setOpen] = useState(false);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [job, setJob] = useState<DownloadJob | null>(null);
   const [loading, setLoading] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const [form] = Form.useForm<HistoryFormValues>();
 
@@ -90,40 +91,48 @@ export function HistoryManager({ onOpen, iconOnly = false }: HistoryManagerProps
 
   useEffect(() => () => eventSourceRef.current?.close(), []);
 
-  const openRange = async (
-    category: string,
-    symbol: string,
-    from: number,
-    to: number,
-  ) => {
-    setLoading(true);
+  /**
+   * Открывает рынок, ничего не скачивая: свечи подтянет useActiveMarketCandles
+   * окном, как и при выборе монеты в тулбаре.
+   *
+   * Раньше кнопка тащила весь датасет — от первой свечи до последней. На ETH это
+   * 70 МБ и 2.3 с ответа плюс разбор полумиллиона объектов в браузере, отсюда и
+   * задержка в несколько секунд против мгновенного переключения в тулбаре.
+   * Кнопка просто старше оконной загрузки: когда её писали, иначе было никак.
+   */
+  const openMarket = (category: string, symbol: string) => {
+    onOpen({ id: `market:${category}:${symbol}`, name: `${symbol} · Bybit`, candles: [] });
+    setOpen(false);
+  };
+
+  const removeHistory = async (item: CatalogItem) => {
+    const datasetId = `market:${item.category}:${item.symbol}`;
+    setRemoving(datasetId);
     try {
-      const params = new URLSearchParams({
-        category,
-        symbol,
-        timeframe: "5m",
-        from: String(from),
-        to: String(to),
-      });
-      const response = await fetch(`/api/market/candles?${params}`);
+      const response = await fetch(`/api/market/history/${item.category}/${item.symbol}`, { method: "DELETE" });
       if (!response.ok) throw new Error(await readError(response));
-      const rows = await response.json() as MarketCandleRow[];
-      const candles: Candle[] = rows.map((row) => ({
-        time: Number(row.openTime ?? row.open_time) / 1_000,
-        open: Number(row.open),
-        high: Number(row.high),
-        low: Number(row.low),
-        close: Number(row.close),
-        volume: Number(row.volume),
-      }));
-      onOpen({ id: `market:${category}:${symbol}`, name: `${symbol} · Bybit`, candles });
-      setOpen(false);
-      void message.success(`Открыто ${candles.length} свечей`);
+      void message.success(`История ${item.symbol} удалена`);
+      onDeleted?.(datasetId);
+      await refresh();
     } catch (error) {
       void message.error(error instanceof Error ? error.message : String(error));
     } finally {
-      setLoading(false);
+      setRemoving(null);
     }
+  };
+
+  const askRemoveHistory = (item: CatalogItem) => {
+    const datasetId = `market:${item.category}:${item.symbol}`;
+    const size = formatBytes(item.bytes);
+    const span = `${formatDate(item.from)} — ${formatDate(item.to - 1)}`;
+    confirmDelete({
+      title: `Удалить историю ${item.symbol}?`,
+      content: datasetId === activeDatasetId
+        ? `${span}, ${item.candles.toLocaleString()} свечей, ${size}. Этот рынок сейчас открыт в плеере — догрузка свечей перестанет работать. Скачать заново можно в любой момент.`
+        : `${span}, ${item.candles.toLocaleString()} свечей, ${size}. Скачать заново можно в любой момент.`,
+      okText: "Удалить",
+      onConfirm: () => void removeHistory(item),
+    });
   };
 
   const download = async () => {
@@ -152,7 +161,7 @@ export function HistoryManager({ onOpen, iconOnly = false }: HistoryManagerProps
           eventSourceRef.current = null;
           setLoading(false);
           void refresh();
-          void openRange(values.category, symbol, from, to);
+          openMarket(values.category, symbol);
         } else if (next.status === "failed") {
           source.close();
           eventSourceRef.current = null;
@@ -182,20 +191,30 @@ export function HistoryManager({ onOpen, iconOnly = false }: HistoryManagerProps
       render: (_value, item) => `${formatDate(item.from)} — ${formatDate(item.to - 1)}`,
     },
     { title: "5m свечей", dataIndex: "candles", render: (value: number) => value.toLocaleString() },
-    { title: "Размер", dataIndex: "bytes", render: (value: number) => `${(value / 1_024 / 1_024).toFixed(1)} MB` },
+    { title: "Размер", dataIndex: "bytes", render: formatBytes },
     {
       title: "",
       align: "right",
       render: (_value, item) => (
-        <Button
-          type="primary"
-          ghost
-          className="history-open-btn"
-          icon={<BarChart3 size={14} />}
-          onClick={() => void openRange(item.category, item.symbol, item.from, item.to)}
-        >
-          Открыть
-        </Button>
+        <Space size={6}>
+          <Button
+            type="primary"
+            ghost
+            className="history-open-btn"
+            icon={<BarChart3 size={14} />}
+            onClick={() => openMarket(item.category, item.symbol)}
+          >
+            Открыть
+          </Button>
+          <Button
+            danger
+            type="text"
+            aria-label={`Удалить историю ${item.symbol}`}
+            icon={<Trash2 size={15} />}
+            loading={removing === `market:${item.category}:${item.symbol}`}
+            onClick={() => askRemoveHistory(item)}
+          />
+        </Space>
       ),
     },
   ];

@@ -367,11 +367,14 @@ export function PlayerPage() {
     });
   }, [changeTimeframe, cur?.time, getPlayheadTime, loadCandlesAroundTime, setPlaying, setState]);
   const handleMarketOpen = useCallback((market: Dataset) => {
-    candleCacheRef.current.set(market.id, market.candles);
+    // История открывает рынок без свечей: окно подтянет useActiveMarketCandles.
+    // Пустой массив в кеш класть нельзя — хук считает любую запись готовыми
+    // данными и на пустой показал бы голый график вместо загрузки.
+    if (market.candles.length) candleCacheRef.current.set(market.id, market.candles);
     void refreshCatalog();
     setDataset(market.id);
     setState((current) => ({ ...current, lastDatasetId: market.id }));
-    setIdx(Math.min(REPLAY_START_BAR_INDEX, market.candles.length - 1));
+    setIdx(REPLAY_START_BAR_INDEX);
   }, [refreshCatalog, setIdx, setState]);
   return (
     <div className="app" ref={appRef}>
@@ -469,6 +472,8 @@ export function PlayerPage() {
             datasetCandleCount={datasetCandleCount}
             startJumpPending={startJumpPending}
             onMarketOpen={handleMarketOpen}
+            activeDatasetId={dataset}
+            onHistoryDeleted={() => void refreshCatalog()}
             onStartAction={handleStartAction}
             onReset={reset}
             onPlayingChange={setPlaying}
