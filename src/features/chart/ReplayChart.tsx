@@ -56,8 +56,11 @@ const toVolumeData = (candle: Candle): HistogramData<UTCTimestamp> => ({
  * наперёд. Ширина остаётся той же, окно просто сдвигается вправо.
  */
 const FOCUS_RANGE_BARS = 100;
+const FOCUS_RANGE_LOOKBACK = 80;
 const defaultFocusRange = (barIndex: number) => {
-  const from = Math.max(-2, barIndex - 80);
+  // Ноль, а не отрицательное: за левым краем свечей нет, и уход в минус давал
+  // пустую полосу слева, из-за которой первая свеча висела в воздухе.
+  const from = Math.max(0, barIndex - FOCUS_RANGE_LOOKBACK);
   return { from, to: from + FOCUS_RANGE_BARS } as LogicalRange;
 };
 

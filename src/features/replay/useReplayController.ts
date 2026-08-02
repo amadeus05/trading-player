@@ -1,6 +1,6 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { Candle } from "../../types";
-import { DEFAULT_TIMEFRAME_MINUTES } from "../../shared/config/simulation";
+import { DEFAULT_TIMEFRAME_MINUTES, REPLAY_START_BAR_INDEX } from "../../shared/config/simulation";
 import { aggregateCandles, inferCandleTimeframeMinutes } from "../../shared/lib/market";
 
 interface UseReplayControllerOptions {
@@ -51,7 +51,7 @@ export function useReplayController({
   initialTimeframe = DEFAULT_TIMEFRAME_MINUTES,
 }: UseReplayControllerOptions) {
   const [timeframe, setTimeframe] = useState(initialTimeframe);
-  const [index, setIndex] = useState(120);
+  const [index, setIndex] = useState(REPLAY_START_BAR_INDEX);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [selectingStart, setSelectingStart] = useState(false);
@@ -332,7 +332,7 @@ export function useReplayController({
   const step = () => advanceRef.current();
   const reset = () => {
     setPlaying(false);
-    const next = Math.min(120, lastIndex);
+    const next = Math.min(REPLAY_START_BAR_INDEX, lastIndex);
     commitPlayhead(next);
     setIndex(next);
   };

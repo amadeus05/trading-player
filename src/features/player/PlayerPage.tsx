@@ -10,7 +10,7 @@ import { AppHeader } from "../../widgets/AppHeader";
 import { PlayerToolbar } from "../../widgets/PlayerToolbar";
 import { DrawingToolsRail, DRAWING_TOOL_SHORTCUTS } from "../../widgets/DrawingToolsRail";
 import { TradingSidebar } from "../trading/TradingSidebar";
-import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SIMULATION_SETTINGS } from "../../shared/config/simulation";
+import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SIMULATION_SETTINGS, REPLAY_START_BAR_INDEX } from "../../shared/config/simulation";
 import { formatMarketPair, formatTimeframe, getMarketAssets, inferPricePrecision } from "../../shared/lib/market";
 import { usePersistedPlayerState } from "./usePersistedPlayerState";
 import { useChartFullscreen } from "./useChartFullscreen";
@@ -369,7 +369,7 @@ export function PlayerPage() {
     void refreshCatalog();
     setDataset(market.id);
     setState((current) => ({ ...current, lastDatasetId: market.id }));
-    setIdx(Math.min(120, market.candles.length - 1));
+    setIdx(Math.min(REPLAY_START_BAR_INDEX, market.candles.length - 1));
   }, [refreshCatalog, setIdx, setState]);
   return (
     <div className="app" ref={appRef}>
@@ -390,7 +390,7 @@ export function PlayerPage() {
             onDatasetChange={(nextDataset) => {
               setDataset(nextDataset);
               setState((current) => ({ ...current, lastDatasetId: nextDataset }));
-              setIdx(120);
+              setIdx(REPLAY_START_BAR_INDEX);
             }}
             onTimeframeChange={handleTimeframeChange}
             chartFullscreenActive={chartFullscreenActive}
