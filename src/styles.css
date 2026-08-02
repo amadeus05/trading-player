@@ -2496,6 +2496,15 @@ aside {
   align-items: stretch;
 }
 
+/* Почему Long/Short недоступны — иначе кнопки гаснут молча. */
+.tradeBlockReason {
+  margin: -18px 0 20px;
+  color: #7b8497;
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: center;
+}
+
 .tradeBtns > * {
   min-width: 0;
   width: 100%;

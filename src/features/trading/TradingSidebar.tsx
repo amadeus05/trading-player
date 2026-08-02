@@ -137,7 +137,6 @@ export function TradingSidebar({
     setTakeProfit: onTakeProfitChange,
     setStopLoss: onStopLossChange,
   } = orderForm;
-  const orderActionsDisabled = !currentCandle || editingTradeId != null;
   const riskText = riskStats
     ? `${formatNumber(riskStats.riskAmount)} ${quoteAsset} (${riskStats.riskPct.toFixed(2)}%)`
     : "—";
@@ -145,6 +144,23 @@ export function TradingSidebar({
     ? `${formatNumber(riskStats.rewardAmount)} ${quoteAsset} (${riskStats.rewardPct.toFixed(2)}%)`
     : "—";
   const insufficientMargin = ticketMargin > accountStats.availableBalance + 0.000001;
+  /**
+   * Пустой тикет. createOrder отклоняет orderValue <= 0 как invalid-size, но
+   * кнопки об этом не знали: на нуле проверка маржи проходит (0 > available —
+   * ложь), кнопки разблокировались, и нажатие отвечало «Проверьте цену и размер
+   * заявки» вместо того, чтобы не пускать сразу.
+   */
+  const emptyTicket = !(ticketMargin > 0) || !(ticketQuantity > 0);
+  /** Одна причина на все блокировки — чтобы кнопки не гасли молча. */
+  const orderBlockReason = !currentCandle
+    ? "Нет текущей свечи"
+    : editingTradeId != null
+      ? "Идёт редактирование сделки"
+      : emptyTicket
+        ? "Укажите размер заявки"
+        : insufficientMargin
+          ? `Нужно ${formatNumber(ticketMargin)} ${quoteAsset}, доступно ${formatNumber(accountStats.availableBalance)} ${quoteAsset}`
+          : null;
   const riskAboveLimit = riskStats != null && riskStats.riskPct > 2;
   const limitStatus = insufficientMargin ? "No margin" : riskSizingCapped ? "Capped" : riskAboveLimit ? "Above 2%" : "OK";
   const limitStatusClass = insufficientMargin || riskSizingCapped || riskAboveLimit ? "warn" : "ok";
@@ -320,7 +336,7 @@ export function TradingSidebar({
           className="long"
           label="Long"
           orderDraftSide={orderDraftSide}
-          disabled={orderActionsDisabled || insufficientMargin}
+          disabled={orderBlockReason != null}
           takeProfit={takeProfit}
           stopLoss={stopLoss}
           onBeginOrderDraft={onBeginOrderDraft}
@@ -332,7 +348,7 @@ export function TradingSidebar({
           className="short"
           label="Short"
           orderDraftSide={orderDraftSide}
-          disabled={orderActionsDisabled || insufficientMargin}
+          disabled={orderBlockReason != null}
           takeProfit={takeProfit}
           stopLoss={stopLoss}
           onBeginOrderDraft={onBeginOrderDraft}
@@ -340,6 +356,7 @@ export function TradingSidebar({
           onPlaceOrder={onPlaceOrder}
         />
       </div>
+      {orderBlockReason && <div className="tradeBlockReason">{orderBlockReason}</div>}
       <div className="sideTitle">ПОЗИЦИИ И ЗАЯВКИ</div>
       {workingTrades.length ? workingTrades.map((trade) => {
         const unrealizedPnl = currentCandle && trade.status === "OPEN"
