@@ -169,6 +169,11 @@ export function createEditableLabelStore(options: EditableLabelStoreOptions): Ed
 
   function startEdit(id: string) {
     if (!options.canEdit(id)) return;
+    // Уже редактируем этот лейбл — выходим. Второй клик двойного клика снова
+    // звал бы startEdit, а тот через два кадра ставит схлопнутую каретку и тем
+    // самым убивал выделение слова, которое браузер только что сделал. По той
+    // же причине не работало и тройное нажатие «выделить всё».
+    if (editingId === id) return;
     if (editingId && editingId !== id) commitEdit(editingId);
     options.onBeforeEdit?.(id);
     const el = labels.get(id) ?? build(id);
