@@ -79,9 +79,16 @@ export function createSelectionController<T>(options: SelectionControllerOptions
     }
     selectedId = id;
     options.onChange?.(id);
+    const element = options.getSelectionElement?.(id) ?? null;
+    // Выделенную фигуру поднимаем наверх своего слоя. В SVG событие достаётся
+    // верхнему элементу, а порядок там — порядок создания. Поэтому на участке
+    // перекрытия хватать начинало ту фигуру, что нарисована позже, даже если
+    // выделена была нижняя: кликаешь по выделенной — тянется соседняя.
+    // Обрезка не теряется, она задана атрибутом clip-path на самой группе.
+    if (element?.parentNode) element.parentNode.appendChild(element);
     const item = options.findById(id);
     if (item) options.onShow(item);
-    options.manager.activateSelection(options.kind, options.getSelectionElement?.(id) ?? null, id);
+    options.manager.activateSelection(options.kind, element, id);
     options.syncAll();
   }
 
