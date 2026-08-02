@@ -131,6 +131,24 @@ export class ParquetCandleStore implements CandleRepository {
     return rows.map((r) => ({ openTime:Number(r.open_time), open:Number(r.open), high:Number(r.high), low:Number(r.low), close:Number(r.close), volume:Number(r.volume), turnover:Number(r.turnover) }));
   }
 
+  /**
+   * Сносим папку символа целиком, а не только её 5m: иначе от удалённого рынка
+   * остаётся пустой каталог, который потом мозолит глаза при обходе в catalog().
+   * Категория проверена по белому списку, символ — по SYMBOL_PATTERN, так что
+   * в путь не проберётся ни "..", ни разделитель.
+   */
+  async remove(category: MarketCategory, symbol: string): Promise<boolean> {
+    const dir = resolve(this.root, "bybit", category, symbol);
+    if (!existsSync(dir)) return false;
+    // Без ретраев намеренно: на Windows DuckDB держит parquet открытым после
+    // любого чтения (в том числе после обхода каталога), и Windows запрещает
+    // такой файл и удалять, и переименовывать — rm падает с EPERM. Ретраи лишь
+    // растягивают отказ на десятки секунд, а закрытие раннера, чтобы отпустить
+    // хендлы, само виснет. Пусть падает быстро и с понятной ошибкой.
+    await rm(dir, { recursive: true, force: true });
+    return true;
+  }
+
   async catalog():Promise<Array<{category:MarketCategory;symbol:string;from:number;to:number;candles:number;bytes:number}>>{
     const bybit=join(this.root,"bybit");if(!existsSync(bybit))return [];
     const result:Array<{category:MarketCategory;symbol:string;from:number;to:number;candles:number;bytes:number}>=[];

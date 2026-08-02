@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BybitKlineClient } from "./infrastructure/BybitKlineClient.js";
-import { ParquetCandleStore } from "./infrastructure/ParquetCandleStore.js";
+import { BinaryCandleStore } from "./infrastructure/BinaryCandleStore.js";
 import { RangePlanner } from "./application/RangePlanner.js";
 import { CandleValidator } from "./application/CandleValidator.js";
 import { MarketDataService } from "./application/MarketDataService.js";
@@ -37,10 +37,14 @@ app.put("/api/state", (req, res) => {
  * вообще не касается и отвечает немедленно.
  */
 async function bootstrap() {
-  const parquetStore = new ParquetCandleStore(join(dataRoot, "market"));
-  const storeReady = parquetStore.init();
+  // Хранилище подменяется одной строкой: обе реализации закрыты портом
+  // CandleRepository, и ни сервис, ни контроллер, ни клиент о ней не знают.
+  // Откат на parquet — вернуть ParquetCandleStore: оба формата лежат рядом в
+  // одной папке символа, parquet файлами YYYY-MM.parquet, бинарь — YYYY.bin.
+  const candleStore = new BinaryCandleStore(join(dataRoot, "market"));
+  const storeReady = candleStore.init();
   const marketService = new MarketDataService(
-    new BybitKlineClient(), parquetStore, new RangePlanner(), new CandleValidator(), 8,
+    new BybitKlineClient(), candleStore, new RangePlanner(), new CandleValidator(), 8,
   );
   const jobs = new DownloadJobManager(marketService);
   let ready = false;

@@ -6,4 +6,6 @@ export interface CandleRepository {
   write(category: MarketCategory, symbol: string, candles: Candle[]): Promise<void>;
   read(category: MarketCategory, symbol: string, timeframe: Timeframe, from: number, to: number): Promise<Candle[]>;
   catalog(): Promise<Array<{category:MarketCategory;symbol:string;from:number;to:number;candles:number;bytes:number}>>;
+  /** Удаляет всю историю символа. false — если удалять было нечего. */
+  remove(category: MarketCategory, symbol: string): Promise<boolean>;
 }
