@@ -7,7 +7,7 @@ import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { ParallelChannel } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
-import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
+import { getNewDrawingStyle } from "../shared/drawingTemplates";
 import { attachManagedDrawingLifecycle, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import { createDrawingOverlay } from "../shared/overlay";
 import { createDrawingSession, drawingPointFromClick } from "../shared/drawingSession";
@@ -787,7 +787,7 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       const p1px = toPixel(point1);
       const p2px = toPixel(point2);
       const widthPoint = p1px && p2px ? widthPointFromPixels(p1px, p2px, cursor) : null;
-      const tpl = getDefaultDrawingTemplateState("parallelchannel");
+      const tpl = getNewDrawingStyle("parallelchannel");
       const newChannel: ParallelChannel = {
         id: crypto.randomUUID(),
         datasetId,

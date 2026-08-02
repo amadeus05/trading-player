@@ -679,10 +679,11 @@ main {
   box-shadow: none;
   font: 500 14px/1 system-ui, sans-serif;
   text-align: center;
-  /* Подпись обрезается краем прямоугольника, а не переносится: при сжатии буквы
-     уходят по одной, как в TradingView. С переносом текст вместо этого множил
-     строки, упирался в высоту и пропадал целиком. */
-  white-space: nowrap;
+  /* Текст переносится по ширине коробки, как в TradingView: длинная подпись
+     уходит на следующую строку, а не тянется за край. Что не поместилось по
+     высоте — обрезается, поэтому при сжатии подпись тает постепенно. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   overflow: hidden;
   pointer-events: all;
   cursor: text;

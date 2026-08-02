@@ -27,8 +27,13 @@ export interface DrawingTemplate {
   createdAt: number;
 }
 
+/** Оформление без содержимого: то, что переносится на следующую фигуру. */
+export type DrawingStyleState = Omit<DrawingTemplateState, "text" | "showLabel">;
+
 interface DrawingTemplatesStore {
   templates: DrawingTemplate[];
+  /** Последнее выбранное оформление по каждому типу фигуры. */
+  lastStyles: Partial<Record<DrawingTemplateKind, Partial<DrawingStyleState>>>;
 }
 
 const STORAGE_KEY = "player:drawing-templates";
@@ -46,10 +51,12 @@ const DEFAULTS: Record<DrawingTemplateKind, DrawingTemplateState> = {
     style: "solid",
   },
   rectangle: {
-    lineColor: "#ff2727",
-    fillColor: "#2962ff",
+    lineColor: "#00c853",
+    // Тёмный из первого ряда палитры: заливка почти сливается с графиком и не
+    // мешает читать свечи внутри зоны, а границу держит цветная рамка.
+    fillColor: "#131722",
     fillOpacity: 20,
-    textColor: "#2962ff",
+    textColor: "#ffffff",
     width: 2,
     style: "solid",
   },
@@ -73,14 +80,19 @@ const DEFAULTS: Record<DrawingTemplateKind, DrawingTemplateState> = {
 };
 
 function readStore(): DrawingTemplatesStore {
+  const empty: DrawingTemplatesStore = { templates: [], lastStyles: {} };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { templates: [] };
-    const parsed = JSON.parse(raw) as DrawingTemplatesStore;
-    if (!Array.isArray(parsed.templates)) return { templates: [] };
-    return { templates: parsed.templates };
+    if (!raw) return empty;
+    const parsed = JSON.parse(raw) as Partial<DrawingTemplatesStore>;
+    if (!Array.isArray(parsed.templates)) return empty;
+    return {
+      templates: parsed.templates,
+      // Ключ появился позже шаблонов — у прежних пользователей его в хранилище нет.
+      lastStyles: parsed.lastStyles ?? {},
+    };
   } catch {
-    return { templates: [] };
+    return empty;
   }
 }
 
@@ -88,8 +100,42 @@ function writeStore(store: DrawingTemplatesStore): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
 }
 
+/** Заводское оформление. Им же отвечает пункт «Применить шаблон по умолчанию». */
 export function getDefaultDrawingTemplateState(kind: DrawingTemplateKind): DrawingTemplateState {
   return { ...DEFAULTS[kind] };
+}
+
+/**
+ * Оформление для новой фигуры: последнее выбранное, а поверх него заводское для
+ * всего, что пользователь не трогал.
+ *
+ * Выбрал красную пунктирную линию — следующие такие же, пока не поменяешь.
+ * Раньше каждая новая фигура начиналась с заводских настроек, и оформление
+ * приходилось назначать заново.
+ */
+export function getNewDrawingStyle(kind: DrawingTemplateKind): DrawingTemplateState {
+  return { ...DEFAULTS[kind], ...readStore().lastStyles[kind] };
+}
+
+/**
+ * Запоминает оформление, выбранное в панели. Содержимое сюда не попадает:
+ * текст и признак показа подписи принадлежат конкретной фигуре, а блокировка —
+ * это состояние, а не стиль, и переносить их на следующие фигуры нельзя.
+ */
+export function rememberDrawingStyle(
+  kind: DrawingTemplateKind,
+  patch: Partial<DrawingStyleState>,
+): void {
+  const keys = ["lineColor", "fillColor", "fillOpacity", "textColor", "width", "style"] as const;
+  const next: Partial<DrawingStyleState> = {};
+  for (const key of keys) {
+    const value = patch[key];
+    if (value !== undefined) (next as Record<string, unknown>)[key] = value;
+  }
+  if (!Object.keys(next).length) return;
+  const store = readStore();
+  store.lastStyles[kind] = { ...store.lastStyles[kind], ...next };
+  writeStore(store);
 }
 
 export function listDrawingTemplates(kind: DrawingTemplateKind): DrawingTemplate[] {

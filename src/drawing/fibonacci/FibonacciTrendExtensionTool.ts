@@ -7,7 +7,7 @@ import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { FibonacciTrendExtension } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
-import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
+import { getNewDrawingStyle } from "../shared/drawingTemplates";
 import { attachManagedDrawingLifecycle, attachScaleInteractionSync, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import type { DrawingLineStyle } from "../shared/DrawingToolbar";
 import { createDrawingOverlay } from "../shared/overlay";
@@ -889,7 +889,7 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     },
     ghostRemove: clearGhost,
     commit: ([point1, point2, point3]) => {
-      const tpl = getDefaultDrawingTemplateState("fibtrendext");
+      const tpl = getNewDrawingStyle("fibtrendext");
       const newFib: FibonacciTrendExtension = {
         id: crypto.randomUUID(),
         datasetId,

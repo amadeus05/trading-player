@@ -6,7 +6,7 @@ import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { Rectangle } from "../../types";
 import { pointToPixel, snapXToNearestCandle, timeToX, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
-import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
+import { getNewDrawingStyle } from "../shared/drawingTemplates";
 import { attachManagedDrawingLifecycle, createClipboardBridge, getPlotWidth, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import { createDrawingOverlay } from "../shared/overlay";
 import { forgetFloatingPanelPosition } from "../shared/floatingPanel";
@@ -22,6 +22,16 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 
 /** Высота строки подписи (font: 14px/1) плюс пара пикселей на засечки. */
 const LABEL_MIN_HEIGHT = 16;
+
+/**
+ * Ниже этой видимой ширины подпись не рисуем.
+ *
+ * Не порог «красиво / некрасиво», а защита от вырождения: когда фигура почти
+ * целиком ушла за левый край, от неё остаётся полоска в пару пикселей. Перенос
+ * «где угодно» ставит тогда каждую букву на свою строку, и вместо подписи
+ * получается столбик символов во всю высоту графика.
+ */
+const LABEL_MIN_WIDTH = 24;
 
 type HandlePos = "tl" | "tc" | "tr" | "ml" | "mr" | "bl" | "bc" | "br";
 const HANDLE_POSITIONS: HandlePos[] = ["tl", "tc", "tr", "ml", "mr", "bl", "bc", "br"];
@@ -339,7 +349,22 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     const visibleBounds = clampHorizontalBounds(safe);
     el.style.left = `${visibleBounds.x + visibleBounds.w / 2}px`;
     el.style.top = `${visibleBounds.y + visibleBounds.h / 2}px`;
-    el.style.width = `${Math.max(1, visibleBounds.w)}px`;
+    // Пустая подсказка занимает только себя. Растянутая на всю фигуру, она
+    // перехватывала клики по всей её площади, и взяться за прямоугольник, чтобы
+    // перетащить, было негде. Настоящий текст, наоборот, должен знать ширину
+    // блока: по ней он переносится и по ней же обрезается.
+    const hasText = Boolean(rect.text?.trim());
+    if (hasText || labelStore.isEditing(rect.id)) {
+      el.style.width = `${Math.max(1, visibleBounds.w)}px`;
+      // Высоту ограничиваем коробкой, иначе обрезать нечего: лейбл рос под
+      // текст, и длинная подпись вылезала за прямоугольник вверх и вниз. Именно
+      // max-height, а не height: пока текста мало, коробка остаётся по тексту и
+      // подпись стоит по центру фигуры; переросла — упирается в границу.
+      el.style.maxHeight = `${Math.max(1, visibleBounds.h)}px`;
+    } else {
+      el.style.width = "auto";
+      el.style.maxHeight = "none";
+    }
     el.style.transform = "translate(-50%, -50%)";
 
     const state = labelStore.syncContent(rect.id, selected);
@@ -351,12 +376,11 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       el.style.display = "none";
       return;
     }
-    // По ширине не прячем вовсе: текст обрезается краем коробки, как в
-    // TradingView, — буквы уходят по одной по мере сжатия. По высоте прячем
-    // только когда не помещается сама строка: прежний порог 70×28 убирал
-    // подпись задолго до этого, и при отдалении графика текст пропадал целиком,
-    // хотя места под него ещё хватало.
-    el.style.display = safe.h >= LABEL_MIN_HEIGHT ? "" : "none";
+    // Прячем только в вырожденных случаях: когда не помещается сама строка по
+    // высоте и когда от фигуры осталась полоска у края экрана. Прежний порог
+    // 70×28 убирал подпись задолго до этого, и при отдалении графика текст
+    // пропадал целиком, хотя места под него ещё хватало.
+    el.style.display = safe.h >= LABEL_MIN_HEIGHT && visibleBounds.w >= LABEL_MIN_WIDTH ? "" : "none";
   }
 
   function applyPixelBounds(els: RectEls, b: PixelBounds, rect: Rectangle, selected: boolean) {
@@ -504,13 +528,18 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
   function createGhostEls(): GhostEls {
     const group = document.createElementNS(SVG_NS, "g");
     group.setAttribute("class", "rect-ghost");
+    // Призрак рисуется тем же оформлением, что получит готовая фигура. Раньше
+    // здесь стояли заводские цвета, и при протяжке ты видел синий с красным, а
+    // после отпускания фигура превращалась в выбранный тобой стиль.
+    const tpl = getNewDrawingStyle("rectangle");
     const fill = document.createElementNS(SVG_NS, "rect");
     fill.setAttribute("pointer-events", "none");
-    fill.setAttribute("fill", hexToRgba("#2962ff", 20));
+    fill.setAttribute("fill", hexToRgba(tpl.fillColor ?? "#2962ff", tpl.fillOpacity ?? 20));
     const border = document.createElementNS(SVG_NS, "rect");
     border.setAttribute("fill", "none");
-    border.setAttribute("stroke", "#ff2727");
-    border.setAttribute("stroke-width", "2");
+    border.setAttribute("stroke", tpl.lineColor);
+    border.setAttribute("stroke-width", String(tpl.width));
+    border.setAttribute("stroke-dasharray", strokeDash(tpl.style));
     border.setAttribute("pointer-events", "none");
     const handles = HANDLE_POSITIONS.map((pos) => {
       const handle = document.createElementNS(SVG_NS, "circle");
@@ -572,7 +601,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       return !(p1 && p2 && Math.abs(p2.x - p1.x) <= 5 && Math.abs(p2.y - p1.y) <= 5);
     },
     commit: ([point1, point2]) => {
-      const tpl = getDefaultDrawingTemplateState("rectangle");
+      const tpl = getNewDrawingStyle("rectangle");
       const newRect: Rectangle = {
         id: crypto.randomUUID(),
         datasetId,

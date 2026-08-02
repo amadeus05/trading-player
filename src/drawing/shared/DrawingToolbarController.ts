@@ -3,6 +3,7 @@ import { createDrawingToolbar, drawingStyleIcon, toolbarLockIcon, type DrawingLi
 import {
   deleteDrawingTemplate,
   getDefaultDrawingTemplateState,
+  rememberDrawingStyle,
   listDrawingTemplates,
   saveDrawingTemplate,
   type DrawingTemplateKind,
@@ -329,6 +330,9 @@ export class DrawingToolbarController<T> {
 
   private patchDrawing(drawing: T, patch: DrawingToolbarPatch): void {
     this.options.onPatch(drawing, patch);
+    // Выбор в панели становится оформлением по умолчанию для следующих фигур
+    // этого типа — как в TradingView. Содержимое и блокировка отсеиваются внутри.
+    rememberDrawingStyle(this.options.templateKind, patch);
     this.currentState = {
       ...(this.currentState ?? this.options.getState(drawing)),
       ...patch,

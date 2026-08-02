@@ -8,7 +8,7 @@ import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { TrendLine } from "../../types";
 import { logicalToCoordinateFloat, pointToPixel, snapXToNearestCandle, timeToLogical, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
-import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
+import { getNewDrawingStyle } from "../shared/drawingTemplates";
 import { lineLabelLayout } from "../shared/lineLabelLayout";
 import { createTrendLineExtendSlots } from "./trendLineToolbarSlots";
 import { createDrawingOverlay } from "../shared/overlay";
@@ -595,6 +595,12 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       if (!ghostLine) {
         ghostLine = document.createElementNS(SVG_NS, "line");
         ghostLine.setAttribute("class", "trend-ghost-line");
+        // Цвет и толщина — от того оформления, которое получит готовая линия.
+        // В классе лежат заводские, и при протяжке ты видел не свой стиль.
+        // Пунктир призрака оставляем: он отличает «ещё рисую» от готовой фигуры.
+        const tpl = getNewDrawingStyle("trendline");
+        ghostLine.setAttribute("stroke", tpl.lineColor);
+        ghostLine.setAttribute("stroke-width", String(tpl.width));
         svg.appendChild(ghostLine);
       }
       const p1 = toPixel(points[0]) ?? cursor;
@@ -608,7 +614,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       ghostLine = null;
     },
     commit: ([point1, point2]) => {
-      const tpl = getDefaultDrawingTemplateState("trendline");
+      const tpl = getNewDrawingStyle("trendline");
       const newLine: TrendLine = {
         id: crypto.randomUUID(),
         datasetId,

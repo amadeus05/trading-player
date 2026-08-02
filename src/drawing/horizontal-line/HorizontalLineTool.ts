@@ -2,7 +2,7 @@ import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { HorizontalLine } from "../../types";
 import { DrawingToolbarController, type DrawingToolbarPatch } from "../shared/DrawingToolbarController";
 import { bindDrawingPointerClick } from "../shared/drawingPointerClick";
-import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
+import { getNewDrawingStyle } from "../shared/drawingTemplates";
 import {
   attachManagedDrawingLifecycle,
   createClipboardBridge,
@@ -260,7 +260,7 @@ export function attachHorizontalLineTool(opts: ManagedDrawingToolOptions & {
       const bounds = container.getBoundingClientRect();
       const price = series.coordinateToPrice(sourceEvent.clientY - bounds.top);
       if (price == null || price <= 0) return;
-      const template = getDefaultDrawingTemplateState("horizontalline");
+      const template = getNewDrawingStyle("horizontalline");
       const created: HorizontalLine = {
         id: crypto.randomUUID(),
         datasetId,

@@ -6,7 +6,7 @@ import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { FibonacciRetracement } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
-import { getDefaultDrawingTemplateState } from "../shared/drawingTemplates";
+import { getNewDrawingStyle } from "../shared/drawingTemplates";
 import { attachManagedDrawingLifecycle, attachScaleInteractionSync, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import type { DrawingLineStyle } from "../shared/DrawingToolbar";
 import { createDrawingOverlay } from "../shared/overlay";
@@ -669,7 +669,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     },
     ghostRemove: clearGhost,
     commit: ([point1, point2]) => {
-      const tpl = getDefaultDrawingTemplateState("fibonacci");
+      const tpl = getNewDrawingStyle("fibonacci");
       const newFib: FibonacciRetracement = {
         id: crypto.randomUUID(),
         datasetId,
