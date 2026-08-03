@@ -354,6 +354,13 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     }),
     syncAll,
     isDragActive: () => dragActive,
+    // Отмена и повтор подменяют коллекцию снаружи. Сбрасываем своё и заливаем
+    // новое — график при этом не пересоздаётся и положение не теряется.
+    replaceAll: (items) => {
+      purgeAllFib();
+      fibonacciTrendExtensions = (items as FibonacciTrendExtension[]).map((item) => ({ ...item }));
+      syncAll();
+    },
     onDeselect: () => selection.handleManagerDeselect(),
     purgeAll: purgeAllFib,
   });

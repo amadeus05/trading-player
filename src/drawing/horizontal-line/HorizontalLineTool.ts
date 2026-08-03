@@ -247,6 +247,13 @@ export function attachHorizontalLineTool(opts: ManagedDrawingToolOptions & {
     }),
     syncAll,
     isDragActive: () => dragActive,
+    // Отмена и повтор подменяют коллекцию снаружи. Сбрасываем своё и заливаем
+    // новое — график при этом не пересоздаётся и положение не теряется.
+    replaceAll: (items) => {
+      purgeAll();
+      lines = (items as HorizontalLine[]).map((item) => ({ ...item }));
+      syncAll();
+    },
     onDeselect: () => selection.handleManagerDeselect(),
     purgeAll,
   });

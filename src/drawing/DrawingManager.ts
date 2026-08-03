@@ -38,6 +38,7 @@ export class DrawingManager {
   private deselectByKind = new Map<DrawingSelectionKind, () => void>();
   private bridgesByKind = new Map<DrawingSelectionKind, DrawingSelectionBridge>();
   private purgeByKind = new Map<DrawingSelectionKind, () => void>();
+  private replaceByKind = new Map<DrawingSelectionKind, (items: unknown[]) => void>();
   private overlaySyncById = new Map<symbol, () => void>();
   private modeChangeListeners = new Set<(mode: DrawingMode) => void>();
   private overlayLoopTokens = new Set<symbol>();
@@ -138,6 +139,27 @@ export class DrawingManager {
         this.purgeByKind.delete(kind);
       }
     };
+  }
+
+  /**
+   * Подмена коллекции снаружи — для отмены и повтора.
+   *
+   * Инструмент получает свои фигуры снимком при подключении, поэтому раньше
+   * единственным способом донести до него отменённое состояние было пересоздать
+   * график целиком. Это стоило потери положения графика на каждый Ctrl+Z.
+   */
+  registerReplaceAll(kind: DrawingSelectionKind, replace: (items: unknown[]) => void): () => void {
+    this.replaceByKind.set(kind, replace);
+    return () => {
+      if (this.replaceByKind.get(kind) === replace) {
+        this.replaceByKind.delete(kind);
+      }
+    };
+  }
+
+  replaceAll(kind: DrawingSelectionKind, items: unknown[]): void {
+    this.clearSelection(kind);
+    this.replaceByKind.get(kind)?.(items);
   }
 
   /** Removes every drawing on the chart (local overlay state + persisted collections). */
