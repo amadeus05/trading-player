@@ -159,12 +159,19 @@ export function ReplayChart({
   const datasetIdRef = useRef(datasetId);
   datasetIdRef.current = datasetId;
   const renderedDatasetId = useRef<string | null>(null);
+  /**
+   * Ждём свечи нового рынка. datasetId меняется раньше данных, поэтому первое
+   * обновление после переключения приходит ещё со свечами прошлой монеты — по
+   * ним нельзя ни подгонять ценовую шкалу, ни запирать её.
+   */
+  const awaitingDatasetData = useRef(false);
   const followRealtime = useRef(true);
   // Заведомо «непринятая» ревизия: на переключении ТФ вверх candles на кадр
   // пустеет, PlayerPage размонтирует график, и все ref'ы сбрасываются. Если
   // считать фокус уже применённым, свежий монтаж уходит в scrollToPosition и
   // липнет к правому краю — вниз окно ставилось, вверх нет. Требуем фокус и на
   // первом монтаже, чтобы рамка была одинаковой в обе стороны.
+  const drawingManagerRef = useRef<DrawingManager | null>(null);
   const appliedFocusRevision = useRef(focusRevision - 1);
   const appliedDrawingRestoreRevision = useRef(drawingRestoreRevision);
   const chartRuntimeRef = useRef<{
@@ -287,6 +294,7 @@ export function ReplayChart({
     const drawingManager = new DrawingManager(ref.current, {
       onDeleteAll: () => callbacksRef.current.drawingActions.deleteAllForDataset(datasetId),
     });
+    drawingManagerRef.current = drawingManager;
     drawingManager.setMode(drawingMode);
     drawingManager.setDrawingsVisible(drawingsVisible);
     const cs = chart.addSeries(CandlestickSeries, {
@@ -329,13 +337,21 @@ export function ReplayChart({
     // but keeps autoScale itself off — lightweight-charts refuses to start a vertical
     // price-axis drag while autoScale is on, so toggling it on/off for follow mode
     // left dragging permanently stuck once follow mode was turned off.
-    const fitPriceScaleToVisible = (force = false) => {
+    /**
+     * explicitRange — рамка, которую мы только что выставили сами.
+     *
+     * Читать её обратно через getVisibleLogicalRange() нельзя: кадр ещё не
+     * прошёл, и график отдаёт ПРЕЖНИЙ диапазон. На смене монеты это диапазон
+     * прошлого рынка — шкала садилась на случайный кусок новых данных, и
+     * половина графика уходила за экран, пока не отмасштабируешь вручную.
+     */
+    const fitPriceScaleToVisible = (force = false, explicitRange: LogicalRange | null = null) => {
       const all = candleStore.candles;
       if (!all.length) return;
       const now = performance.now();
       // During rapid replay appends, refitting every tick starves pointer input.
       if (!force && now - lastPriceFitAt < 100) return;
-      const logicalRange = chart.timeScale().getVisibleLogicalRange();
+      const logicalRange = explicitRange ?? chart.timeScale().getVisibleLogicalRange();
       let from = 0;
       let to = all.length - 1;
       if (logicalRange) {
@@ -483,9 +499,18 @@ export function ReplayChart({
         savedPriceRange.current = cs.priceScale().getVisibleRange();
         followRealtime.current = shouldFollowRealtime;
         renderedIndex.current = nextIndex;
-        if (followCandleRef.current || datasetChanged) {
+        if (datasetChanged) awaitingDatasetData.current = true;
+        if (awaitingDatasetData.current) {
           // Ценовая шкала прежнего рынка новому не годится: SOL живёт около 150,
-          // BTC около 6500, и со старым диапазоном свечи ушли бы за экран.
+          // ETH около 1800. Держим автомасштаб, пока данные не сменились на самом
+          // деле — по первому времени свечи. Разово подгонять нельзя: подгонка
+          // ставит autoScale: false и запирает диапазон, а на этом шаге свечи ещё
+          // от прошлой монеты либо окно приехало не целиком.
+          if (!datasetChanged && previousVisible.length && nextVisible[0]?.time !== previousVisible[0]?.time) {
+            awaitingDatasetData.current = false;
+          }
+          cs.priceScale().applyOptions({ autoScale: true });
+        } else if (followCandleRef.current) {
           fitPriceScaleToVisible(true);
         } else if (!canAppendOneBar && !forcedRange) {
           primePriceScaleInteraction();
@@ -646,7 +671,7 @@ export function ReplayChart({
         // primePriceScaleInteraction: тот берёт текущий видимый диапазон, а после
         // прыжка автомасштаб пересчитаться ещё не успел — защёлкивался диапазон
         // от прошлой позиции, и график оказывался пустым в чужих ценах.
-        fitPriceScaleToVisible(true);
+        fitPriceScaleToVisible(true, initialRange);
         // Рамка применена на разложенном графике. Сохраняем именно её, а не
         // прочитанное значение, и снимаем флаг — дальше syncViewportState снова
         // следит за реальным диапазоном.
@@ -965,12 +990,38 @@ export function ReplayChart({
       cleanupFibonacciTrendExtensions();
       cleanupParallelChannels();
       cleanupVolumeProfile();
+      drawingManagerRef.current = null;
       drawingManager.destroy();
       chart.remove();
       chartRuntimeRef.current = null;
       if (chartViewportRef) chartViewportRef.current = null;
     };
-  }, [candleInterval, focusRevision, pricePrecision, datasetId, drawingRestoreRevision, chartViewportRef]);
+  }, [candleInterval, focusRevision, pricePrecision, datasetId, chartViewportRef]);
+
+  /**
+   * Отмена и повтор подменяют коллекции целиком. Раньше это доезжало до
+   * инструментов единственным способом — drawingRestoreRevision стоял в
+   * зависимостях эффекта выше, и каждый Ctrl+Z пересоздавал график со всей
+   * потерей положения. Теперь коллекции доносим напрямую, график не трогаем.
+   */
+  const appliedRestoreRef = useRef(drawingRestoreRevision);
+  useLayoutEffect(() => {
+    if (appliedRestoreRef.current === drawingRestoreRevision) return;
+    appliedRestoreRef.current = drawingRestoreRevision;
+    // Держим в курсе и счётчик главного эффекта. Он больше не пересоздаёт
+    // график на отмене, но если оставить его отставать, то следующий его запуск
+    // по другой причине — смена ТФ — счёл бы, что надо восстанавливать вьюпорт.
+    appliedDrawingRestoreRevision.current = drawingRestoreRevision;
+    const manager = drawingManagerRef.current;
+    if (!manager) return;
+    manager.replaceAll("trendline", cloneDatasetItems(drawings.trendLines, datasetId));
+    manager.replaceAll("horizontalline", cloneDatasetItems(drawings.horizontalLines, datasetId));
+    manager.replaceAll("rectangle", cloneDatasetItems(drawings.rectangles, datasetId));
+    manager.replaceAll("fibonacci", cloneDatasetItems(drawings.fibonacciRetracements, datasetId));
+    manager.replaceAll("fibtrendext", cloneDatasetItems(drawings.fibonacciTrendExtensions, datasetId));
+    manager.replaceAll("parallelchannel", cloneDatasetItems(drawings.parallelChannels, datasetId));
+    manager.replaceAll("volumeprofile", cloneDatasetItems(drawings.volumeProfiles, datasetId));
+  }, [drawingRestoreRevision, drawings, datasetId]);
 
   const prevOverlayKeyRef = useRef("");
   useLayoutEffect(() => {
