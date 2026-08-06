@@ -5,7 +5,7 @@ import { aggregateCandles, inferCandleTimeframeMinutes } from "../../shared/lib/
 
 interface UseReplayControllerOptions {
   rawCandles: Candle[];
-  /** 5м-свечи вокруг головы: из них собирается незакрытая свеча текущего ТФ. */
+  /** Базовые свечи вокруг головы: из них собирается незакрытая свеча текущего ТФ. */
   intrabarCandles?: Candle[];
   /** Нужен, чтобы не переносить позицию между разными инструментами. */
   datasetId?: string;
@@ -14,7 +14,7 @@ interface UseReplayControllerOptions {
 }
 
 /**
- * Незакрытая свеча текущего ТФ: собирается только из тех 5м-баров, что уже
+ * Незакрытая свеча текущего ТФ: собирается только из тех базовых баров, что уже
  * проиграны. Без неё переход на старший ТФ показывал бы бакет целиком — стоя в
  * 00:30 на 5м и уйдя на дневку, ты увидел бы хаи и лои всего дня, которых ещё
  * не было.
@@ -123,7 +123,7 @@ export function useReplayController({
   currentEndRef.current = candleEndTime(candles, replayIndex);
 
   // Если голова стоит внутри текущего бакета (пришли с младшего ТФ), показываем
-  // не готовую свечу, а собранную из уже проигранных 5м-баров. Если голова на
+  // не готовую свечу, а собранную из уже проигранных базовых баров. Если голова на
   // конце свечи — она закрыта, подменять нечего.
   const displayCandles = useMemo(() => {
     const base = candles[replayIndex];
@@ -209,30 +209,36 @@ export function useReplayController({
   // компенсируем сдвиг, чтобы текущая свеча осталась той же. Настоящий prepend
   // отличаем от смены датасета/таймфрейма тем, что прежняя первая свеча
   // по-прежнему присутствует в новом массиве на позиции shift.
-  const prevAggregatedRef = useRef<{ datasetId: string; timeframe: number; firstTime: number | null }>({
+  const prevAggregatedRef = useRef<{ datasetId: string; timeframe: number; firstTime: number | null; length: number }>({
     datasetId,
     timeframe,
     firstTime: null,
+    length: 0,
   });
   useEffect(() => {
     const firstTime = candles[0]?.time ?? null;
     const prev = prevAggregatedRef.current;
     const contextChanged = prev.datasetId !== datasetId || prev.timeframe !== timeframe;
-    // Смена инструмента — не prepend. Проверки «прежняя первая свеча нашлась на
-    // позиции shift» для этого мало: свечи выровнены по UTC, поэтому у другой
-    // монеты на той же метке почти наверняка тоже есть свеча. Так переход с SOL
-    // (история с 15 окт 2021) на BTC (с 25 мар 2020) уводил индекс на 163 745
-    // вперёд, и вместо начала открывался кусок графика в середине истории.
-    //
-    // Запоминаем при этом null, а не текущее первое время: свечи нового рынка
-    // приезжают отдельным рендером, и пара «новый датасет + первое время от
-    // старого» на следующем проходе снова выглядела бы настоящим prepend.
-    prevAggregatedRef.current = { datasetId, timeframe, firstTime: contextChanged ? null : firstTime };
+    prevAggregatedRef.current = { datasetId, timeframe, firstTime, length: candles.length };
     if (contextChanged) return;
     if (firstTime == null || prev.firstTime == null || firstTime >= prev.firstTime) return;
     let shift = 0;
     while (shift < candles.length && candles[shift].time < prev.firstTime) shift += 1;
     if (shift === 0 || candles[shift]?.time !== prev.firstTime) return;
+    // Длина обязана вырасти ровно на приписанное слева. Одного «прежняя первая
+    // свеча нашлась на позиции shift» мало: свечи выровнены по UTC, поэтому у
+    // другой монеты на той же метке почти наверняка тоже есть свеча — переход с
+    // SOL (история с 15 окт 2021) на BTC (с 25 мар 2020) уводил индекс на
+    // 163 745 вперёд, и вместо начала открывался кусок графика из середины.
+    // Совпадение же и метки, и длины на чужом наборе неправдоподобно.
+    //
+    // Раньше от этого защищались иначе: на смене контекста писали firstTime
+    // null, и следующий заход обязан был его «съесть», ничего не компенсируя.
+    // Но данные приходят ДО переключения таймфрейма (сначала грузим окно, потом
+    // меняем ТФ), лишнего рендера не остаётся — и null съедала первая настоящая
+    // догрузка. Она оставалась без компенсации, и голова прыгала назад ровно на
+    // приписанные бары.
+    if (candles.length !== prev.length + shift) return;
     setIndex((current) => current + shift);
   }, [candles, datasetId, timeframe]);
 
