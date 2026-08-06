@@ -41,47 +41,6 @@ export async function fetchMarketCatalog(): Promise<MarketCatalogItem[]> {
   return response.json() as Promise<MarketCatalogItem[]>;
 }
 
-interface MarketDownloadJob {
-  id: string;
-  status: string;
-  error?: string;
-}
-
-/**
- * Докачивает диапазон базовых свечей с биржи в локальную базу и ждёт завершения
- * джобы. true — джоба завершилась успешно (в т.ч. если данных за диапазон
- * на бирже нет), false — ошибка или таймаут.
- */
-export async function downloadMarketRange(
-  category: string,
-  symbol: string,
-  fromMs: number,
-  toMs: number,
-  timeoutMs = 120_000,
-): Promise<boolean> {
-  try {
-    const response = await fetch("/api/market/download", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ category, symbol: symbol.toUpperCase(), from: fromMs, to: toMs }),
-    });
-    if (!response.ok) return false;
-    const job = await response.json() as MarketDownloadJob;
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 350));
-      const poll = await fetch(`/api/market/jobs/${job.id}`);
-      if (!poll.ok) return false;
-      const current = await poll.json() as MarketDownloadJob;
-      if (current.status === "completed") return true;
-      if (current.status === "failed") return false;
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
-
 /** Минуты → строка таймфрейма сервера (server/domain/Candle.ts); неизвестное → база. */
 const MINUTES_TO_TIMEFRAME: Record<number, string> = {
   1: "1m", 2: "2m", 3: "3m", 5: "5m", 7: "7m", 10: "10m", 15: "15m", 30: "30m",

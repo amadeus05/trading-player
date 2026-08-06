@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { Candle } from "../../types";
 import {
-  downloadMarketRange,
   fetchMarketCandles,
   parseMarketDatasetId,
   type MarketCatalogItem,
@@ -50,10 +49,6 @@ export function useActiveMarketCandles(
   const intrabarLoadingRef = useRef(false);
   /** Диапазон, покрытый текущим базовым окном (мс). */
   const intrabarCoveredRef = useRef<{ datasetId: string; from: number; to: number } | null>(null);
-  /** datasetId, для которого биржа больше не отдаёт историю левее (дата листинга). */
-  const earlierExhaustedRef = useRef<string | null>(null);
-  /** Левая граница, уже докачанная в базу в этой сессии (каталог обновляется не сразу). */
-  const extendedFromRef = useRef<{ datasetId: string; fromMs: number } | null>(null);
   const parsedDataset = useMemo(() => parseMarketDatasetId(datasetId), [datasetId]);
   const catalogItem = useMemo(() => {
     if (!parsedDataset) return null;
@@ -167,9 +162,17 @@ export function useActiveMarketCandles(
   }, [cacheRef, catalogItem, datasetId, initialTimeframeMinutes, loading, parsedDataset]);
 
   /**
-   * TradingView-подобная догрузка истории влево: пользователь оттащил график
-   * за первую свечу — докачиваем ровно недостающее количество базовых баров
-   * (с Binance, если их ещё нет в базе) и prepend'им в массив.
+   * Ленивая догрузка влево — строго из того, что уже скачано.
+   *
+   * Раньше уход за левый край сам дозаказывал недостающее у биржи. Из-за этого
+   * первая свеча не была первой: протянул график — история молча выросла влево,
+   * и «начало» уезжало при каждом движении. Пока датасет качали с даты листинга,
+   * это не всплывало (слева физически ничего не было), но на любом куске
+   * истории граница поехала.
+   *
+   * Теперь левый край датасета — это то, что скачано, и сам он не двигается.
+   * Нужна история глубже — она заказывается явно, через управление историей.
+   *
    * Возвращает количество добавленных слева свечей.
    */
   const loadEarlier = useCallback(async (displayBarsCount: number): Promise<number> => {
@@ -181,40 +184,15 @@ export function useActiveMarketCandles(
     const tf = inferLoadedTimeframe(candlesRef.current, initialTimeframeMinutes);
     const tfMs = timeframeToMs(tf);
     const toMs = first.time * 1_000; // эксклюзивно: первая уже загруженная свеча
-    let fromMs = toMs - displayBarsCount * tfMs;
-    const knownFromMs = extendedFromRef.current?.datasetId === datasetId
-      ? Math.min(extendedFromRef.current.fromMs, catalogItem.from)
-      : catalogItem.from;
-    // «Истории нет» касается только докачки с биржи (дата листинга); локальные
-    // данные левее текущего окна грузим всегда — обрезаем запрос по известной
-    // левой границе базы вместо полного отказа.
-    if (earlierExhaustedRef.current === datasetId) {
-      fromMs = Math.max(fromMs, knownFromMs);
-      if (fromMs >= toMs) return 0;
-    }
+    const fromMs = Math.max(catalogItem.from, toMs - displayBarsCount * tfMs);
+    if (fromMs >= toMs) return 0;
 
     loadingEarlierRef.current = true;
     setLoadingEarlier(true);
     try {
-      let downloadFailed = false;
-      const needDownload = fromMs < knownFromMs;
-      if (needDownload) {
-        const ok = await downloadMarketRange(parsedDataset.category, parsedDataset.symbol, fromMs, knownFromMs);
-        if (ok) extendedFromRef.current = { datasetId, fromMs };
-        else downloadFailed = true;
-      }
       const rows = await fetchMarketCandles(parsedDataset.category, parsedDataset.symbol, fromMs, toMs, tf);
       const older = rows.filter((row) => row.time < first.time);
-      if (!older.length) {
-        // Докачка прошла, но левее ничего нет — дата листинга; при сетевой
-        // ошибке не помечаем, чтобы следующий пан мог повторить попытку.
-        if (needDownload && !downloadFailed) earlierExhaustedRef.current = datasetId;
-        return 0;
-      }
-      // Биржа отдала не с начала запрошенного диапазона — упёрлись в листинг.
-      if (needDownload && !downloadFailed && older[0].time * 1_000 > fromMs + tfMs) {
-        earlierExhaustedRef.current = datasetId;
-      }
+      if (!older.length) return 0;
       setCandles((current) => {
         const merged = mergeCandles(current, rows);
         cacheRef.current?.set(datasetId, merged);
