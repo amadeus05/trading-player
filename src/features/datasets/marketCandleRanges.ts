@@ -1,10 +1,19 @@
-export const MARKET_CANDLE_INTERVAL_MS = 5 * 60 * 1_000;
-/** Базовый таймфрейм хранилища в минутах — разрешение, мельче которого данных нет. */
-export const BASE_TIMEFRAME_MINUTES = MARKET_CANDLE_INTERVAL_MS / 60_000;
+import { BASE_TIMEFRAME_MINUTES } from "../../shared/config/simulation";
+
+export { BASE_TIMEFRAME_MINUTES };
+export const MARKET_CANDLE_INTERVAL_MS = BASE_TIMEFRAME_MINUTES * 60 * 1_000;
 export const INITIAL_MARKET_CANDLE_LIMIT = 5_000;
 export const NEXT_MARKET_CANDLE_LIMIT = 5_000;
-export const REPLAY_FORWARD_BASE_CANDLES = 2_000;
-export const REPLAY_FORWARD_TIMEFRAME_BARS = 60;
+/**
+ * Запас хода при загрузке и при прыжке — в БАРАХ ЭКРАНА, а не в базовых свечах.
+ *
+ * Раньше окно мерялось базовыми свечами: пять тысяч штук. На пятиминутной базе
+ * это было семнадцать дней, на минутной стало бы три с половиной — то есть от
+ * смены базы менялся бы объём истории на часовом графике. В барах экрана
+ * окно одинаково на любом таймфрейме, и вес ответа тоже: около двух тысяч
+ * строк, сколько бы минут ни было в баре.
+ */
+export const REPLAY_FORWARD_TIMEFRAME_BARS = 2_000;
 /**
  * Предыстория при прыжке: ровно столько баров, сколько рамка показывает слева
  * от точки старта (defaultFocusRange = 80 назад) — первая загруженная свеча
@@ -44,13 +53,14 @@ const timeframeToBaseCandles = (timeframeMinutes: number): number => {
   return Math.max(1, Math.ceil((timeframeMinutes * 60 * 1_000) / MARKET_CANDLE_INTERVAL_MS));
 };
 
-/** 5м-свечей вперёд, которые intrabar-резолвер SL/TP держит вокруг головы. */
-export const INTRABAR_FORWARD_5M_CANDLES = 2_000;
+/** Базовых свечей вперёд, которые intrabar-резолвер SL/TP держит вокруг головы. */
+export const INTRABAR_FORWARD_BASE_CANDLES = 5_000;
 
 /**
- * 5м-окно вокруг времени воспроизведения для intrabar-резолвера: текущий бар
- * таймфрейма целиком (на бар назад) плюс форвардный буфер (~7 дней). НЕ весь
- * форвард дисплея — иначе на старших ТФ это десятки тысяч свечей.
+ * Базовое окно вокруг времени воспроизведения для intrabar-резолвера: текущий
+ * бар таймфрейма целиком (на бар назад) плюс форвардный буфер (~3.5 суток на
+ * минутной базе). НЕ весь форвард дисплея — иначе на старших ТФ это сотни
+ * тысяч свечей.
  */
 export function buildIntrabarWindow(
   boundary: MarketRangeBoundary,
@@ -63,7 +73,7 @@ export function buildIntrabarWindow(
   const tfBaseCandles = timeframeToBaseCandles(timeframeMinutes);
   const aligned = alignDown(targetTimeMs);
   const from = Math.max(boundaryFrom, aligned - tfBaseCandles * MARKET_CANDLE_INTERVAL_MS);
-  const to = Math.min(boundaryTo, aligned + INTRABAR_FORWARD_5M_CANDLES * MARKET_CANDLE_INTERVAL_MS);
+  const to = Math.min(boundaryTo, aligned + INTRABAR_FORWARD_BASE_CANDLES * MARKET_CANDLE_INTERVAL_MS);
   return to > from ? { from, to } : null;
 }
 
@@ -84,17 +94,14 @@ export function prefetchMarketCandleThresholdForTimeframe(timeframeMinutes: numb
 export function buildReplayStartMarketCandleRange(
   boundary: MarketRangeBoundary,
   targetTimeMs: number,
-  timeframeMinutes = 5,
+  timeframeMinutes = BASE_TIMEFRAME_MINUTES,
 ): MarketCandleRange | null {
   const boundaryFrom = alignDown(boundary.from);
   const boundaryTo = alignUp(boundary.to);
   if (boundaryTo <= boundaryFrom) return null;
 
   const timeframeBaseCandles = timeframeToBaseCandles(timeframeMinutes);
-  const forwardCandles = Math.max(
-    REPLAY_FORWARD_BASE_CANDLES,
-    REPLAY_FORWARD_TIMEFRAME_BARS * timeframeBaseCandles,
-  );
+  const forwardCandles = REPLAY_FORWARD_TIMEFRAME_BARS * timeframeBaseCandles;
   // Окно, а не весь префикс датасета: прыжок на дату/рандом/смену таймфрейма
   // грузит ограниченную предысторию, дальше влево лениво догружает loadEarlier.
   const backCandles = REPLAY_BACK_TIMEFRAME_BARS * timeframeBaseCandles;

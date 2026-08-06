@@ -1,4 +1,5 @@
 import type { Candle } from "../../types";
+import { BASE_TIMEFRAME_MINUTES } from "../config/simulation";
 
 export type MarketCatalogItem = {
   category: string;
@@ -47,7 +48,7 @@ interface MarketDownloadJob {
 }
 
 /**
- * Докачивает диапазон 5м-свечей с биржи в локальную базу и ждёт завершения
+ * Докачивает диапазон базовых свечей с биржи в локальную базу и ждёт завершения
  * джобы. true — джоба завершилась успешно (в т.ч. если данных за диапазон
  * на бирже нет), false — ошибка или таймаут.
  */
@@ -81,9 +82,9 @@ export async function downloadMarketRange(
   }
 }
 
-/** Минуты → строка таймфрейма сервера (server/domain/Candle.ts); неизвестное → 5m. */
+/** Минуты → строка таймфрейма сервера (server/domain/Candle.ts); неизвестное → база. */
 const MINUTES_TO_TIMEFRAME: Record<number, string> = {
-  5: "5m", 10: "10m", 15: "15m", 30: "30m",
+  1: "1m", 2: "2m", 3: "3m", 5: "5m", 7: "7m", 10: "10m", 15: "15m", 30: "30m",
   60: "1h", 120: "2h", 180: "3h", 240: "4h",
   360: "6h", 720: "12h", 1440: "1d",
 };
@@ -93,12 +94,12 @@ export async function fetchMarketCandles(
   symbol: string,
   from: number,
   to: number,
-  timeframeMinutes = 5,
+  timeframeMinutes = BASE_TIMEFRAME_MINUTES,
 ): Promise<Candle[]> {
   const params = new URLSearchParams({
     category,
     symbol: symbol.toUpperCase(),
-    timeframe: MINUTES_TO_TIMEFRAME[timeframeMinutes] ?? "5m",
+    timeframe: MINUTES_TO_TIMEFRAME[timeframeMinutes] ?? MINUTES_TO_TIMEFRAME[BASE_TIMEFRAME_MINUTES],
     from: String(from),
     to: String(to),
   });

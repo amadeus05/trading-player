@@ -2,7 +2,14 @@ import type { AccountSettings, Barrier, Persisted, SimulationSettings } from "..
 
 export const PAPER_BALANCE_USDT = 1_000;
 
-export const TIMEFRAME_OPTIONS = [5, 15, 30, 60, 180, 240, 1_440] as const;
+/**
+ * Разрешение, в котором скачивается и хранится история. Мельче данных нет, и
+ * от него зависит, какие таймфреймы вообще собираются: 7m кратен минуте, но не
+ * пяти, поэтому на пятиминутной базе он был бы недоступен.
+ */
+export const BASE_TIMEFRAME_MINUTES = 1;
+
+export const TIMEFRAME_OPTIONS = [1, 5, 7, 15, 30, 60, 180, 240, 1_440] as const;
 export const DEFAULT_TIMEFRAME_MINUTES = 15;
 
 /**

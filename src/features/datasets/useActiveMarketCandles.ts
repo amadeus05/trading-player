@@ -7,6 +7,7 @@ import {
   type MarketCatalogItem,
 } from "../../shared/api/marketDataApi";
 import {
+  BASE_TIMEFRAME_MINUTES,
   buildInitialMarketCandleRange,
   buildIntrabarWindow,
   buildReplayStartMarketCandleRange,
@@ -21,7 +22,7 @@ const inferLoadedTimeframe = (candles: Candle[], fallback: number): number =>
 
 const timeframeToMs = (timeframeMinutes: number) => Math.max(1, Math.round(timeframeMinutes)) * 60 * 1_000;
 
-/** Перезапросить 5м-окно, когда голова подошла к его правому краю. */
+/** Перезапросить базовое окно, когда голова подошла к его правому краю. */
 const INTRABAR_REFETCH_MARGIN_MS = 300 * MARKET_CANDLE_INTERVAL_MS;
 
 const mergeCandles = (current: Candle[], incoming: Candle[]): Candle[] => {
@@ -36,7 +37,7 @@ export function useActiveMarketCandles(
   datasetId: string,
   catalog: MarketCatalogItem[],
   cacheRef: RefObject<Map<string, Candle[]>>,
-  initialTimeframeMinutes = 5,
+  initialTimeframeMinutes = BASE_TIMEFRAME_MINUTES,
 ) {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [intrabarCandles, setIntrabarCandles] = useState<Candle[]>([]);
@@ -47,7 +48,7 @@ export function useActiveMarketCandles(
   const loadingMoreRef = useRef(false);
   const loadingEarlierRef = useRef(false);
   const intrabarLoadingRef = useRef(false);
-  /** Диапазон, покрытый текущим 5м-окном (мс). */
+  /** Диапазон, покрытый текущим базовым окном (мс). */
   const intrabarCoveredRef = useRef<{ datasetId: string; from: number; to: number } | null>(null);
   /** datasetId, для которого биржа больше не отдаёт историю левее (дата листинга). */
   const earlierExhaustedRef = useRef<string | null>(null);
@@ -167,7 +168,7 @@ export function useActiveMarketCandles(
 
   /**
    * TradingView-подобная догрузка истории влево: пользователь оттащил график
-   * за первую свечу — докачиваем ровно недостающее количество 5м-баров
+   * за первую свечу — докачиваем ровно недостающее количество базовых баров
    * (с Binance, если их ещё нет в базе) и prepend'им в массив.
    * Возвращает количество добавленных слева свечей.
    */
@@ -228,7 +229,7 @@ export function useActiveMarketCandles(
     }
   }, [cacheRef, catalogItem, datasetId, initialTimeframeMinutes, loading, parsedDataset]);
 
-  const loadAroundTime = useCallback(async (time: number, timeframeMinutes = 5): Promise<boolean> => {
+  const loadAroundTime = useCallback(async (time: number, timeframeMinutes = BASE_TIMEFRAME_MINUTES): Promise<boolean> => {
     if (!datasetId || !parsedDataset || !catalogItem || loading) return false;
     const range = buildReplayStartMarketCandleRange(catalogItem, time * 1_000, timeframeMinutes);
     if (!range) return false;
@@ -254,7 +255,7 @@ export function useActiveMarketCandles(
   }, [cacheRef, candles, catalogItem, datasetId, loading, parsedDataset]);
 
   /**
-   * Держит 5м-окно вокруг времени воспроизведения — для intrabar-резолвера SL/TP.
+   * Держит базовое окно вокруг времени воспроизведения — для intrabar-резолвера SL/TP.
    * Перезапрашивает, только когда голова подошла к правому краю загруженного окна.
    */
   const ensureIntrabarAround = useCallback(async (timeSeconds: number) => {
@@ -274,7 +275,7 @@ export function useActiveMarketCandles(
     if (!range) return;
     intrabarLoadingRef.current = true;
     try {
-      const rows = await fetchMarketCandles(parsedDataset.category, parsedDataset.symbol, range.from, range.to, 5);
+      const rows = await fetchMarketCandles(parsedDataset.category, parsedDataset.symbol, range.from, range.to, BASE_TIMEFRAME_MINUTES);
       if (rows.length) {
         setIntrabarCandles(rows);
         intrabarCoveredRef.current = { datasetId, from: range.from, to: range.to };

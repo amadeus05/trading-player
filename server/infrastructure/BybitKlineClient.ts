@@ -1,4 +1,4 @@
-import type { Candle } from "../domain/Candle.js";
+import { BASE_INTERVAL_MS, type Candle } from "../domain/Candle.js";
 import type { DownloadRequest } from "../domain/MarketRequest.js";
 import type { MarketDataProvider } from "../application/ports/MarketDataProvider.js";
 
@@ -15,7 +15,8 @@ export class BybitKlineClient implements MarketDataProvider {
     const url = new URL("/v5/market/kline", this.baseUrl);
     url.searchParams.set("category", request.category);
     url.searchParams.set("symbol", request.symbol);
-    url.searchParams.set("interval", "5");
+    // Интервал в минутах строкой — база хранилища, а не константа биржи.
+    url.searchParams.set("interval", String(BASE_INTERVAL_MS / 60_000));
     url.searchParams.set("start", String(request.from));
     url.searchParams.set("end", String(request.to - 1));
     url.searchParams.set("limit", "1000");

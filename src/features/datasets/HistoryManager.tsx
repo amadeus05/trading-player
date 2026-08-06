@@ -190,7 +190,7 @@ export function HistoryManager({ onOpen, iconOnly = false, activeDatasetId, onDe
       title: "Покрытие",
       render: (_value, item) => `${formatDate(item.from)} — ${formatDate(item.to - 1)}`,
     },
-    { title: "5m свечей", dataIndex: "candles", render: (value: number) => value.toLocaleString() },
+    { title: "Свечей (1m)", dataIndex: "candles", render: (value: number) => value.toLocaleString() },
     { title: "Размер", dataIndex: "bytes", render: formatBytes },
     {
       title: "",

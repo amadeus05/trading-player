@@ -8,8 +8,16 @@ export interface Candle {
   turnover: number;
 }
 
-export const BASE_INTERVAL_MS = 5 * 60_000;
-export const SUPPORTED_TIMEFRAMES = ["5m", "10m", "15m", "30m", "1h", "2h", "3h", "4h", "6h", "12h", "1d"] as const;
+/**
+ * Разрешение, в котором хранится история. Минутное: из него собирается любой
+ * таймфрейм, кратный минуте, включая те, что не делятся на пять — 7m из
+ * пятиминуток не сложить в принципе.
+ */
+export const BASE_INTERVAL_MS = 60_000;
+export const SUPPORTED_TIMEFRAMES = [
+  "1m", "2m", "3m", "5m", "7m", "10m", "15m", "30m",
+  "1h", "2h", "3h", "4h", "6h", "12h", "1d",
+] as const;
 export type Timeframe = (typeof SUPPORTED_TIMEFRAMES)[number];
 
 export const timeframeMs = (value: string): number => {
