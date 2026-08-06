@@ -36,6 +36,23 @@ interface PixelPoint {
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
+/**
+ * Примагничивание к горизонтали: если конец линии подведён к уровню другого
+ * конца ближе этого расстояния по вертикали (в пикселях), цена приравнивается
+ * к нему точно.
+ *
+ * Порог в пикселях, а не в цене: подводит его глаз, и на любом инструменте и
+ * зуме «почти горизонтально» выглядит одинаково. А закрепляется именно ценой —
+ * тогда линия остаётся ровной при любом последующем масштабировании, тогда как
+ * равенство пикселей развалилось бы на первом же зуме.
+ *
+ * Нужно для разметки BOS и CHoCH: там уровень берут от экстремума свинга и
+ * тянут вправо до пробоя, и он обязан быть ровным. Отдельный инструмент для
+ * этого не нужен — горизонтальная линия у нас бесконечная, а здесь важен
+ * именно отрезок с началом и концом.
+ */
+const HORIZONTAL_SNAP_PX = 6;
+
 function distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
   const dx = bx - ax, dy = by - ay;
   const len2 = dx * dx + dy * dy;
@@ -492,6 +509,11 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     trendLines.forEach(syncOne);
   }
 
+  /** Подтянут ли конец к уровню опоры — решается по вертикали в пикселях. */
+  function snapsToHorizontal(anchorY: number, movingY: number): boolean {
+    return Math.abs(movingY - anchorY) <= HORIZONTAL_SNAP_PX;
+  }
+
   function previewAtPixels(tl: TrendLine, p1: PixelPoint, p2: PixelPoint) {
     const els = lineElements.get(tl.id);
     if (!els) return;
@@ -526,15 +548,19 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       onMove: (event) => {
         latestEvent = event;
         const x = snapXToNearestCandle(chart, event.clientX - rect.left);
-        const y = event.clientY - rect.top;
+        const anchor = which === "point1" ? originalP2 : originalP1;
+        const rawY = event.clientY - rect.top;
+        const y = snapsToHorizontal(anchor.y, rawY) ? anchor.y : rawY;
         previewAtPixels(tl, which === "point1" ? { x, y } : originalP1, which === "point2" ? { x, y } : originalP2);
       },
       onEnd: (_event, moved) => {
         if (!moved || !latestEvent) return;
         const x = latestEvent.clientX - rect.left;
         const y = latestEvent.clientY - rect.top;
+        const anchor = which === "point1" ? originalP2 : originalP1;
+        const anchorPrice = which === "point1" ? tl.point2.price : tl.point1.price;
         const time = xToSnappedTime(chart, x, candleStore.candles);
-        const price = pxToPrice(series, y);
+        const price = snapsToHorizontal(anchor.y, y) ? anchorPrice : pxToPrice(series, y);
         if (time != null && price != null && price > 0) {
           updateLine(id, which === "point1" ? { point1: { time, price } } : { point2: { time, price } });
         } else {
@@ -610,11 +636,15 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
         ghostLine.setAttribute("stroke-width", String(tpl.width));
         svg.appendChild(ghostLine);
       }
-      const p1 = toPixel(points[0]) ?? cursor;
+      const anchor = points.length ? toPixel(points[0]) : null;
+      const p1 = anchor ?? cursor;
+      // Призрак обязан показывать уже примагниченное положение, иначе линия
+      // прыгнет в момент отпускания и разметка окажется не там, где целились.
+      const y2 = anchor && snapsToHorizontal(anchor.y, cursor.y) ? anchor.y : cursor.y;
       ghostLine.setAttribute("x1", String(p1.x));
       ghostLine.setAttribute("y1", String(p1.y));
       ghostLine.setAttribute("x2", String(cursor.x));
-      ghostLine.setAttribute("y2", String(cursor.y));
+      ghostLine.setAttribute("y2", String(y2));
     },
     ghostRemove: () => {
       ghostLine?.remove();
@@ -622,11 +652,16 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     },
     commit: ([point1, point2]) => {
       const tpl = getNewDrawingStyle("trendline");
+      const anchorPx = toPixel(point1);
+      const endPx = toPixel(point2);
+      const end = anchorPx && endPx && snapsToHorizontal(anchorPx.y, endPx.y)
+        ? { ...point2, price: point1.price }
+        : point2;
       const newLine: TrendLine = {
         id: crypto.randomUUID(),
         datasetId,
         point1,
-        point2,
+        point2: end,
         color: tpl.lineColor,
         textColor: tpl.textColor ?? tpl.lineColor,
         width: tpl.width,
