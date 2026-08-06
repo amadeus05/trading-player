@@ -9,7 +9,7 @@ export const PAPER_BALANCE_USDT = 1_000;
  */
 export const BASE_TIMEFRAME_MINUTES = 1;
 
-export const TIMEFRAME_OPTIONS = [1, 5, 7, 15, 30, 60, 180, 240, 1_440] as const;
+export const TIMEFRAME_OPTIONS = [1, 5, 7, 10, 15, 30, 60, 180, 240, 1_440] as const;
 export const DEFAULT_TIMEFRAME_MINUTES = 15;
 
 /**
