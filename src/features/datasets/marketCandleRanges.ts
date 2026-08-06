@@ -1,4 +1,6 @@
 export const MARKET_CANDLE_INTERVAL_MS = 5 * 60 * 1_000;
+/** Базовый таймфрейм хранилища в минутах — разрешение, мельче которого данных нет. */
+export const BASE_TIMEFRAME_MINUTES = MARKET_CANDLE_INTERVAL_MS / 60_000;
 export const INITIAL_MARKET_CANDLE_LIMIT = 5_000;
 export const NEXT_MARKET_CANDLE_LIMIT = 5_000;
 export const REPLAY_FORWARD_BASE_CANDLES = 2_000;

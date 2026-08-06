@@ -86,11 +86,11 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
   series: ISeriesApi<"Candlestick">;
   candleStore: ChartCandleStore;
   /**
-   * Свечи, по которым считается гистограмма. Это свечи самого графика, а не 5м:
-   * 5м-окно живёт вокруг головы воспроизведения и историю не покрывает, так что
-   * профиль по выбранному в прошлом диапазону оставался бы пустым.
+   * Свечи, по которым считается гистограмма, на запрошенном окне (секунды,
+   * границы включительно). Отдаёт базовый таймфрейм, если он на это окно
+   * загружен, иначе свечи самого графика — тогда профиль просто грубее.
    */
-  getProfileCandles: () => Candle[];
+  getProfileCandles: (fromTime: number, toTime: number) => Candle[];
   getReplayEndTime: () => number | null;
   volumeProfiles: VolumeProfile[];
   drawingMode: DrawingMode;
@@ -126,10 +126,13 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
   function getComputed(vp: VolumeProfile): VolumeProfileResult | null {
     const window = getAvailableWindow(vp);
     if (!window) return null;
-    const source = getProfileCandles();
+    const source = getProfileCandles(window.left, window.right);
     const fromIndex = lowerBoundByTime(source, window.left);
     const toIndex = upperBoundByTime(source, window.right);
     const windowCandles = fromIndex < toIndex ? source.slice(fromIndex, toIndex) : [];
+    // Число свечей в сигнатуре не только страхует от устаревания: когда базовое
+    // окно доезжает, свечей на том же диапазоне становится в разы больше — и
+    // кэш сбрасывается сам, без отдельного оповещения от источника.
     const sig = `${window.left}|${window.right}|${vp.rows}|${vp.valueAreaPct}|${vp.splitMode}|${windowCandles.length}|${windowCandles.at(-1)?.time ?? 0}`;
     const cached = computedCache.get(vp.id);
     if (cached && cached.sig === sig) return cached.result;

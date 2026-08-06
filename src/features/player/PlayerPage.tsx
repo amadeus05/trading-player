@@ -23,6 +23,7 @@ import { useChartDisplayState } from "../chart/useChartDisplayState";
 import { calculateAccountStats } from "../trading/lib/calculateAccountStats";
 import { useMarketCatalog } from "../datasets/useMarketCatalog";
 import { useActiveMarketCandles } from "../datasets/useActiveMarketCandles";
+import { useBaseCandles } from "../datasets/useBaseCandles";
 import { prefetchMarketCandleThresholdForTimeframe, shouldPrefetchMarketCandles } from "../datasets/marketCandleRanges";
 
 export function PlayerPage() {
@@ -127,6 +128,10 @@ export function PlayerPage() {
     candleCacheRef,
     initialTimeframe,
   );
+  // Профиль объёма считается по базовому таймфрейму, а не по свечам экрана:
+  // основное окно грузится сразу в отображаемом ТФ, и на часовом графике одна
+  // свеча давала одну точку гистограммы.
+  const { getBaseCandles, baseCandlesRevision } = useBaseCandles(dataset, catalog);
   // Точность цены — константа символа, а не выборки. Фиксируем на датасет от
   // первого непустого окна: иначе изменение окна свечей меняло бы точность, а она
   // зависимость эффекта создания графика → график пересоздавался бы и прыгал.
@@ -427,6 +432,8 @@ export function PlayerPage() {
               {candles.length ? (
                 <ReplayChart
                   candles={candles}
+                  getBaseCandles={getBaseCandles}
+                  baseCandlesRevision={baseCandlesRevision}
                   index={replayIndex}
                   barriers={chartDisplay.barriers}
                   trades={chartDisplay.trades}

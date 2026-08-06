@@ -78,6 +78,17 @@ export type ChartViewportRef = {
 
 interface ReplayChartProps {
   candles: Candle[];
+  /**
+   * Свечи базового таймфрейма на окне (секунды, включительно) — того ТФ, в
+   * котором скачана история. Пустой массив, если окно ещё не загружено.
+   *
+   * Нужны профилю объёма: он должен считаться по самым мелким доступным барам,
+   * а не по тем, что сейчас на экране. На часовом графике это разница в
+   * двенадцать раз по числу точек гистограммы.
+   */
+  getBaseCandles: (fromTime: number, toTime: number) => Candle[];
+  /** Растёт, когда доехало очередное окно базовых свечей. */
+  baseCandlesRevision: number;
   index: number;
   barriers: Barrier[];
   trades: Trade[];
@@ -109,6 +120,8 @@ interface ReplayChartProps {
 
 export function ReplayChart({
   candles,
+  getBaseCandles,
+  baseCandlesRevision,
   index,
   barriers,
   trades,
@@ -139,6 +152,8 @@ export function ReplayChart({
   const ref = useRef<HTMLDivElement>(null);
   const candlesRef = useRef(candles);
   candlesRef.current = candles;
+  const getBaseCandlesRef = useRef(getBaseCandles);
+  getBaseCandlesRef.current = getBaseCandles;
   const selectingStartRef = useRef(selectingStart);
   selectingStartRef.current = selectingStart;
   const followCandleRef = useRef(followCandle);
@@ -928,7 +943,13 @@ export function ReplayChart({
       chart,
       series: cs,
       candleStore: drawingCandleStore,
-      getProfileCandles: () => candleStore.candles,
+      // Базовые свечи, если они на это окно есть, иначе отображаемые. Правый
+      // край профиля всё равно обрезается по голове воспроизведения ниже, так
+      // что заглянуть в будущее мелкий таймфрейм не даёт.
+      getProfileCandles: (fromTime, toTime) => {
+        const base = getBaseCandlesRef.current(fromTime, toTime);
+        return base.length ? base : candleStore.candles;
+      },
       getReplayEndTime: () => {
         const lastVisibleCandle = candleStore.candles.at(-1);
         if (!lastVisibleCandle) return null;
@@ -1022,6 +1043,16 @@ export function ReplayChart({
     manager.replaceAll("parallelchannel", cloneDatasetItems(drawings.parallelChannels, datasetId));
     manager.replaceAll("volumeprofile", cloneDatasetItems(drawings.volumeProfiles, datasetId));
   }, [drawingRestoreRevision, drawings, datasetId]);
+
+  /**
+   * Доехало окно базовых свечей — просим пересинхронизировать оверлеи. Профиль
+   * читает источник синхронно при отрисовке, поэтому на кадр создания он считался
+   * по свечам экрана; кэш у него сбросится сам, как только на том же диапазоне
+   * окажется другое число свечей.
+   */
+  useEffect(() => {
+    chartRuntimeRef.current?.syncOverlays();
+  }, [baseCandlesRevision]);
 
   const prevOverlayKeyRef = useRef("");
   useLayoutEffect(() => {
