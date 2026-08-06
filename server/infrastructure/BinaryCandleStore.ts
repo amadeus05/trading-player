@@ -164,8 +164,16 @@ export class BinaryCandleStore implements CandleRepository {
     const existing = await this.readYear(category, symbol, year);
     const existingStart = existing ? existing.header.startTimeMs : Infinity;
     const existingEnd = existing ? existing.header.startTimeMs + existing.header.slots * this.intervalMs : -Infinity;
-    const incomingStart = Math.min(...inYear.map((candle) => candle.openTime));
-    const incomingEnd = Math.max(...inYear.map((candle) => candle.openTime)) + this.intervalMs;
+    // Циклом, а не Math.min(...array): спред раскладывает массив в аргументы, и
+    // на минутной базе трёхмесячная закачка (132 тысячи свечей) кладёт стек.
+    // На пятиминутках тот же диапазон давал 26 тысяч и до предела не доходил.
+    let incomingStart = Infinity;
+    let incomingLast = -Infinity;
+    for (const candle of inYear) {
+      if (candle.openTime < incomingStart) incomingStart = candle.openTime;
+      if (candle.openTime > incomingLast) incomingLast = candle.openTime;
+    }
+    const incomingEnd = incomingLast + this.intervalMs;
 
     const start = Math.min(existingStart, incomingStart);
     const end = Math.max(existingEnd, incomingEnd);
