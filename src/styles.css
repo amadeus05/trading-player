@@ -81,6 +81,7 @@ body {
 
 .app {
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 .app--chart-fullscreen {
@@ -1926,7 +1927,9 @@ aside {
   border-left: 1px solid #20232d;
   background: #0d0f15;
   padding: 16px 14px;
-  overflow: auto;
+  /* overflow: auto включает и X: тултип слайдера на 100% давал полосы по обеим осям. */
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .orderHeader {
@@ -2375,11 +2378,12 @@ aside {
 }
 
 .allocationSlider {
-  margin: 4px 2px 14px;
+  margin: 4px 6px 14px;
 }
 
 .allocationSlider .ant-slider {
-  margin: 8px 5px 2px;
+  /* Запас по бокам, чтобы тултип «0%» / «100%» не упирался в край aside. */
+  margin: 8px 12px 2px;
 }
 
 .allocationSlider .ant-slider-rail {

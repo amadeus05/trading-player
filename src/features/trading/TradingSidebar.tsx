@@ -266,7 +266,19 @@ export function TradingSidebar({
         </div>
       </div>
       <div className="allocationSlider">
-        <Slider min={0} max={100} step={1} value={allocationPercent} onChange={onAllocationChange} tooltip={{ formatter: (value) => `${value}%` }} />
+        <Slider
+          min={0}
+          max={100}
+          step={1}
+          value={allocationPercent}
+          onChange={onAllocationChange}
+          tooltip={{
+            formatter: (value) => `${value}%`,
+            // У правого края панели тултип иначе уезжает за viewport и
+            // раздувает документ — появляются горизонтальный и вертикальный скроллы.
+            autoAdjustOverflow: true,
+          }}
+        />
         <div><span>0</span><span>100%</span></div>
       </div>
       <div className="orderSummary">
