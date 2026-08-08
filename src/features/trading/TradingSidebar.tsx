@@ -180,7 +180,24 @@ export function TradingSidebar({
     <aside>
       <div className="orderHeader"><b>Trade</b></div>
       <div className="ticketTopRow">
-        <Select value="isolated" options={[{ value: "isolated", label: "Isolated" }]} />
+        {/*
+          Режим маржи выключен намеренно, а не «пока не сделали». Симулятор
+          считает маржу изолированной: у каждой сделки своя маржа и своя цена
+          ликвидации (calculateLiquidationRisk берёт только плечо и комиссию).
+          Cross отличается тем, что позицию держит весь свободный баланс, и без
+          настоящей ликвидации в симуляции он менял бы ровно одно число на
+          экране — то есть был бы такой же декорацией, какой был выбор из одного
+          пункта. Включать его есть смысл вместе с исполнением ликвидации.
+        */}
+        <Tooltip title="Маржа изолированная: у каждой сделки своя маржа и своя цена ликвидации">
+          <span>
+            <Select
+              disabled
+              value="isolated"
+              options={[{ value: "isolated", label: "Isolated" }]}
+            />
+          </span>
+        </Tooltip>
         <Select
           className="leverageSelect"
           value={leverage}
