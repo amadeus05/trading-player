@@ -3,9 +3,10 @@
  */
 
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
-import type { FibonacciRetracement } from "../../types";
+import type { FibonacciLevel, FibonacciRetracement } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
+import { mountDrawingSettingsPanel, type DrawingSettingsPanelController, type DrawingSettingsTabId } from "../shared/DrawingSettingsPanel";
 import { getNewDrawingStyle } from "../shared/drawingTemplates";
 import { attachManagedDrawingLifecycle, attachScaleInteractionSync, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import type { DrawingLineStyle } from "../shared/DrawingToolbar";
@@ -18,19 +19,36 @@ export type FibonacciCallbacks = DrawingCrudCallbacks<FibonacciRetracement>;
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-export const FIB_LEVELS = [
-  { ratio: 0, color: "#787b86" },
-  { ratio: 0.236, color: "#f23645" },
-  { ratio: 0.382, color: "#ff9800" },
-  { ratio: 0.5, color: "#9acd32" },
-  { ratio: 0.618, color: "#089981" },
-  { ratio: 0.786, color: "#00bcd4" },
-  { ratio: 1, color: "#787b86" },
-  { ratio: 1.618, color: "#2962ff" },
-  { ratio: 2.618, color: "#803026" },
-  { ratio: 3.618, color: "#9c27b0" },
-  { ratio: 4.236, color: "#f23645" },
-] as const;
+const SETTINGS_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M18 14a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm-1 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"></path><path fill-rule="evenodd" d="M8.5 5h11l5 9-5 9h-11l-5-9 5-9Zm-3.86 9L9.1 6h9.82l4.45 8-4.45 8H9.1l-4.45-8Z"></path></svg>`;
+
+/** Порядок как в TradingView Style: 2 колонки слева направо по строкам. */
+export const DEFAULT_FIB_LEVEL_DEFS: readonly { ratio: number; color: string; enabled: boolean }[] = [
+  { ratio: 0, color: "#787b86", enabled: true },
+  { ratio: 0.236, color: "#f23645", enabled: true },
+  { ratio: 0.382, color: "#ff9800", enabled: true },
+  { ratio: 0.5, color: "#9acd32", enabled: true },
+  { ratio: 0.618, color: "#089981", enabled: true },
+  { ratio: 0.786, color: "#00bcd4", enabled: true },
+  { ratio: 1, color: "#787b86", enabled: true },
+  { ratio: 1.618, color: "#2962ff", enabled: true },
+  { ratio: 2.618, color: "#e91e63", enabled: true },
+  { ratio: 3.618, color: "#9c27b0", enabled: true },
+  { ratio: 4.236, color: "#f23645", enabled: true },
+  { ratio: 1.272, color: "#ff9800", enabled: false },
+  { ratio: 1.414, color: "#f48fb1", enabled: false },
+  { ratio: 2.272, color: "#ff9800", enabled: false },
+  { ratio: 2.414, color: "#9acd32", enabled: false },
+  { ratio: 2, color: "#089981", enabled: false },
+  { ratio: 3, color: "#00bcd4", enabled: false },
+  { ratio: 3.272, color: "#787b86", enabled: false },
+  { ratio: 3.414, color: "#64b5f6", enabled: false },
+  { ratio: 4, color: "#f23645", enabled: false },
+  { ratio: 4.272, color: "#9c27b0", enabled: false },
+  { ratio: 0.71, color: "#e040fb", enabled: false },
+];
+
+/** @deprecated используйте DEFAULT_FIB_LEVEL_DEFS / getDefaultFibLevels */
+export const FIB_LEVELS = DEFAULT_FIB_LEVEL_DEFS.filter((level) => level.enabled).map(({ ratio, color }) => ({ ratio, color }));
 
 const TV_HANDLE_RADIUS = 4;
 const FIB_LABEL_GAP = 8;
@@ -38,6 +56,27 @@ const DEFAULT_FIB_LINE = {
   width: 1,
   style: "solid" as DrawingLineStyle,
 };
+
+export function getDefaultFibLevels(): FibonacciLevel[] {
+  return DEFAULT_FIB_LEVEL_DEFS.map((level) => ({ ...level }));
+}
+
+export function resolveFibLevels(fib: FibonacciRetracement): FibonacciLevel[] {
+  if (fib.levels?.length) {
+    return fib.levels.map((level) => ({
+      ratio: Number(level.ratio),
+      color: level.color || "#787b86",
+      enabled: level.enabled !== false,
+    }));
+  }
+  return getDefaultFibLevels();
+}
+
+function formatLevelInput(ratio: number): string {
+  if (!Number.isFinite(ratio)) return "0";
+  const rounded = Math.round(ratio * 1e6) / 1e6;
+  return String(rounded);
+}
 
 function fibLineStyle(fib: FibonacciRetracement) {
   return {
@@ -113,17 +152,22 @@ function applyLevelLine(
   color: string,
   width: number,
   style: DrawingLineStyle,
+  enabled = true,
 ) {
+  const visibility = enabled ? "visible" : "hidden";
   levelEls.line.setAttribute("x1", String(xLeft));
   levelEls.line.setAttribute("x2", String(xRight));
   levelEls.line.setAttribute("y1", String(y));
   levelEls.line.setAttribute("y2", String(y));
+  levelEls.line.setAttribute("visibility", visibility);
   applyLineStroke(levelEls.line, color, width, style);
   if (levelEls.hit) {
     levelEls.hit.setAttribute("x1", String(xLeft));
     levelEls.hit.setAttribute("x2", String(xRight));
     levelEls.hit.setAttribute("y1", String(y));
     levelEls.hit.setAttribute("y2", String(y));
+    levelEls.hit.setAttribute("visibility", visibility);
+    levelEls.hit.style.pointerEvents = enabled ? "stroke" : "none";
   }
 }
 
@@ -184,6 +228,8 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   let dragActive = false;
 
   let toolbarController: DrawingToolbarController<FibonacciRetracement>;
+  let settingsPanel: DrawingSettingsPanelController | null = null;
+  let settingsFibId: string | null = null;
 
   interface LevelEls {
     line: SVGLineElement;
@@ -199,6 +245,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     handle1: SVGCircleElement;
     handle2: SVGCircleElement;
     levels: LevelEls[];
+    levelCount: number;
   }
 
   const elMap = new Map<string, FibEls>();
@@ -228,6 +275,20 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     toolbarController.show(fib);
   }
 
+  function removeSettingsPanel() {
+    settingsPanel?.destroy();
+    settingsPanel = null;
+    settingsFibId = null;
+  }
+
+  function toggleSettingsPanel(fib: FibonacciRetracement) {
+    if (settingsPanel && settingsFibId === fib.id) {
+      removeSettingsPanel();
+      return;
+    }
+    createSettingsPanel(fib);
+  }
+
   function toPixel(pt: { time: number; price: number }): PixelPoint | null {
     return pointToPixel(chart, series, pt, candleStore.candles);
   }
@@ -238,6 +299,14 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     fibonacciRetracements[idx] = { ...fibonacciRetracements[idx], ...patch };
     callbacks.onUpdate(fibonacciRetracements[idx]);
     syncAll();
+    toolbarController.refresh();
+  }
+
+  function patchFibLevel(id: string, index: number, patch: Partial<FibonacciLevel>) {
+    const fib = fibonacciRetracements.find((item) => item.id === id);
+    if (!fib) return;
+    const levels = resolveFibLevels(fib).map((level, i) => (i === index ? { ...level, ...patch } : level));
+    updateFib(id, { levels });
   }
 
   const selection = createSelectionController<FibonacciRetracement>({
@@ -247,13 +316,17 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     findById: (id) => fibonacciRetracements.find((item) => item.id === id),
     getSelectionElement: (id) => elMap.get(id)?.group ?? null,
     onShow: (fib) => createToolbar(fib),
-    onHide: () => removeToolbar(),
+    onHide: () => {
+      removeToolbar();
+      removeSettingsPanel();
+    },
     syncAll,
     ignoreSelector: ".fib-trend-hit, .fib-level-hit, .fib-handle",
   });
   const selectFib = selection.select;
 
   function deleteFib(id: string) {
+    if (settingsFibId === id) removeSettingsPanel();
     fibonacciRetracements = fibonacciRetracements.filter((item) => item.id !== id);
     const els = elMap.get(id);
     els?.group.remove();
@@ -264,6 +337,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   }
 
   function purgeAllFib() {
+    removeSettingsPanel();
     for (const els of elMap.values()) {
       els.group.remove();
       els.labelGroup.remove();
@@ -272,6 +346,87 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     fibonacciRetracements = [];
     selection.reset();
     syncAll();
+  }
+
+  function renderPanelPlaceholder(tabId: DrawingSettingsTabId, body: HTMLDivElement) {
+    const placeholder = document.createElement("div");
+    placeholder.className = "drawing-settings-placeholder";
+    placeholder.textContent = `${tabId[0].toUpperCase()}${tabId.slice(1)} settings will be configured here.`;
+    body.appendChild(placeholder);
+  }
+
+  function renderStylePanel(fib: FibonacciRetracement, body: HTMLDivElement) {
+    const levels = resolveFibLevels(fib);
+    const grid = document.createElement("div");
+    grid.className = "fib-settings-levels";
+
+    levels.forEach((level, index) => {
+      const row = document.createElement("div");
+      row.className = "fib-settings-level-row";
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.className = "fib-settings-level-check";
+      checkbox.checked = level.enabled;
+      checkbox.title = level.enabled ? "Hide level" : "Show level";
+      checkbox.addEventListener("change", () => {
+        patchFibLevel(fib.id, index, { enabled: checkbox.checked });
+      });
+
+      const valueInput = document.createElement("input");
+      valueInput.type = "text";
+      valueInput.className = "fib-settings-level-value";
+      valueInput.value = formatLevelInput(level.ratio);
+      valueInput.addEventListener("change", () => {
+        const next = Number(valueInput.value);
+        if (!Number.isFinite(next)) {
+          valueInput.value = formatLevelInput(level.ratio);
+          return;
+        }
+        patchFibLevel(fib.id, index, { ratio: next });
+      });
+
+      const colorInput = document.createElement("input");
+      colorInput.type = "color";
+      colorInput.className = "fib-settings-level-color";
+      colorInput.value = /^#[0-9a-fA-F]{6}$/.test(level.color) ? level.color : "#787b86";
+      colorInput.addEventListener("input", () => {
+        patchFibLevel(fib.id, index, { color: colorInput.value });
+      });
+
+      row.append(checkbox, valueInput, colorInput);
+      grid.appendChild(row);
+    });
+
+    body.appendChild(grid);
+  }
+
+  function createSettingsPanel(fib: FibonacciRetracement) {
+    removeSettingsPanel();
+    settingsPanel = mountDrawingSettingsPanel({
+      container,
+      persistenceKey: `fibonacci-settings:${fib.id}`,
+      title: "Fib retracement",
+      initialTab: "style",
+      tabs: [
+        { id: "style", label: "Style" },
+        { id: "coordinates", label: "Coordinates" },
+        { id: "visibility", label: "Visibility" },
+      ],
+      renderTab: (tabId, tabBody) => {
+        if (tabId === "style") {
+          const current = fibonacciRetracements.find((item) => item.id === fib.id) ?? fib;
+          renderStylePanel(current, tabBody);
+          return;
+        }
+        renderPanelPlaceholder(tabId, tabBody);
+      },
+      onClose: removeSettingsPanel,
+      onCancel: removeSettingsPanel,
+      onOk: removeSettingsPanel,
+    });
+    settingsPanel.panel.classList.add("drawing-settings-panel--fib");
+    settingsFibId = fib.id;
   }
 
   toolbarController = new DrawingToolbarController({
@@ -297,6 +452,25 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     },
     onDelete: (fib) => deleteFib(fib.id),
     onSync: () => syncAll(),
+    slots: [{
+      id: "settings",
+      anchor: "after-grip",
+      mount: () => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "rect-tb-settings rect-tb-icon-btn";
+        button.title = "Настройки";
+        button.innerHTML = SETTINGS_ICON;
+        return button;
+      },
+      bind: (element, ctx) => {
+        element.addEventListener("click", (event) => {
+          event.stopPropagation();
+          ctx.closePopups();
+          toggleSettingsPanel(ctx.drawing);
+        });
+      },
+    }],
   });
 
   const unregisterLifecycle = attachManagedDrawingLifecycle({
@@ -332,7 +506,13 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     purgeAll: purgeAllFib,
   });
 
+  function destroyFibEls(els: FibEls) {
+    els.group.remove();
+    els.labelGroup.remove();
+  }
+
   function buildFibEls(fib: FibonacciRetracement): FibEls {
+    const levelDefs = resolveFibLevels(fib);
     const group = overlay.createClippedGroup();
     group.dataset.fibId = fib.id;
 
@@ -354,7 +534,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     handle2.setAttribute("class", "rect-handle-el fib-handle");
     handle2.setAttribute("r", String(TV_HANDLE_RADIUS));
 
-    const levels: LevelEls[] = FIB_LEVELS.map(() => {
+    const levels: LevelEls[] = levelDefs.map(() => {
       const line = document.createElementNS(SVG_NS, "line");
       line.setAttribute("class", "fib-level-line");
       const hit = document.createElementNS(SVG_NS, "line");
@@ -400,10 +580,11 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
       startDragHandle(fib.id, "point2", event);
     });
 
-    return { group, labelGroup, trendLine, trendHit, handle1, handle2, levels };
+    return { group, labelGroup, trendLine, trendHit, handle1, handle2, levels, levelCount: levelDefs.length };
   }
 
   function renderFibLevels(
+    levelDefs: FibonacciLevel[],
     levels: LevelEls[],
     p1: PixelPoint,
     p2: PixelPoint,
@@ -416,12 +597,22 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     const { plotWidth } = getPlotLayout();
     const { xLeft, xRight } = horizontalSpan(p1, p2, plotWidth);
     const labelAnchorX = retracementLabelAnchorX(p1, p2);
-    FIB_LEVELS.forEach((level, index) => {
+    levelDefs.forEach((level, index) => {
+      const levelEls = levels[index];
+      if (!levelEls) return;
+      if (!level.enabled) {
+        applyLevelLine(levelEls, xLeft, xRight, 0, level.color, width, style, false);
+        if (levelEls.label) levelEls.label.setAttribute("visibility", "hidden");
+        return;
+      }
       const price = levelPriceFromAnchors(p0, p100, level.ratio);
       const y = series.priceToCoordinate(price);
-      if (y == null) return;
-      const levelEls = levels[index];
-      applyLevelLine(levelEls, xLeft, xRight, y, level.color, width, style);
+      if (y == null) {
+        applyLevelLine(levelEls, xLeft, xRight, 0, level.color, width, style, false);
+        if (levelEls.label) levelEls.label.setAttribute("visibility", "hidden");
+        return;
+      }
+      applyLevelLine(levelEls, xLeft, xRight, y, level.color, width, style, true);
       if (showLabels && levelEls.label) {
         applyLevelLabel(levelEls.label, labelAnchorX, y, level.ratio, price, level.color, pricePrecision);
       } else if (levelEls.label) {
@@ -439,6 +630,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     priceSource: "stored" | "pixels" = "stored",
   ) {
     const lineStyle = fibLineStyle(fib);
+    const levelDefs = resolveFibLevels(fib);
     els.trendLine.setAttribute("x1", String(p1.x));
     els.trendLine.setAttribute("y1", String(p1.y));
     els.trendLine.setAttribute("x2", String(p2.x));
@@ -459,13 +651,19 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
         p100 = anchors.p100;
       }
     }
-    renderFibLevels(els.levels, p1, p2, p0, p100, fib.showLabels !== false, lineStyle.width, lineStyle.style);
+    renderFibLevels(levelDefs, els.levels, p1, p2, p0, p100, fib.showLabels !== false, lineStyle.width, lineStyle.style);
     applyHandles(els.handle1, els.handle2, p1, p2, !fib.locked);
     els.group.classList.toggle("selected", isSelected);
   }
 
   function syncOne(fib: FibonacciRetracement) {
+    const levelCount = resolveFibLevels(fib).length;
     let els = elMap.get(fib.id);
+    if (els && els.levelCount !== levelCount) {
+      destroyFibEls(els);
+      elMap.delete(fib.id);
+      els = undefined;
+    }
     if (!els) {
       els = buildFibEls(fib);
       elMap.set(fib.id, els);
@@ -502,8 +700,18 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     renderFibGeometry(fib, els, p1, p2, selection.isSelected(fib.id), "pixels");
   }
 
-  function ensureGhostElements() {
-    if (ghostGroup && ghostTrendLine && ghostLevelLines && ghostLevelLabels && ghostHandle1 && ghostHandle2) return;
+  function ensureGhostElements(levelCount: number) {
+    if (
+      ghostGroup
+      && ghostTrendLine
+      && ghostLevelLines
+      && ghostLevelLabels
+      && ghostHandle1
+      && ghostHandle2
+      && ghostLevelLines.length === levelCount
+    ) return;
+
+    clearGhost();
 
     const lineGroup = overlay.createClippedGroup();
     lineGroup.setAttribute("class", "fib-ghost fib-ghost-lines");
@@ -519,17 +727,17 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
 
     ghostLevelLines = [];
     ghostLevelLabels = [];
-    FIB_LEVELS.forEach(() => {
+    for (let i = 0; i < levelCount; i += 1) {
       const line = document.createElementNS(SVG_NS, "line");
       line.setAttribute("class", "fib-level-line");
       lineGroup.appendChild(line);
-      ghostLevelLines!.push(line);
+      ghostLevelLines.push(line);
 
       const label = document.createElementNS(SVG_NS, "text");
       label.setAttribute("class", "fib-level-label");
       labelGroup.appendChild(label);
-      ghostLevelLabels!.push(label);
-    });
+      ghostLevelLabels.push(label);
+    }
 
     ghostHandle1 = document.createElementNS(SVG_NS, "circle");
     ghostHandle1.setAttribute("class", "fib-handle");
@@ -551,7 +759,8 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   }
 
   function updateGhost(p1: PixelPoint, p2: PixelPoint) {
-    ensureGhostElements();
+    const levelDefs = getDefaultFibLevels();
+    ensureGhostElements(levelDefs.length);
     ghostTrendLine!.setAttribute("x1", String(p1.x));
     ghostTrendLine!.setAttribute("y1", String(p1.y));
     ghostTrendLine!.setAttribute("x2", String(p2.x));
@@ -563,11 +772,20 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     const { xLeft, xRight } = horizontalSpan(p1, p2, plotWidth);
     const labelAnchorX = retracementLabelAnchorX(p1, p2);
     const ghostStyle = DEFAULT_FIB_LINE;
-    FIB_LEVELS.forEach((level, index) => {
+    levelDefs.forEach((level, index) => {
+      if (!level.enabled) {
+        applyLevelLine({ line: ghostLevelLines![index] }, xLeft, xRight, 0, level.color, ghostStyle.width, ghostStyle.style, false);
+        ghostLevelLabels![index].setAttribute("visibility", "hidden");
+        return;
+      }
       const price = levelPriceFromAnchors(anchors.p0, anchors.p100, level.ratio);
       const y = series.priceToCoordinate(price);
-      if (y == null) return;
-      applyLevelLine({ line: ghostLevelLines![index] }, xLeft, xRight, y, level.color, ghostStyle.width, ghostStyle.style);
+      if (y == null) {
+        applyLevelLine({ line: ghostLevelLines![index] }, xLeft, xRight, 0, level.color, ghostStyle.width, ghostStyle.style, false);
+        ghostLevelLabels![index].setAttribute("visibility", "hidden");
+        return;
+      }
+      applyLevelLine({ line: ghostLevelLines![index] }, xLeft, xRight, y, level.color, ghostStyle.width, ghostStyle.style, true);
       applyLevelLabel(ghostLevelLabels![index], labelAnchorX, y, level.ratio, price, level.color, pricePrecision);
     });
     applyTrendLineStroke(ghostTrendLine!, "#787b86", ghostStyle.width);
@@ -686,6 +904,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
         locked: false,
         lineWidth: tpl.width,
         lineStyle: tpl.style,
+        levels: getDefaultFibLevels(),
       };
       fibonacciRetracements.push(newFib);
       callbacks.onCreate(newFib);
@@ -715,6 +934,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     container.removeEventListener("pointerdown", scaleInteractionSync.handlePointerDown, { capture: true });
     window.removeEventListener("pointerup", scaleInteractionSync.handlePointerUp);
     window.removeEventListener("pointercancel", scaleInteractionSync.handlePointerUp);
+    removeSettingsPanel();
     selection.destroy();
     overlay.remove();
     toolbarController.destroy();

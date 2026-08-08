@@ -3534,12 +3534,13 @@ aside {
   color: #2962ff;
 }
 
-.vp-toolbar .rect-tb-settings svg {
+.rect-toolbar .rect-tb-settings svg {
   width: 28px;
   height: 28px;
 }
 
-.vp-toolbar [data-toolbar-slot="settings"] + .rect-toolbar-sep + .rect-toolbar-sep {
+/* Слот настроек сам добавляет sep; следующий контрол тоже начинается с sep — прячем дубль. */
+.rect-toolbar [data-toolbar-slot="settings"] + .rect-toolbar-sep + .rect-toolbar-sep {
   display: none;
 }
 
@@ -3880,6 +3881,79 @@ aside {
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55);
   color: #d6d6d6;
   font: 500 13px/1.35 Inter, system-ui, sans-serif;
+}
+
+.drawing-settings-panel.drawing-settings-panel--fib {
+  width: 420px;
+  max-height: min(560px, calc(100% - 24px));
+}
+
+.drawing-settings-panel--fib .drawing-settings-body {
+  padding: 14px 16px;
+  gap: 0;
+}
+
+.fib-settings-levels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 18px;
+}
+
+.fib-settings-level-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+}
+
+.fib-settings-level-check {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #ffffff;
+  cursor: pointer;
+}
+
+.fib-settings-level-value {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  background: #202020;
+  border: 1px solid #555555;
+  border-radius: 6px;
+  color: #ededed;
+  font: 600 13px/1 Inter, system-ui, sans-serif;
+  outline: none;
+}
+
+.fib-settings-level-value:focus {
+  border-color: #787b86;
+}
+
+.fib-settings-level-color {
+  width: 34px;
+  height: 30px;
+  padding: 3px;
+  background: #202020;
+  border: 1px solid #555555;
+  border-radius: 6px;
+  outline: none;
+  cursor: pointer;
+}
+
+.fib-settings-level-color:focus {
+  border-color: #787b86;
+}
+
+.fib-settings-level-color::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.fib-settings-level-color::-webkit-color-swatch {
+  border: 0;
+  border-radius: 4px;
 }
 
 .drawing-settings-header {
