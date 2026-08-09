@@ -240,6 +240,11 @@ export class DrawingToolbarController<T> {
     this.openTemplatesMenu(anchor, this.currentDrawing);
   }
 
+  /** Закрыть выпадающие меню (шаблоны/ширина) — при drag settings и смене фокуса. */
+  dismissPopups(): void {
+    this.closePopups();
+  }
+
   destroy(): void {
     this.hide();
   }
@@ -492,7 +497,7 @@ export class DrawingToolbarController<T> {
     const saveBtn = document.createElement("button");
     saveBtn.type = "button";
     saveBtn.className = "rect-line-menu-item rect-templates-action";
-    saveBtn.textContent = "Сохранить шаблон как…";
+    saveBtn.textContent = "Сохранить как…";
     saveBtn.addEventListener("click", (event) => {
       event.stopPropagation();
       const name = window.prompt("Имя шаблона");
@@ -508,7 +513,7 @@ export class DrawingToolbarController<T> {
     const defaultBtn = document.createElement("button");
     defaultBtn.type = "button";
     defaultBtn.className = "rect-line-menu-item rect-templates-action";
-    defaultBtn.textContent = "Применить шаблон по умолчанию";
+    defaultBtn.textContent = "Применить по умолчанию";
     defaultBtn.addEventListener("click", (event) => {
       event.stopPropagation();
       this.applyTemplate(target, getDefaultDrawingTemplateState(this.options.templateKind));
@@ -556,12 +561,16 @@ export class DrawingToolbarController<T> {
       menu.appendChild(row);
     });
 
+    const fromToolbar = Boolean(this.panel?.contains(anchor));
     this.cleanupPopup = mountAnchoredPopup({
       container: this.options.container,
       anchor,
-      verticalAnchor: this.panel ?? undefined,
+      // Из футера настроек якорь — сама кнопка Template, не плавающий тулбар.
+      verticalAnchor: fromToolbar ? (this.panel ?? undefined) : undefined,
       popup: menu,
-      width: 248,
+      minWidth: 200,
+      fitContent: true,
+      preferAbove: !fromToolbar,
       onDismiss: () => { this.cleanupPopup = null; },
     });
   }

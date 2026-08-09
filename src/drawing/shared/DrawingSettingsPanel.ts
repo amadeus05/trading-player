@@ -23,6 +23,7 @@ export interface DrawingSettingsPanelOptions {
   tabs?: DrawingSettingsTab[];
   renderTab?: (tabId: DrawingSettingsTabId, body: HTMLDivElement) => void;
   onTemplateClick?: (anchor: HTMLElement) => void;
+  onDragStart?: () => void;
   onCancel?: () => void;
   onOk?: () => void;
   onClose?: () => void;
@@ -149,6 +150,7 @@ export function mountDrawingSettingsPanel(options: DrawingSettingsPanelOptions):
     panel,
     grip: header,
     persistenceKey: options.persistenceKey,
+    onDragStart: options.onDragStart,
   });
 
   function render() {

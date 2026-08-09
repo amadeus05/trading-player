@@ -241,6 +241,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   }
 
   function removeSettingsPanel() {
+    toolbarController.dismissPopups();
     settingsPanel?.destroy();
     settingsPanel = null;
     settingsFibId = null;
@@ -401,6 +402,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
       onTemplateClick: (anchor) => {
         toolbarController.openTemplatesFrom(anchor);
       },
+      onDragStart: () => toolbarController.dismissPopups(),
       onClose: removeSettingsPanel,
       onCancel: removeSettingsPanel,
       onOk: removeSettingsPanel,
