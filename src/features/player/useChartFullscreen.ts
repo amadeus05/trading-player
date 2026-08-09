@@ -15,9 +15,12 @@ export function useChartFullscreen() {
     const root = appRef.current;
     if (!root) return;
 
-    const isActive = document.fullscreenElement === root || root.classList.contains("app--chart-fullscreen");
+    const fullscreenRoot = document.fullscreenElement;
+    const isActive = fullscreenRoot === root
+      || fullscreenRoot === document.documentElement
+      || root.classList.contains("app--chart-fullscreen");
     if (isActive) {
-      if (document.fullscreenElement === root) {
+      if (document.fullscreenElement) {
         await document.exitFullscreen();
       } else {
         setFullscreenActive(false);
@@ -27,9 +30,14 @@ export function useChartFullscreen() {
 
     setFullscreenActive(true);
     try {
+      // Вся страница приложения, включая header / сайдбар / тулбар.
       await root.requestFullscreen();
     } catch {
-      // Class-only fallback when Fullscreen API is blocked.
+      try {
+        await document.documentElement.requestFullscreen();
+      } catch {
+        // Class-only fallback when Fullscreen API is blocked.
+      }
     }
   }, [setFullscreenActive]);
 
@@ -37,7 +45,8 @@ export function useChartFullscreen() {
     const onFullscreenChange = () => {
       const root = appRef.current;
       if (!root) return;
-      if (document.fullscreenElement === root) {
+      const fs = document.fullscreenElement;
+      if (fs === root || fs === document.documentElement) {
         setFullscreenActive(true);
         return;
       }
