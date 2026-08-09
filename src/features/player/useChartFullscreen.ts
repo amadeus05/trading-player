@@ -30,11 +30,12 @@ export function useChartFullscreen() {
 
     setFullscreenActive(true);
     try {
-      // Вся страница приложения, включая header / сайдбар / тулбар.
-      await root.requestFullscreen();
+      // documentElement: порталы Ant Design (Select/Dropdown/Modal) остаются
+      // в document.body и продолжают открываться. Fullscreen на .app их прячет.
+      await document.documentElement.requestFullscreen();
     } catch {
       try {
-        await document.documentElement.requestFullscreen();
+        await root.requestFullscreen();
       } catch {
         // Class-only fallback when Fullscreen API is blocked.
       }

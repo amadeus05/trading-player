@@ -581,24 +581,26 @@ export function PlayerPage() {
                 onMouseEnter={showTradePanelTab}
               />
             ) : null}
-            <Button
-              type="text"
-              className={[
-                "tradePanelReopen",
-                tradePanelTabPinned ? "tradePanelReopen--pinned" : "",
-                tradePanelTabPinned || tradePanelTabPeek ? "tradePanelReopen--visible" : "",
-              ].filter(Boolean).join(" ")}
-              aria-label="Показать панель Trade"
-              title="Trade"
-              tabIndex={tradePanelTabPinned || tradePanelTabPeek ? 0 : -1}
-              aria-hidden={!(tradePanelTabPinned || tradePanelTabPeek)}
-              icon={<PanelRightOpen size={18} />}
-              onClick={() => setTradePanelOpen(true)}
-              onMouseEnter={clearTradePanelTabHideTimer}
-              onMouseLeave={scheduleTradePanelTabHide}
-            >
-              Trade
-            </Button>
+            <div className={`tradePanelReopenHost${tradePanelTabPinned || tradePanelTabPeek ? " is-open" : ""}`}>
+              <Button
+                type="text"
+                className={[
+                  "tradePanelReopen",
+                  tradePanelTabPinned ? "tradePanelReopen--pinned" : "",
+                  tradePanelTabPinned || tradePanelTabPeek ? "tradePanelReopen--visible" : "",
+                ].filter(Boolean).join(" ")}
+                aria-label="Показать панель Trade"
+                title="Trade"
+                tabIndex={tradePanelTabPinned || tradePanelTabPeek ? 0 : -1}
+                aria-hidden={!(tradePanelTabPinned || tradePanelTabPeek)}
+                icon={<PanelRightOpen size={18} />}
+                onClick={() => setTradePanelOpen(true)}
+                onMouseEnter={clearTradePanelTabHideTimer}
+                onMouseLeave={scheduleTradePanelTabHide}
+              >
+                Trade
+              </Button>
+            </div>
           </>
         )}
       </main>

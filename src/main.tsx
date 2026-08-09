@@ -4,9 +4,21 @@ import { App as AntApp, ConfigProvider, theme } from "antd";
 import App from "./App";
 import "./styles.css";
 
+/** В fullscreen виден только fullscreen-элемент — порталы в body иначе пропадают. */
+function getOverlayContainer(trigger?: HTMLElement): HTMLElement {
+  const fs = document.fullscreenElement;
+  if (fs instanceof HTMLElement && fs !== document.documentElement && (!trigger || fs.contains(trigger))) {
+    return fs;
+  }
+  return document.body;
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ConfigProvider
+      getPopupContainer={getOverlayContainer}
+      modal={{ getContainer: () => getOverlayContainer() }}
+      drawer={{ getContainer: () => getOverlayContainer() }}
       theme={{
         algorithm: theme.darkAlgorithm,
         token: {
