@@ -7,45 +7,21 @@ import type { FibonacciLevel, FibonacciRetracement } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
 import { mountDrawingSettingsPanel, type DrawingSettingsPanelController, type DrawingSettingsTabId } from "../shared/DrawingSettingsPanel";
-import { getNewDrawingStyle } from "../shared/drawingTemplates";
+import { getNewDrawingStyle, rememberDrawingStyle } from "../shared/drawingTemplates";
 import { attachManagedDrawingLifecycle, attachScaleInteractionSync, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import type { DrawingLineStyle } from "../shared/DrawingToolbar";
 import { createDrawingOverlay } from "../shared/overlay";
 import { createSelectionController } from "../shared/selection";
 import { createDrawingSession, drawingPointFromClick } from "../shared/drawingSession";
 import type { DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions, ChartCandleStore, SeriesApiLike } from "../shared/types";
+import { DEFAULT_FIB_LEVEL_DEFS, getDefaultFibLevels, resolveFibLevels as resolveLevelList } from "./fibLevels";
 
 export type FibonacciCallbacks = DrawingCrudCallbacks<FibonacciRetracement>;
+export { DEFAULT_FIB_LEVEL_DEFS, getDefaultFibLevels };
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 const SETTINGS_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M18 14a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm-1 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"></path><path fill-rule="evenodd" d="M8.5 5h11l5 9-5 9h-11l-5-9 5-9Zm-3.86 9L9.1 6h9.82l4.45 8-4.45 8H9.1l-4.45-8Z"></path></svg>`;
-
-/** Порядок как в TradingView Style: 2 колонки слева направо по строкам. */
-export const DEFAULT_FIB_LEVEL_DEFS: readonly { ratio: number; color: string; enabled: boolean }[] = [
-  { ratio: 0, color: "#787b86", enabled: true },
-  { ratio: 0.236, color: "#f23645", enabled: true },
-  { ratio: 0.382, color: "#ff9800", enabled: true },
-  { ratio: 0.5, color: "#9acd32", enabled: true },
-  { ratio: 0.618, color: "#089981", enabled: true },
-  { ratio: 0.786, color: "#00bcd4", enabled: true },
-  { ratio: 1, color: "#787b86", enabled: true },
-  { ratio: 1.618, color: "#2962ff", enabled: true },
-  { ratio: 2.618, color: "#e91e63", enabled: true },
-  { ratio: 3.618, color: "#9c27b0", enabled: true },
-  { ratio: 4.236, color: "#f23645", enabled: true },
-  { ratio: 1.272, color: "#ff9800", enabled: false },
-  { ratio: 1.414, color: "#f48fb1", enabled: false },
-  { ratio: 2.272, color: "#ff9800", enabled: false },
-  { ratio: 2.414, color: "#9acd32", enabled: false },
-  { ratio: 2, color: "#089981", enabled: false },
-  { ratio: 3, color: "#00bcd4", enabled: false },
-  { ratio: 3.272, color: "#787b86", enabled: false },
-  { ratio: 3.414, color: "#64b5f6", enabled: false },
-  { ratio: 4, color: "#f23645", enabled: false },
-  { ratio: 4.272, color: "#9c27b0", enabled: false },
-  { ratio: 0.71, color: "#e040fb", enabled: false },
-];
 
 /** @deprecated используйте DEFAULT_FIB_LEVEL_DEFS / getDefaultFibLevels */
 export const FIB_LEVELS = DEFAULT_FIB_LEVEL_DEFS.filter((level) => level.enabled).map(({ ratio, color }) => ({ ratio, color }));
@@ -57,19 +33,8 @@ const DEFAULT_FIB_LINE = {
   style: "solid" as DrawingLineStyle,
 };
 
-export function getDefaultFibLevels(): FibonacciLevel[] {
-  return DEFAULT_FIB_LEVEL_DEFS.map((level) => ({ ...level }));
-}
-
 export function resolveFibLevels(fib: FibonacciRetracement): FibonacciLevel[] {
-  if (fib.levels?.length) {
-    return fib.levels.map((level) => ({
-      ratio: Number(level.ratio),
-      color: level.color || "#787b86",
-      enabled: level.enabled !== false,
-    }));
-  }
-  return getDefaultFibLevels();
+  return resolveLevelList(fib.levels);
 }
 
 function formatLevelInput(ratio: number): string {
@@ -297,9 +262,21 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     const idx = fibonacciRetracements.findIndex((item) => item.id === id);
     if (idx < 0) return;
     fibonacciRetracements[idx] = { ...fibonacciRetracements[idx], ...patch };
-    callbacks.onUpdate(fibonacciRetracements[idx]);
+    const next = fibonacciRetracements[idx];
+    callbacks.onUpdate(next);
+    // Уровни правятся в settings, не через тулбар — запоминаем для следующих фигур.
+    if (patch.levels || patch.lineWidth != null || patch.lineStyle || patch.trendColor != null) {
+      const lineStyle = fibLineStyle(next);
+      rememberDrawingStyle("fibonacci", {
+        lineColor: next.trendColor ?? "#787b86",
+        width: lineStyle.width,
+        style: lineStyle.style,
+        levels: resolveFibLevels(next),
+      });
+    }
     syncAll();
     toolbarController.refresh();
+    if (settingsPanel && settingsFibId === id) settingsPanel.refresh();
   }
 
   function patchFibLevel(id: string, index: number, patch: Partial<FibonacciLevel>) {
@@ -421,6 +398,9 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
         }
         renderPanelPlaceholder(tabId, tabBody);
       },
+      onTemplateClick: (anchor) => {
+        toolbarController.openTemplatesFrom(anchor);
+      },
       onClose: removeSettingsPanel,
       onCancel: removeSettingsPanel,
       onOk: removeSettingsPanel,
@@ -434,13 +414,17 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     preset: "line-only",
     templateKind: "fibonacci",
     persistenceKey: (fib) => `fibonacci:${fib.id}`,
+    resolveDrawing: (fib) => fibonacciRetracements.find((item) => item.id === fib.id) ?? fib,
     getState: (fib) => {
-      const lineStyle = fibLineStyle(fib);
+      const live = fibonacciRetracements.find((item) => item.id === fib.id) ?? fib;
+      const lineStyle = fibLineStyle(live);
       return {
-        lineColor: "#787b86",
+        lineColor: live.trendColor ?? "#787b86",
         width: lineStyle.width,
         style: lineStyle.style,
-        locked: Boolean(fib.locked),
+        locked: Boolean(live.locked),
+        showLabel: live.showLabels !== false,
+        levels: resolveFibLevels(live),
       };
     },
     onPatch: (fib, patch) => {
@@ -448,6 +432,9 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
         ...(patch.width != null ? { lineWidth: patch.width } : {}),
         ...(patch.style ? { lineStyle: patch.style } : {}),
         ...(patch.locked != null ? { locked: patch.locked } : {}),
+        ...(patch.showLabel != null ? { showLabels: patch.showLabel } : {}),
+        ...(patch.lineColor != null ? { trendColor: patch.lineColor } : {}),
+        ...(patch.levels?.length ? { levels: patch.levels.map((level) => ({ ...level })) } : {}),
       });
     },
     onDelete: (fib) => deleteFib(fib.id),
@@ -900,11 +887,14 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
         datasetId,
         point1,
         point2,
-        showLabels: true,
+        showLabels: tpl.showLabel !== false,
         locked: false,
         lineWidth: tpl.width,
         lineStyle: tpl.style,
-        levels: getDefaultFibLevels(),
+        trendColor: tpl.lineColor,
+        levels: tpl.levels?.length
+          ? tpl.levels.map((level) => ({ ...level }))
+          : getDefaultFibLevels(),
       };
       fibonacciRetracements.push(newFib);
       callbacks.onCreate(newFib);

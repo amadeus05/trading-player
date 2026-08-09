@@ -22,6 +22,7 @@ export interface DrawingSettingsPanelOptions {
   initialTab?: DrawingSettingsTabId;
   tabs?: DrawingSettingsTab[];
   renderTab?: (tabId: DrawingSettingsTabId, body: HTMLDivElement) => void;
+  onTemplateClick?: (anchor: HTMLElement) => void;
   onCancel?: () => void;
   onOk?: () => void;
   onClose?: () => void;
@@ -112,6 +113,15 @@ export function mountDrawingSettingsPanel(options: DrawingSettingsPanelOptions):
   template.type = "button";
   template.className = "drawing-settings-template";
   template.innerHTML = `<span>Template</span>${CHEVRON_ICON}`;
+  if (options.onTemplateClick) {
+    template.addEventListener("click", (event) => {
+      event.stopPropagation();
+      options.onTemplateClick?.(template);
+    });
+  } else {
+    template.disabled = true;
+    template.title = "Шаблоны недоступны";
+  }
 
   const actions = document.createElement("div");
   actions.className = "drawing-settings-actions";
