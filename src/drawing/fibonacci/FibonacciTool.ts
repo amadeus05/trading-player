@@ -748,7 +748,16 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
   }
 
   function updateGhost(p1: PixelPoint, p2: PixelPoint) {
-    const levelDefs = getDefaultFibLevels();
+    // Тот же last-used стиль, что и у commit — иначе превью рисует заводские уровни.
+    const tpl = getNewDrawingStyle("fibonacci");
+    const levelDefs = tpl.levels?.length
+      ? tpl.levels.map((level) => ({ ...level }))
+      : getDefaultFibLevels();
+    const ghostStyle = {
+      width: tpl.width ?? DEFAULT_FIB_LINE.width,
+      style: tpl.style ?? DEFAULT_FIB_LINE.style,
+    };
+    const showLabels = tpl.showLabel !== false;
     ensureGhostElements(levelDefs.length);
     ghostTrendLine!.setAttribute("x1", String(p1.x));
     ghostTrendLine!.setAttribute("y1", String(p1.y));
@@ -760,7 +769,6 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     const { plotWidth } = getPlotLayout();
     const { xLeft, xRight } = horizontalSpan(p1, p2, plotWidth);
     const labelAnchorX = retracementLabelAnchorX(p1, p2);
-    const ghostStyle = DEFAULT_FIB_LINE;
     levelDefs.forEach((level, index) => {
       if (!level.enabled) {
         applyLevelLine({ line: ghostLevelLines![index] }, xLeft, xRight, 0, level.color, ghostStyle.width, ghostStyle.style, false);
@@ -775,9 +783,13 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
         return;
       }
       applyLevelLine({ line: ghostLevelLines![index] }, xLeft, xRight, y, level.color, ghostStyle.width, ghostStyle.style, true);
-      applyLevelLabel(ghostLevelLabels![index], labelAnchorX, y, level.ratio, price, level.color, pricePrecision);
+      if (showLabels) {
+        applyLevelLabel(ghostLevelLabels![index], labelAnchorX, y, level.ratio, price, level.color, pricePrecision);
+      } else {
+        ghostLevelLabels![index].setAttribute("visibility", "hidden");
+      }
     });
-    applyTrendLineStroke(ghostTrendLine!, "#787b86", ghostStyle.width);
+    applyTrendLineStroke(ghostTrendLine!, tpl.lineColor ?? "#787b86", ghostStyle.width);
     applyHandles(ghostHandle1!, ghostHandle2!, p1, p2, true);
   }
 
