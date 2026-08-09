@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { App as AntApp, Empty } from "antd";
+import { App as AntApp, Button, Empty } from "antd";
+import { PanelRightOpen } from "lucide-react";
 import type { AmbiguousExitPolicy, Candle, Dataset, SimulationSettings } from "../../types";
 import type { DrawingMode } from "../../drawing";
 import { ReplayChart, type ChartViewportRef } from "../chart/ReplayChart";
@@ -26,6 +27,8 @@ import { useActiveMarketCandles } from "../datasets/useActiveMarketCandles";
 import { useBaseCandles } from "../datasets/useBaseCandles";
 import { prefetchMarketCandleThresholdForTimeframe, shouldPrefetchMarketCandles } from "../datasets/marketCandleRanges";
 
+const TRADE_PANEL_TAB_AUTO_HIDE_MS = 1000;
+
 export function PlayerPage() {
   const { message } = AntApp.useApp();
   const chartInteractionActive = useRef(false);
@@ -50,9 +53,25 @@ export function PlayerPage() {
   );
   const [dataset, setDataset] = useState(""),
     [journal, setJournal] = useState(false),
+    [tradePanelOpen, setTradePanelOpen] = useState(() => {
+      try {
+        return localStorage.getItem("player:trade-panel-open") !== "0";
+      } catch {
+        return true;
+      }
+    }),
     [settingsOpen, setSettingsOpen] = useState(false),
     [drawingMode, setDrawingMode] = useState<DrawingMode>("none"),
-    [drawingsVisible, setDrawingsVisible] = useState(true);
+    [drawingsVisible, setDrawingsVisible] = useState(true),
+    [tradePanelTabPeek, setTradePanelTabPeek] = useState(false);
+  const tradePanelTabHideTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    try {
+      localStorage.setItem("player:trade-panel-open", tradePanelOpen ? "1" : "0");
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }, [tradePanelOpen]);
   const drawingCount = useMemo(
     () => (dataset ? countDrawingsForDataset(drawings, dataset) : 0),
     [drawings, dataset],
@@ -107,6 +126,32 @@ export function PlayerPage() {
     () => ({ ...DEFAULT_SIMULATION_SETTINGS, ...state.settings }),
     [state.settings],
   );
+  const tradePanelTabPinned = simulationSettings.tradePanelTabPinned;
+  const clearTradePanelTabHideTimer = useCallback(() => {
+    if (tradePanelTabHideTimerRef.current != null) {
+      window.clearTimeout(tradePanelTabHideTimerRef.current);
+      tradePanelTabHideTimerRef.current = null;
+    }
+  }, []);
+  const scheduleTradePanelTabHide = useCallback(() => {
+    if (tradePanelTabPinned) return;
+    clearTradePanelTabHideTimer();
+    tradePanelTabHideTimerRef.current = window.setTimeout(() => {
+      tradePanelTabHideTimerRef.current = null;
+      setTradePanelTabPeek(false);
+    }, TRADE_PANEL_TAB_AUTO_HIDE_MS);
+  }, [clearTradePanelTabHideTimer, tradePanelTabPinned]);
+  const showTradePanelTab = useCallback(() => {
+    setTradePanelTabPeek(true);
+    scheduleTradePanelTabHide();
+  }, [scheduleTradePanelTabHide]);
+  useEffect(() => {
+    if (tradePanelTabPinned || tradePanelOpen) {
+      clearTradePanelTabHideTimer();
+      setTradePanelTabPeek(false);
+    }
+  }, [clearTradePanelTabHideTimer, tradePanelOpen, tradePanelTabPinned]);
+  useEffect(() => () => clearTradePanelTabHideTimer(), [clearTradePanelTabHideTimer]);
   const accountSettings = useMemo(
     () => ({ ...DEFAULT_ACCOUNT_SETTINGS, ...state.account }),
     [state.account],
@@ -390,7 +435,7 @@ export function PlayerPage() {
         onSettingsOpen={() => setSettingsOpen(true)}
         onJournalOpen={() => setJournal(true)}
       />
-      <main>
+      <main className={tradePanelOpen ? undefined : "trade-panel-collapsed"}>
         <section className="workspace">
           <PlayerToolbar
             datasetOptions={datasetOptions}
@@ -498,33 +543,64 @@ export function PlayerPage() {
             onSpeedChange={setSpeed}
           />
         </section>
-        <TradingSidebar
-          currentCandle={cur}
-          pricePrecision={pricePrecision}
-          baseAsset={baseAsset}
-          quoteAsset={quoteAsset}
-          accountStats={accountStats}
-          orderForm={orderForm}
-          workingTrades={workingTrades}
-          focusedTradeId={focusedTradeId}
-          editingTradeId={tradeEditDraft?.id ?? null}
-          onBeginOrderDraft={(side) => {
-            setFocusedTradeId(null);
-            setTradeEditDraft(null);
-            orderForm.beginOrderDraft(side, chartViewportRef.current?.getVisiblePriceRange());
-          }}
-          onCancelOrderDraft={() => {
-            setTradeEditDraft(null);
-            orderForm.cancelOrderDraft();
-          }}
-          onPlaceOrder={placeOrder}
-          onTradeFocus={setFocusedTradeId}
-          onTradeEditStart={startTradeEditing}
-          onTradeEditCancel={cancelTradeEditing}
-          onTradeEditSave={saveTradeEditing}
-          onCancelOrder={cancelOrder}
-          onCloseTrade={closeTrade}
-        />
+        {tradePanelOpen ? (
+          <TradingSidebar
+            currentCandle={cur}
+            pricePrecision={pricePrecision}
+            baseAsset={baseAsset}
+            quoteAsset={quoteAsset}
+            accountStats={accountStats}
+            orderForm={orderForm}
+            workingTrades={workingTrades}
+            focusedTradeId={focusedTradeId}
+            editingTradeId={tradeEditDraft?.id ?? null}
+            onCollapse={() => setTradePanelOpen(false)}
+            onBeginOrderDraft={(side) => {
+              setFocusedTradeId(null);
+              setTradeEditDraft(null);
+              orderForm.beginOrderDraft(side, chartViewportRef.current?.getVisiblePriceRange());
+            }}
+            onCancelOrderDraft={() => {
+              setTradeEditDraft(null);
+              orderForm.cancelOrderDraft();
+            }}
+            onPlaceOrder={placeOrder}
+            onTradeFocus={setFocusedTradeId}
+            onTradeEditStart={startTradeEditing}
+            onTradeEditCancel={cancelTradeEditing}
+            onTradeEditSave={saveTradeEditing}
+            onCancelOrder={cancelOrder}
+            onCloseTrade={closeTrade}
+          />
+        ) : (
+          <>
+            {!tradePanelTabPinned ? (
+              <div
+                className="tradePanelTabHotzone"
+                aria-hidden="true"
+                onMouseEnter={showTradePanelTab}
+              />
+            ) : null}
+            <Button
+              type="text"
+              className={[
+                "tradePanelReopen",
+                tradePanelTabPinned ? "tradePanelReopen--pinned" : "",
+                tradePanelTabPinned || tradePanelTabPeek ? "tradePanelReopen--visible" : "",
+              ].filter(Boolean).join(" ")}
+              aria-label="Показать панель Trade"
+              title="Trade"
+              tabIndex={tradePanelTabPinned || tradePanelTabPeek ? 0 : -1}
+              aria-hidden={!(tradePanelTabPinned || tradePanelTabPeek)}
+              icon={<PanelRightOpen size={18} />}
+              onClick={() => setTradePanelOpen(true)}
+              onMouseEnter={clearTradePanelTabHideTimer}
+              onMouseLeave={scheduleTradePanelTabHide}
+            >
+              Trade
+            </Button>
+          </>
+        )}
       </main>
       <PlayerModals
         settingsOpen={settingsOpen}
@@ -556,6 +632,14 @@ export function PlayerPage() {
             ...DEFAULT_SIMULATION_SETTINGS,
             ...current.settings,
             followCandle: checked,
+          },
+        }))}
+        onTradePanelTabPinnedChange={(checked) => setState((current) => ({
+          ...current,
+          settings: {
+            ...DEFAULT_SIMULATION_SETTINGS,
+            ...current.settings,
+            tradePanelTabPinned: checked,
           },
         }))}
         onDatePickerClose={() => setDatePickerOpen(false)}

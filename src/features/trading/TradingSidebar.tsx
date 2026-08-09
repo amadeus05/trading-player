@@ -1,5 +1,5 @@
 import { Button, InputNumber, Select, Slider, Tooltip } from "antd";
-import { Check, CircleHelp, Pencil, X } from "lucide-react";
+import { Check, CircleHelp, PanelRightClose, Pencil, X } from "lucide-react";
 import type { Candle, Trade } from "../../types";
 import { formatNumber, formatPrice } from "../../shared/lib/market";
 import type { AccountStats } from "./lib/calculateAccountStats";
@@ -15,6 +15,7 @@ interface TradingSidebarProps {
   workingTrades: Trade[];
   focusedTradeId: string | null;
   editingTradeId: string | null;
+  onCollapse?: () => void;
   onBeginOrderDraft: (side: Trade["side"]) => void;
   onCancelOrderDraft: () => void;
   onPlaceOrder: (side: Trade["side"]) => void;
@@ -97,6 +98,7 @@ export function TradingSidebar({
   workingTrades,
   focusedTradeId,
   editingTradeId,
+  onCollapse,
   onBeginOrderDraft,
   onCancelOrderDraft,
   onPlaceOrder,
@@ -177,8 +179,20 @@ export function TradingSidebar({
       : "OK";
 
   return (
-    <aside>
-      <div className="orderHeader"><b>Trade</b></div>
+    <aside className="tradeSidebar">
+      <div className="orderHeader">
+        <b>Trade</b>
+        {onCollapse ? (
+          <Button
+            type="text"
+            className="tradeSidebarCollapse"
+            aria-label="Свернуть панель Trade"
+            title="Свернуть"
+            icon={<PanelRightClose size={16} />}
+            onClick={onCollapse}
+          />
+        ) : null}
+      </div>
       <div className="ticketTopRow">
         {/*
           Режим маржи выключен намеренно, а не «пока не сделали». Симулятор

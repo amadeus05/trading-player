@@ -32,6 +32,8 @@ export const DEFAULT_SIMULATION_SETTINGS: SimulationSettings = {
   showTradingSessions: false,
   showFairValueGaps: false,
   followCandle: false,
+  /** true — вкладка Trade всегда видна при свёрнутой панели; false — выезжает от правого края. */
+  tradePanelTabPinned: true,
   ambiguousExitPolicy: "conservative",
 };
 

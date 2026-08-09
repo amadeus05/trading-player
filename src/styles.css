@@ -226,6 +226,11 @@ main {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
   height: calc(100vh - 64px);
+  position: relative;
+}
+
+main.trade-panel-collapsed {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .workspace {
@@ -707,9 +712,7 @@ main {
   opacity: 0.85;
 }
 
-g[data-trend-id].selected .trend-main-line {
-  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.2));
-}
+/* Без CSS filter: на hover соседних UI (вкладка Trade) filter мигал белой линией. */
 
 /* Horizontal Line Overlay */
 .hline-line {
@@ -719,10 +722,6 @@ g[data-trend-id].selected .trend-main-line {
   height: 0;
   pointer-events: none;
   transform: translateY(-50%);
-}
-
-.hline-line.selected {
-  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.25));
 }
 
 .hline-hit {
@@ -1950,6 +1949,109 @@ aside {
   /* overflow: auto включает и X: тултип слайдера на 100% давал полосы по обеим осям. */
   overflow-x: hidden;
   overflow-y: auto;
+}
+
+.tradeSidebar {
+  animation: tradeSidebarIn 160ms ease-out;
+}
+
+@keyframes tradeSidebarIn {
+  from {
+    opacity: 0.4;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.tradeSidebarCollapse.ant-btn {
+  color: #8b93a7;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tradeSidebarCollapse.ant-btn:hover {
+  color: #eef0f6 !important;
+  background: #1a1f2b !important;
+}
+
+.tradePanelTabHotzone {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  z-index: 20;
+}
+
+.tradePanelReopen.ant-btn {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  z-index: 21;
+  /* Отдельный композитный слой: hover не должен дёргать SVG filter у рисунков. */
+  transform: translate3d(110%, -50%, 0);
+  opacity: 0;
+  pointer-events: none;
+  isolation: isolate;
+  contain: paint;
+  height: auto;
+  min-height: 112px;
+  width: 36px;
+  padding: 16px 7px;
+  border-radius: 8px 0 0 8px;
+  border: 1px solid #20232d;
+  border-right: none;
+  background: #12151d;
+  color: #c7cdd8;
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.25);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  line-height: 1.1;
+  transition:
+    transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 220ms ease,
+    background-color 120ms ease,
+    color 120ms ease;
+  will-change: transform, opacity;
+}
+
+.tradePanelReopen.ant-btn.tradePanelReopen--visible {
+  transform: translate3d(0, -50%, 0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.tradePanelReopen.ant-btn.tradePanelReopen--pinned {
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.tradePanelReopen.ant-btn .ant-btn-icon {
+  margin: 0;
+}
+
+.tradePanelReopen.ant-btn > span:last-child {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  letter-spacing: 0.04em;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tradePanelReopen.ant-btn:hover {
+  color: #fff !important;
+  background: #1a2030 !important;
+  /* Не меняем border/shadow — иначе layout/paint уезжает на соседний chart overlay. */
+  border-color: #20232d !important;
 }
 
 .orderHeader {
