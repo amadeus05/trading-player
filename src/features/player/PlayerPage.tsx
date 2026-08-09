@@ -414,6 +414,15 @@ export function PlayerPage() {
                 showTradingSessions: !simulationSettings.showTradingSessions,
               },
             }))}
+            fairValueGapsActive={simulationSettings.showFairValueGaps}
+            onToggleFairValueGaps={() => setState((current) => ({
+              ...current,
+              settings: {
+                ...DEFAULT_SIMULATION_SETTINGS,
+                ...current.settings,
+                showFairValueGaps: !simulationSettings.showFairValueGaps,
+              },
+            }))}
           />
           <div className="chartArea">
             <DrawingToolsRail
@@ -447,6 +456,7 @@ export function PlayerPage() {
                   onEntryMarkerChange={moveEntryMarker}
                   showClosedTradeOverlays={simulationSettings.showClosedTradeOverlays}
                   showTradingSessions={simulationSettings.showTradingSessions}
+                  showFairValueGaps={simulationSettings.showFairValueGaps}
                   markersEditable={chartDisplay.markersEditable}
                   drawings={drawings}
                   drawingActions={drawingActions}
