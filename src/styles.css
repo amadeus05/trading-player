@@ -1422,23 +1422,121 @@ g[data-channel-id].selected .pc-edge-line {
   font-weight: 500;
 }
 
+.journalTabs.ant-segmented,
+.journalFilterChip.ant-btn {
+  height: 34px;
+  border: 1px solid #262b36;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #12151c 0%, #0e1117 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  color: #7d8699;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+}
+
+.journalTabs.ant-segmented {
+  padding: 3px;
+}
+
+.journalTabs.ant-segmented .ant-segmented-item {
+  min-height: 26px;
+  border-radius: 7px;
+  color: #7d8699;
+  transition: color 160ms ease;
+}
+
+.journalTabs.ant-segmented .ant-segmented-item:hover:not(.ant-segmented-item-selected),
+.journalFilterChip.ant-btn:hover {
+  color: #c4cad8 !important;
+}
+
+.journalTabs.ant-segmented .ant-segmented-thumb {
+  border-radius: 7px;
+  background: linear-gradient(180deg, #2a2448 0%, #221d3a 100%);
+  border: 1px solid rgba(124, 108, 242, 0.45);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 4px 12px rgba(0, 0, 0, 0.28);
+}
+
+.journalTabs.ant-segmented .ant-segmented-item-selected {
+  color: #ece8ff;
+  font-weight: 600;
+}
+
+.journalTabs.ant-segmented .ant-segmented-item-label {
+  min-height: 26px;
+  padding: 0 11px;
+  line-height: 26px;
+}
+
+.journalTabLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+}
+
+.journalTabLabel svg {
+  opacity: 0.85;
+  flex-shrink: 0;
+}
+
+.journalTabs.ant-segmented .ant-segmented-item-selected .journalTabLabel svg {
+  opacity: 1;
+  color: #b7aeff;
+}
+
 .journalHeadActions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .journalFilterChip.ant-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #7b8497;
-  font-size: 11px;
+  padding: 0 12px;
+  line-height: 1;
+}
+
+.journalFilterChip.ant-btn:hover {
+  border-color: #323846 !important;
+  background: linear-gradient(180deg, #161a23 0%, #11151c 100%) !important;
 }
 
 .journalFilterChip.active.ant-btn {
-  border-color: #2f6bff;
-  color: #e8ebf2;
+  border-color: rgba(124, 108, 242, 0.45);
+  color: #ece8ff;
+  background: linear-gradient(180deg, #2a2448 0%, #221d3a 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 4px 12px rgba(0, 0, 0, 0.28);
+}
+
+.journalFilterChip.active.ant-btn:hover {
+  border-color: rgba(124, 108, 242, 0.6) !important;
+  color: #f2efff !important;
+  background: linear-gradient(180deg, #312a52 0%, #261f42 100%) !important;
+}
+
+.journalHeadMenu.ant-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #262b36;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #12151c 0%, #0e1117 100%);
+  color: #7d8699;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.journalHeadMenu.ant-btn:hover {
+  color: #c4cad8 !important;
+  border-color: #323846 !important;
+  background: linear-gradient(180deg, #161a23 0%, #11151c 100%) !important;
 }
 
 .journalFilterPanel {
