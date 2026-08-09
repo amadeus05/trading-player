@@ -9,6 +9,7 @@ import {
   type DrawingTemplateKind,
   type DrawingTemplateState,
 } from "./drawingTemplates";
+import { openConfirmDialog } from "./confirmDialog";
 import { mountFloatingPanel } from "./floatingPanel";
 import { mountAnchoredPopup } from "./popup";
 import { hexToRgba } from "./colorUtils";
@@ -193,6 +194,7 @@ export class DrawingToolbarController<T> {
   private currentDrawing: T | null = null;
   private currentState: DrawingToolbarState | null = null;
   private cleanupPopup: (() => void) | null = null;
+  private cleanupConfirm: (() => void) | null = null;
   private cleanupDrag: (() => void) | null = null;
   private slotCleanups: Array<() => void> = [];
 
@@ -215,6 +217,7 @@ export class DrawingToolbarController<T> {
 
   hide(): void {
     this.closePopups();
+    this.closeConfirm();
     this.slotCleanups.forEach((cleanup) => cleanup());
     this.slotCleanups = [];
     this.cleanupDrag?.();
@@ -243,6 +246,7 @@ export class DrawingToolbarController<T> {
   /** Закрыть выпадающие меню (шаблоны/ширина) — при drag settings и смене фокуса. */
   dismissPopups(): void {
     this.closePopups();
+    this.closeConfirm();
   }
 
   destroy(): void {
@@ -551,9 +555,19 @@ export class DrawingToolbarController<T> {
       deleteBtn.innerHTML = removeDrawingIcon;
       deleteBtn.addEventListener("click", (event) => {
         event.stopPropagation();
-        deleteDrawingTemplate(template.id);
         this.closePopups();
-        this.openTemplatesMenu(anchor, drawing);
+        this.cleanupConfirm?.();
+        this.cleanupConfirm = openConfirmDialog({
+          container: this.options.container,
+          title: "Подтверждение",
+          message: `Удалить шаблон рисунка «${template.name}»?`,
+          cancelText: "Нет",
+          confirmText: "Да",
+          onConfirm: () => {
+            deleteDrawingTemplate(template.id);
+            this.cleanupConfirm = null;
+          },
+        });
       });
 
       row.appendChild(applyBtn);
@@ -578,5 +592,10 @@ export class DrawingToolbarController<T> {
   private closePopups() {
     this.cleanupPopup?.();
     this.cleanupPopup = null;
+  }
+
+  private closeConfirm() {
+    this.cleanupConfirm?.();
+    this.cleanupConfirm = null;
   }
 }
