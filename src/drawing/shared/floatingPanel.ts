@@ -1,5 +1,7 @@
 export interface PanelPosition { left: number; top: number }
 
+export type FloatingPanelPlacement = "center" | "top-right";
+
 const positions = new Map<string, PanelPosition>();
 
 export function mountFloatingPanel(options: {
@@ -8,20 +10,49 @@ export function mountFloatingPanel(options: {
   grip: HTMLElement;
   persistenceKey: string;
   inset?: number;
+  /** Куда ставить панель при первом открытии (без сохранённой позиции). */
+  placement?: FloatingPanelPlacement;
   onDragStart?: () => void;
 }): () => void {
   const { container, panel, grip, persistenceKey, onDragStart } = options;
   const inset = options.inset ?? 12;
+  const placement = options.placement ?? "top-right";
+
+  const defaultPosition = (): PanelPosition => {
+    const bounds = container.getBoundingClientRect();
+    const width = panel.offsetWidth;
+    const height = panel.offsetHeight;
+    if (placement === "center") {
+      return {
+        left: Math.max(inset, (bounds.width - width) / 2),
+        top: Math.max(inset, (bounds.height - height) / 2),
+      };
+    }
+    return {
+      left: Math.max(inset, bounds.width - width - inset),
+      top: inset,
+    };
+  };
+
   const place = (position?: PanelPosition) => {
     const bounds = container.getBoundingClientRect();
-    const maxLeft = Math.max(inset, bounds.width - panel.offsetWidth - inset);
-    const maxTop = Math.max(inset, bounds.height - panel.offsetHeight - inset);
-    const left = position ? Math.max(inset, Math.min(position.left, maxLeft)) : maxLeft;
-    const top = position ? Math.max(inset, Math.min(position.top, maxTop)) : inset;
-    panel.style.left = `${left}px`;
-    panel.style.top = `${top}px`;
+    const width = panel.offsetWidth;
+    const height = panel.offsetHeight;
+    // До layout width/height = 0 → maxLeft ≈ ширина контейнера, панель уезжает за край.
+    if (width < 2 || height < 2) return;
+    const maxLeft = Math.max(inset, bounds.width - width - inset);
+    const maxTop = Math.max(inset, bounds.height - height - inset);
+    const source = position ?? defaultPosition();
+    panel.style.left = `${Math.max(inset, Math.min(source.left, maxLeft))}px`;
+    panel.style.top = `${Math.max(inset, Math.min(source.top, maxTop))}px`;
   };
-  place(positions.get(persistenceKey));
+
+  const saved = positions.get(persistenceKey);
+  place(saved);
+  // После отрисовки body (уровни fib и т.п.) пересчитать — иначе первый кадр кривой.
+  const rafId = requestAnimationFrame(() => {
+    place(positions.get(persistenceKey) ?? saved);
+  });
 
   let removeActiveListeners: (() => void) | null = null;
   const onPointerDown = (event: PointerEvent) => {
@@ -55,6 +86,7 @@ export function mountFloatingPanel(options: {
   };
   grip.addEventListener("pointerdown", onPointerDown);
   return () => {
+    cancelAnimationFrame(rafId);
     removeActiveListeners?.();
     grip.removeEventListener("pointerdown", onPointerDown);
   };

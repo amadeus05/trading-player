@@ -145,14 +145,6 @@ export function mountDrawingSettingsPanel(options: DrawingSettingsPanelOptions):
 
   options.container.appendChild(panel);
 
-  const unmountFloating = mountFloatingPanel({
-    container: options.container,
-    panel,
-    grip: header,
-    persistenceKey: options.persistenceKey,
-    onDragStart: options.onDragStart,
-  });
-
   function render() {
     body.replaceChildren();
     tabButtons.forEach((button, tabId) => {
@@ -167,7 +159,17 @@ export function mountDrawingSettingsPanel(options: DrawingSettingsPanelOptions):
     render();
   }
 
+  // Сначала контент — иначе offsetWidth=0 и панель уезжает за правый край.
   render();
+
+  const unmountFloating = mountFloatingPanel({
+    container: options.container,
+    panel,
+    grip: header,
+    persistenceKey: options.persistenceKey,
+    placement: "center",
+    onDragStart: options.onDragStart,
+  });
 
   return {
     panel,
