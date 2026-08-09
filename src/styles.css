@@ -2064,19 +2064,27 @@ aside {
   }
 }
 
-.tradeSidebarCollapse.ant-btn {
-  color: #8b93a7;
-  width: 28px;
-  height: 28px;
-  padding: 0;
+.tradeSidebarCollapse {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: #8b93a7;
+  line-height: 0;
+  cursor: pointer;
+  appearance: none;
+  transition: color 120ms ease;
 }
 
-.tradeSidebarCollapse.ant-btn:hover {
-  color: #eef0f6 !important;
-  background: #1a1f2b !important;
+.tradeSidebarCollapse:hover,
+.tradeSidebarCollapse:focus-visible {
+  color: #7c6cf2;
+  background: transparent;
+  outline: none;
 }
 
 .tradePanelTabHotzone {

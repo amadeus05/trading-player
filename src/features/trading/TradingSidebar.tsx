@@ -1,5 +1,5 @@
 import { Button, InputNumber, Select, Slider, Tooltip } from "antd";
-import { Check, CircleHelp, PanelRightClose, Pencil, X } from "lucide-react";
+import { Check, PanelRightClose, Pencil, X } from "lucide-react";
 import type { Candle, Trade } from "../../types";
 import { formatNumber, formatPrice } from "../../shared/lib/market";
 import type { AccountStats } from "./lib/calculateAccountStats";
@@ -183,14 +183,15 @@ export function TradingSidebar({
       <div className="orderHeader">
         <b>Trade</b>
         {onCollapse ? (
-          <Button
-            type="text"
+          <button
+            type="button"
             className="tradeSidebarCollapse"
             aria-label="Свернуть панель Trade"
             title="Свернуть"
-            icon={<PanelRightClose size={16} />}
             onClick={onCollapse}
-          />
+          >
+            <PanelRightClose size={16} />
+          </button>
         ) : null}
       </div>
       <div className="ticketTopRow">
@@ -225,7 +226,6 @@ export function TradingSidebar({
       <div className="orderTabs">
         <button className={orderType === "LIMIT" ? "active" : ""} onClick={() => onOrderTypeChange("LIMIT")}>Limit</button>
         <button className={orderType === "MARKET" ? "active" : ""} onClick={() => onOrderTypeChange("MARKET")}>Market</button>
-        <CircleHelp size={16} />
       </div>
       {orderType === "LIMIT" && (
         <div className="ticketField">
