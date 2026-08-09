@@ -441,7 +441,7 @@ export function attachFibonacciTool(opts: ManagedDrawingToolOptions & {
     onSync: () => syncAll(),
     slots: [{
       id: "settings",
-      anchor: "after-grip",
+      anchor: "before-lock",
       mount: () => {
         const button = document.createElement("button");
         button.type = "button";
