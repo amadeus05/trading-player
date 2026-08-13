@@ -34,6 +34,7 @@ export const DEFAULT_SIMULATION_SETTINGS: SimulationSettings = {
   followCandle: false,
   /** true — вкладка Trade всегда видна при свёрнутой панели; false — выезжает от правого края. */
   tradePanelTabPinned: true,
+  headerStatsVariant: "ticker",
   ambiguousExitPolicy: "conservative",
 };
 

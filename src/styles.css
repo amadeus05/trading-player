@@ -105,58 +105,60 @@ header {
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  gap: 18px;
-  padding-top: 1px;
+  gap: 8px;
 }
 
-.headerStatsGroup {
+.headerStatsTrack {
   display: flex;
-  align-items: flex-start;
-  gap: 14px;
+  align-items: center;
   min-width: 0;
 }
 
-.headerStatsSep {
+.headerStatsGroup {
+  display: contents;
+}
+
+.headerStatsSplit {
   width: 1px;
-  height: 28px;
+  height: 26px;
+  margin: 0 10px;
+  background: #2a2f3b;
   flex-shrink: 0;
-  margin-top: 1px;
-  background: #282b35;
 }
 
 .headerStat {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
+  padding: 0 10px;
 }
 
 .headerStat span {
-  color: #656b7c;
+  color: #6a7184;
   font-size: 9px;
-  line-height: 11px;
-  min-height: 11px;
-  letter-spacing: 0.35px;
+  line-height: 1;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
 .headerStat b {
-  color: #d8dbe5;
-  font-size: 11px;
+  color: #d8dce8;
+  font-size: 12px;
   font-weight: 600;
-  line-height: 13px;
-  min-height: 13px;
+  line-height: 1.1;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.headerStatPrimary b {
-  color: #eef0f6;
+.headerStat b i {
+  font-style: normal;
+  color: #8b93a7;
+  font-weight: 500;
   font-size: 11px;
-  font-weight: 700;
 }
 
 .headerStat b.pos {
@@ -165,6 +167,267 @@ header {
 
 .headerStat b.neg {
   color: #ff687d;
+}
+
+/* --- Вариант 1: Тикер — плоская лента без коробок --- */
+.headerStats--ticker .headerStatsTrack {
+  gap: 0;
+}
+
+.headerStats--ticker .headerStat--main b {
+  color: #eef0f6;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.headerStats--ticker .headerStat--growth b {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* --- Вариант 2: Рейл — одна полоса, label справа от value в строку --- */
+.headerStats--rail .headerStatsTrack {
+  padding: 5px 6px;
+  border: 1px solid #262b36;
+  border-radius: 999px;
+  background: #0f1219;
+}
+
+.headerStats--rail .headerStat {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+  padding: 0 11px;
+}
+
+.headerStats--rail .headerStat span {
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: #7a8296;
+}
+
+.headerStats--rail .headerStat b {
+  font-size: 12px;
+}
+
+.headerStats--rail .headerStatsSplit {
+  height: 16px;
+  margin: 0 4px;
+  background: #323846;
+}
+
+.headerStats--rail .headerStat--growth {
+  padding-right: 12px;
+}
+
+/* --- Вариант 3: Чипы — Growth отдельным акцентом --- */
+.headerStats--chips .headerStatsTrack {
+  gap: 6px;
+}
+
+.headerStats--chips .headerStat {
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: #141821;
+}
+
+.headerStats--chips .headerStat--main {
+  background: #17152a;
+  box-shadow: inset 0 0 0 1px rgba(124, 108, 242, 0.35);
+}
+
+.headerStats--chips .headerStat--growth {
+  padding: 5px 12px;
+  background: rgba(43, 217, 168, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(43, 217, 168, 0.28);
+}
+
+.headerStats--chips .headerStat--growth.neg {
+  background: rgba(255, 104, 125, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 104, 125, 0.28);
+}
+
+.headerStats--chips .headerStatsSplit {
+  display: none;
+}
+
+.headerStats--chips .headerStat--growth b {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* --- Вариант 4: Минимал — только цифры, без фона и разделителей --- */
+.headerStats--minimal .headerStatsTrack {
+  gap: 14px;
+}
+
+.headerStats--minimal .headerStat {
+  padding: 0;
+  gap: 2px;
+}
+
+.headerStats--minimal .headerStat span {
+  display: none;
+}
+
+.headerStats--minimal .headerStat b {
+  font-size: 12px;
+  font-weight: 500;
+  color: #9aa3b8;
+}
+
+.headerStats--minimal .headerStat--main b {
+  color: #eef0f6;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.headerStats--minimal .headerStat--growth b {
+  font-weight: 700;
+}
+
+.headerStats--minimal .headerStatsSplit {
+  display: none;
+}
+
+/* --- Вариант 5: Компакт — одна строка, мелкие лейблы сверху --- */
+.headerStats--compact .headerStatsTrack {
+  gap: 2px;
+}
+
+.headerStats--compact .headerStat {
+  padding: 0 7px;
+  gap: 1px;
+}
+
+.headerStats--compact .headerStat span {
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  color: #5c6478;
+}
+
+.headerStats--compact .headerStat b {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.headerStats--compact .headerStat--main b {
+  font-size: 12px;
+  font-weight: 700;
+  color: #eef0f6;
+}
+
+.headerStats--compact .headerStatsSplit {
+  height: 18px;
+  margin: 0 4px;
+  background: #2a2f3b;
+}
+
+/* --- Вариант 6: Акцент — Balance крупнее, остальное приглушено --- */
+.headerStats--accent .headerStatsTrack {
+  gap: 0;
+  align-items: baseline;
+}
+
+.headerStats--accent .headerStat {
+  padding: 0 9px;
+  gap: 2px;
+}
+
+.headerStats--accent .headerStat span {
+  font-size: 8px;
+  color: #565e72;
+}
+
+.headerStats--accent .headerStat b {
+  font-size: 11px;
+  font-weight: 500;
+  color: #7a8296;
+}
+
+.headerStats--accent .headerStat--main {
+  padding-right: 14px;
+}
+
+.headerStats--accent .headerStat--main span {
+  color: #7a8296;
+  font-size: 9px;
+}
+
+.headerStats--accent .headerStat--main b {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f2f4f8;
+  letter-spacing: -0.02em;
+}
+
+.headerStats--accent .headerStat--main b i {
+  font-size: 12px;
+  color: #8b93a7;
+}
+
+.headerStats--accent .headerStat--growth b {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.headerStats--accent .headerStatsSplit {
+  height: 22px;
+  margin: 0 6px;
+  align-self: center;
+}
+
+/* --- Вариант 7: Стек — две строки: счёт сверху, PnL снизу --- */
+.headerStats--stack .headerStatsTrack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+}
+
+.headerStats--stack .headerStatsGroup {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+.headerStats--stack .headerStatsGroup--account {
+  gap: 0;
+}
+
+.headerStats--stack .headerStatsGroup--pnl {
+  gap: 2px;
+  padding-top: 2px;
+  border-top: 1px solid #222733;
+}
+
+.headerStats--stack .headerStat {
+  padding: 0 9px;
+  gap: 2px;
+}
+
+.headerStats--stack .headerStat span {
+  font-size: 8px;
+}
+
+.headerStats--stack .headerStat b {
+  font-size: 11px;
+}
+
+.headerStats--stack .headerStat--main b {
+  font-size: 12px;
+  font-weight: 700;
+  color: #eef0f6;
+}
+
+.headerStats--stack .headerStat--growth b {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.headerStats--stack .headerStatsSplit {
+  display: none;
 }
 
 .brand,
@@ -1388,12 +1651,36 @@ g[data-channel-id].selected .pc-edge-line {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: 1fr auto;
-  align-items: center;
+  align-items: start;
   padding-top: 4px;
+}
+
+.settingsGrid .settingsToggle .ant-switch,
+.settingsGrid .settingsToggle .settingsCycleBtn.ant-btn {
+  margin-top: 1px;
 }
 
 .settingsGrid .settingsToggle small {
   grid-column: 1 / -1;
+}
+
+.settingsGrid .settingsCycleBtn.ant-btn {
+  min-width: 100px;
+  height: 22px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #3a4150;
+  background: #1a1f2a;
+  color: #e8eaed;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.settingsGrid .settingsCycleBtn.ant-btn:hover {
+  border-color: #6366f1 !important;
+  color: #e8eaed !important;
+  background: #222836 !important;
 }
 /* Ширину задаёт size="large" самой antd — проп width устарел. */
 .journalDrawer .ant-drawer-content-wrapper {
