@@ -2738,10 +2738,11 @@ g[data-channel-id].selected .pc-edge-line {
 .journalCalDay {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 6px;
   min-height: 64px;
-  padding: 7px 8px;
+  padding: 7px 8px 8px;
   border: 1px solid #1e2430;
   border-radius: 8px;
   background: #10141c;
@@ -2786,21 +2787,69 @@ g[data-channel-id].selected .pc-edge-line {
   outline-offset: -1px;
 }
 
+.journalCalDayTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
 .journalCalDayNum {
   color: #9aa3b8;
   font-size: 11px;
+  line-height: 1;
 }
 
-.journalCalDay > b {
-  font-size: 12px;
-  font-weight: 500;
+.journalCalDayCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border: 1px solid rgba(124, 108, 242, 0.35);
+  border-radius: 999px;
+  background: rgba(124, 108, 242, 0.14);
+  color: #c4b8ff;
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
-.journalCalDay > i {
-  color: #7b8497;
+.journalCalDayPnl {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+}
+
+.journalCalDayPnl > b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.journalCalDayPnl > em {
+  flex-shrink: 0;
   font-size: 10px;
   font-style: normal;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.journalCalDayPnl > em.pos {
+  color: #7eefc8;
+}
+
+.journalCalDayPnl > em.neg {
+  color: #ff9aa8;
 }
 
 .journalCalDayList {

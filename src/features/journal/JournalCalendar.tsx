@@ -250,6 +250,7 @@ function DayCard({
 }) {
   if (!day) return <div className="journalCalDay is-pad" />;
   const empty = day.trades === 0;
+  const winRate = calendarWinRatePct(day);
   return (
     <button
       type="button"
@@ -257,12 +258,15 @@ function DayCard({
       disabled={empty}
       onClick={onSelect}
     >
-      <span className="journalCalDayNum">{day.day}</span>
-      {empty ? null : (
-        <>
+      <span className="journalCalDayTop">
+        <span className="journalCalDayNum">{day.day}</span>
+        {!empty && <span className="journalCalDayCount">{day.trades}</span>}
+      </span>
+      {!empty && (
+        <span className="journalCalDayPnl">
           <b className={signClass(day.pnl)}>{signed(day.pnl)}</b>
-          <i>{day.trades} сд.</i>
-        </>
+          <em className={winRate >= 50 ? "pos" : "neg"}>{winRate.toFixed(0)}%</em>
+        </span>
       )}
     </button>
   );
