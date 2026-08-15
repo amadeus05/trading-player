@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Button, DatePicker, Drawer, Dropdown, Popover, Segmented, Select } from "antd";
 import type { Dayjs } from "dayjs";
-import { ChartNoAxesCombined, Filter, List, MessageSquare, MoreHorizontal, Trash2 } from "lucide-react";
+import { ChartNoAxesCombined, CalendarDays, Filter, List, MessageSquare, MoreHorizontal, Trash2 } from "lucide-react";
 import type { AccountSettings, Trade, TradeScreenshot } from "../../types";
 import { formatDateTime, formatNumber, formatTimeframe } from "../../shared/lib/market";
 import { useConfirmDelete } from "../../shared/ui/useConfirmDelete";
@@ -12,9 +12,10 @@ import {
   type AnalyticsFilters,
 } from "../trading/lib/calculateTradeAnalytics";
 import { JournalTradeNotes } from "./JournalTradeNotes";
+import { JournalCalendar } from "./JournalCalendar";
 import { collectKnownTags } from "./tradeTags";
 
-type JournalTab = "trades" | "stats";
+type JournalTab = "trades" | "calendar" | "stats";
 
 const EQUITY_WIDTH = 600;
 const EQUITY_HEIGHT = 72;
@@ -309,6 +310,15 @@ export function JournalDrawer({
                 ),
               },
               {
+                value: "calendar",
+                label: (
+                  <span className="journalTabLabel">
+                    <CalendarDays size={13} strokeWidth={2.2} />
+                    Календарь
+                  </span>
+                ),
+              },
+              {
                 value: "stats",
                 label: (
                   <span className="journalTabLabel">
@@ -351,31 +361,35 @@ export function JournalDrawer({
         </div>
       )}
     >
-      <div className="journalHero">
-        {equity.line && (
-          <svg className={`journalHeroCurve ${signClass(analytics.totalPnl)}`} viewBox={`0 0 ${EQUITY_WIDTH} ${EQUITY_HEIGHT}`} preserveAspectRatio="none" aria-hidden="true">
-            <path className="area" d={equity.area} />
-            <path className="line" d={equity.line} />
-          </svg>
-        )}
-        <div className="journalHeroBody">
-          <span className="journalHeroLabel">Net PnL</span>
-          <div className="journalHeroRow">
-            <b className={signClass(analytics.totalPnl)}>{signed(analytics.totalPnl)}</b>
-            <span className={signClass(analytics.totalPnl)}>{signed(pnlPct)}%</span>
-            <span className="journalHeroMeta">
-              {analytics.closedTrades} закрытых из {analytics.totalTrades} · комиссии {formatNumber(analytics.totalFees)}
-            </span>
+      <>
+      {tab !== "calendar" && (
+        <>
+          <div className="journalHero">
+            {equity.line && (
+              <svg className={`journalHeroCurve ${signClass(analytics.totalPnl)}`} viewBox={`0 0 ${EQUITY_WIDTH} ${EQUITY_HEIGHT}`} preserveAspectRatio="none" aria-hidden="true">
+                <path className="area" d={equity.area} />
+                <path className="line" d={equity.line} />
+              </svg>
+            )}
+            <div className="journalHeroBody">
+              <span className="journalHeroLabel">Net PnL</span>
+              <div className="journalHeroRow">
+                <b className={signClass(analytics.totalPnl)}>{signed(analytics.totalPnl)}</b>
+                <span className={signClass(analytics.totalPnl)}>{signed(pnlPct)}%</span>
+                <span className="journalHeroMeta">
+                  {analytics.closedTrades} закрытых из {analytics.totalTrades} · комиссии {formatNumber(analytics.totalFees)}
+                </span>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-
-      <div className="journalKpi">
-        <div><span>Winrate</span><b>{analytics.winRatePct.toFixed(1)}%</b></div>
-        <div><span>Profit factor</span><b>{analytics.profitFactor == null ? "∞" : analytics.profitFactor.toFixed(2)}</b></div>
-        <div><span>Expectancy</span><b className={signClass(analytics.expectancy)}>{signed(analytics.expectancy)}</b></div>
-        <div><span>Max DD</span><b className="neg">{formatNumber(analytics.maxDrawdown)} ({analytics.maxDrawdownPct.toFixed(1)}%)</b></div>
-      </div>
+          <div className="journalKpi">
+            <div><span>Winrate</span><b>{analytics.winRatePct.toFixed(1)}%</b></div>
+            <div><span>Profit factor</span><b>{analytics.profitFactor == null ? "∞" : analytics.profitFactor.toFixed(2)}</b></div>
+            <div><span>Expectancy</span><b className={signClass(analytics.expectancy)}>{signed(analytics.expectancy)}</b></div>
+            <div><span>Max DD</span><b className="neg">{formatNumber(analytics.maxDrawdown)} ({analytics.maxDrawdownPct.toFixed(1)}%)</b></div>
+          </div>
+        </>
+      )}
 
       {tab === "trades" ? (
         <div className="journalRows">
@@ -491,6 +505,12 @@ export function JournalDrawer({
             );
           })}
         </div>
+      ) : tab === "calendar" ? (
+        <JournalCalendar
+          trades={filteredTrades}
+          datasetName={datasetName}
+          onJumpToTrade={onJumpToTrade}
+        />
       ) : (
         <div className="journalStats">
           <section>
@@ -533,6 +553,7 @@ export function JournalDrawer({
           </section>
         </div>
       )}
+      </>
     </Drawer>
   );
 }

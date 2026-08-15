@@ -2310,6 +2310,343 @@ g[data-channel-id].selected .pc-edge-line {
   text-align: center;
 }
 
+.journalCal {
+  flex: 1;
+  min-height: 0;
+  padding: 12px 16px 20px;
+  overflow: auto;
+}
+
+.journalCalYears {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.journalCalYear {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid #262b36;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #12151c 0%, #0e1117 100%);
+  color: #8b93a6;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.journalCalYear:hover {
+  color: #e8ebf2;
+  border-color: #323846;
+}
+
+.journalCalYear.is-active {
+  border-color: rgba(124, 108, 242, 0.45);
+  background: linear-gradient(180deg, #2a2448 0%, #221d3a 100%);
+  color: #ece8ff;
+  font-weight: 600;
+}
+
+.journalCalHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 12px;
+}
+
+.journalCalHead > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.journalCalHeadLabel {
+  color: #9aa3b8;
+  font-size: 12px;
+}
+
+.journalCalHead b {
+  font-size: 22px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.journalCalBack {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #9aa3b8;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.journalCalBack .journalCalHeadLabel {
+  margin-left: 2px;
+}
+
+.journalCalBack:hover {
+  color: #e8ebf2;
+}
+
+.journalCalMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.journalCalChip {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid #2a3140;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #161a23 0%, #11151c 100%);
+  color: #c4cad8;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.journalCalChip.is-tp {
+  border-color: rgba(43, 217, 168, 0.35);
+  background: rgba(43, 217, 168, 0.12);
+  color: #7eefc8;
+}
+
+.journalCalChip.is-sl {
+  border-color: rgba(255, 104, 125, 0.4);
+  background: rgba(255, 104, 125, 0.12);
+  color: #ff9aa8;
+}
+
+.journalCalChip.is-dd {
+  border-color: rgba(124, 108, 242, 0.4);
+  background: rgba(124, 108, 242, 0.12);
+  color: #c4b8ff;
+}
+
+.journalCalMeta.is-compact {
+  gap: 4px;
+}
+
+.journalCalMeta.is-compact .journalCalChip {
+  height: 18px;
+  padding: 0 6px;
+  font-size: 10px;
+}
+
+.journalCalMonths {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.journalCalMonth {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 92px;
+  padding: 10px 12px;
+  border: 1px solid #242934;
+  border-radius: 10px;
+  background: #11151d;
+  text-align: left;
+  cursor: pointer;
+}
+
+.journalCalMonth:hover {
+  border-color: #323846;
+}
+
+.journalCalMonth.pos {
+  border-left: 2px solid #2bd9a8;
+  background:
+    linear-gradient(180deg, rgba(43, 217, 168, calc(var(--journal-cal-fill, 0.12) * 0.28)) 0%, #11151d 78%);
+}
+
+.journalCalMonth.neg {
+  border-left: 2px solid #ff687d;
+  background:
+    linear-gradient(180deg, rgba(255, 104, 125, calc(var(--journal-cal-fill, 0.12) * 0.28)) 0%, #11151d 78%);
+}
+
+.journalCalMonth.empty:hover {
+  border-color: #323846;
+}
+
+.journalCalMonthName {
+  color: #c4cad8;
+  font-size: 12px;
+}
+
+.journalCalMonth > b {
+  font-size: 16px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.journalCalMonthIdle {
+  color: #5e6678;
+  font-size: 11px;
+}
+
+.journalCalWeekdays,
+.journalCalDays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.journalCalWeekdays {
+  margin-bottom: 6px;
+}
+
+.journalCalWeekdays span {
+  color: #6b7386;
+  font-size: 10px;
+  text-align: center;
+}
+
+.journalCalDay {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 64px;
+  padding: 7px 8px;
+  border: 1px solid #1e2430;
+  border-radius: 8px;
+  background: #10141c;
+  color: #e8ebf2;
+  text-align: left;
+  cursor: pointer;
+}
+
+.journalCalDay.is-pad {
+  cursor: default;
+  background: transparent;
+  border-color: transparent;
+}
+
+.journalCalDay.empty {
+  cursor: default;
+  border-color: #2a3140;
+  background: #151a23;
+  color: #6b7386;
+}
+
+.journalCalDay.empty .journalCalDayNum {
+  color: #7b8497;
+}
+
+.journalCalDay.pos {
+  border-color: rgba(43, 217, 168, 0.28);
+  background: rgba(43, 217, 168, 0.08);
+}
+
+.journalCalDay.neg {
+  border-color: rgba(255, 104, 125, 0.28);
+  background: rgba(255, 104, 125, 0.08);
+}
+
+.journalCalDay:not(:disabled):hover {
+  border-color: #3a4254;
+}
+
+.journalCalDay.is-selected {
+  outline: 1px solid #7c6cf2;
+  outline-offset: -1px;
+}
+
+.journalCalDayNum {
+  color: #9aa3b8;
+  font-size: 11px;
+}
+
+.journalCalDay > b {
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.journalCalDay > i {
+  color: #7b8497;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.journalCalDayList {
+  margin-top: 14px;
+  border: 1px solid #242934;
+  border-radius: 10px;
+  background: #11151d;
+  overflow: hidden;
+}
+
+.journalCalDayListHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #242934;
+  color: #9aa3b8;
+  font-size: 12px;
+}
+
+.journalCalDayListHead b {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.journalCalDayTrade {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) 64px auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-top: 1px solid #1a1f28;
+  background: transparent;
+  color: #d7dbe6;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.journalCalDayTrade:first-of-type {
+  border-top: 0;
+}
+
+.journalCalDayTrade:hover {
+  background: #161b24;
+}
+
+.journalCalDayTradeOut {
+  color: #7b8497;
+  font-size: 11px;
+}
+
+.journalCalDayTrade b {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  .journalCalMonths {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .journalStats {
   flex: 1;
   min-height: 0;
