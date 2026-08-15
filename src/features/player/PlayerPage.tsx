@@ -177,15 +177,15 @@ export function PlayerPage() {
   // основное окно грузится сразу в отображаемом ТФ, и на часовом графике одна
   // свеча давала одну точку гистограммы.
   const { getBaseCandles, baseCandlesRevision } = useBaseCandles(dataset, catalog);
-  // Точность цены — константа символа, а не выборки. Фиксируем на датасет от
-  // первого непустого окна: иначе изменение окна свечей меняло бы точность, а она
-  // зависимость эффекта создания графика → график пересоздавался бы и прыгал.
+  // Точность цены — константа символа, но первый кусок истории может быть
+  // «круглым» (0.97 / 0.98). Берём максимум по мере догрузки, вниз не опускаем:
+  // шкала от этого только мельче, график не прыгает назад к двум знакам.
   const pricePrecisionCacheRef = useRef<Map<string, number>>(new Map());
   const pricePrecision = useMemo(() => {
+    if (!raw.length) return pricePrecisionCacheRef.current.get(dataset) ?? 2;
+    const inferred = inferPricePrecision(raw);
     const cached = pricePrecisionCacheRef.current.get(dataset);
-    if (cached != null) return cached;
-    if (!raw.length) return 2;
-    const precision = inferPricePrecision(raw);
+    const precision = cached == null ? inferred : Math.max(cached, inferred);
     pricePrecisionCacheRef.current.set(dataset, precision);
     return precision;
   }, [dataset, raw]);
@@ -311,8 +311,14 @@ export function PlayerPage() {
     () => calculateAccountStats(accountSettings, state.trades, cur),
     [accountSettings, cur, state.trades],
   );
+  const recentProtectionCandles = useMemo(() => {
+    if (!candles.length) return [];
+    const end = Math.max(0, Math.min(replayIndex, candles.length - 1));
+    return candles.slice(Math.max(0, end - 19), end + 1);
+  }, [candles, replayIndex]);
   const orderForm = useOrderForm({
     currentCandle: cur,
+    recentCandles: recentProtectionCandles,
     pricePrecision,
     settings: simulationSettings,
     balance: accountStats.balance,
@@ -559,7 +565,10 @@ export function PlayerPage() {
             onBeginOrderDraft={(side) => {
               setFocusedTradeId(null);
               setTradeEditDraft(null);
-              orderForm.beginOrderDraft(side, chartViewportRef.current?.getVisiblePriceRange());
+              const placed = orderForm.beginOrderDraft(side, chartViewportRef.current?.getVisiblePriceRange());
+              if (placed) {
+                chartViewportRef.current?.ensurePricesVisible([placed.entry, placed.tp, placed.sl]);
+              }
             }}
             onCancelOrderDraft={() => {
               setTradeEditDraft(null);

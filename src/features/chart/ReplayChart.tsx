@@ -75,6 +75,8 @@ interface PriceRange {
 
 export type ChartViewportRef = {
   getVisiblePriceRange: () => PriceRange | null;
+  /** Расширяет шкалу, чтобы стоп/тейк/вход не обрезались краем графика. */
+  ensurePricesVisible: (prices: number[]) => void;
 };
 
 interface ReplayChartProps {
@@ -843,6 +845,26 @@ export function ReplayChart({
     if (chartViewportRef) {
       chartViewportRef.current = {
         getVisiblePriceRange: () => cs.priceScale().getVisibleRange() ?? null,
+        ensurePricesVisible: (prices) => {
+          const valid = prices.filter((price) => Number.isFinite(price) && price > 0);
+          if (!valid.length) return;
+          const current = cs.priceScale().getVisibleRange();
+          const min = Math.min(...valid);
+          const max = Math.max(...valid);
+          let from = current?.from ?? min;
+          let to = current?.to ?? max;
+          if (!(to > from)) {
+            from = min;
+            to = max;
+          }
+          const span = Math.max(to - from, max - min, 10 ** -pricePrecision);
+          const pad = span * 0.16;
+          const nextFrom = Math.min(from, min - pad);
+          const nextTo = Math.max(to, max + pad);
+          if (nextFrom === from && nextTo === to) return;
+          cs.priceScale().applyOptions({ autoScale: false });
+          cs.priceScale().setVisibleRange({ from: nextFrom, to: nextTo });
+        },
       };
     }
     prevReplayIndexRef.current = index;

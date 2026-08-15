@@ -41,28 +41,71 @@ export const formatTimeframe = (minutes: number) =>
   minutes < 60 ? `${minutes}m` : minutes === 1_440 ? "1d" : `${minutes / 60}h`;
 
 const decimalPlaces = (value: number) => {
-  if (!Number.isFinite(value)) return 0;
+  if (!Number.isFinite(value) || value === 0) return 0;
   const text = value.toString().toLowerCase();
   if (text.includes("e-")) {
     const places = Number(text.split("e-")[1]);
     return Number.isFinite(places) ? places : 0;
   }
-  return text.includes(".") ? text.length - text.indexOf(".") - 1 : 0;
+  // toFixed отрезает двоичный хвост (0.973399999… → 0.9734), toString его оставляет.
+  const trimmed = value.toFixed(10).replace(/0+$/, "").replace(/\.$/, "");
+  return trimmed.includes(".") ? trimmed.length - trimmed.indexOf(".") - 1 : 0;
+};
+
+/**
+ * Сколько знаков нужно, чтобы шкала не склеивала соседние цены.
+ * ADA ~0.97 на двух знаках даёт шаг 0.01 — фибо, стоп и тейк садятся в одни
+ * и те же уровни, а ось прыгает по крупной сетке.
+ */
+const magnitudePrecision = (price: number) => {
+  const abs = Math.abs(price);
+  if (abs >= 1_000) return 2;
+  if (abs >= 100) return 2;
+  if (abs >= 10) return 3;
+  if (abs >= 1) return 4;
+  if (abs >= 0.1) return 5;
+  if (abs >= 0.01) return 6;
+  if (abs >= 0.001) return 7;
+  return 8;
+};
+
+const tickPrecision = (prices: number[]) => {
+  let minDelta = Infinity;
+  let previous = Number.NaN;
+  const sorted = prices.filter(Number.isFinite).sort((left, right) => left - right);
+  for (const price of sorted) {
+    if (Number.isFinite(previous)) {
+      const delta = price - previous;
+      if (delta > 0 && delta < minDelta) minDelta = delta;
+    }
+    previous = price;
+  }
+  if (!Number.isFinite(minDelta) || minDelta <= 0) return 0;
+  return Math.max(0, Math.min(10, Math.ceil(-Math.log10(minDelta) - 1e-10)));
 };
 
 export const inferPricePrecision = (candles: Candle[]) => {
-  let precision = 2;
+  if (!candles.length) return 2;
+  let fromValues = 0;
+  const prices: number[] = [];
   const step = Math.max(1, Math.floor(candles.length / 4_000));
   for (let index = 0; index < candles.length; index += step) {
     const candle = candles[index];
-    precision = Math.max(
-      precision,
+    fromValues = Math.max(
+      fromValues,
       decimalPlaces(candle.open),
       decimalPlaces(candle.high),
       decimalPlaces(candle.low),
       decimalPlaces(candle.close),
     );
+    prices.push(candle.open, candle.high, candle.low, candle.close);
   }
+  const mid = candles[Math.floor(candles.length / 2)]?.close ?? candles[0].close;
+  const precision = Math.max(
+    magnitudePrecision(mid),
+    tickPrecision(prices),
+    fromValues,
+  );
   return Math.min(10, Number.isFinite(precision) ? precision : 2);
 };
 
