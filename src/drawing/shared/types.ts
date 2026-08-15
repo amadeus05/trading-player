@@ -27,6 +27,7 @@ export interface ChartApiLike {
     logicalToCoordinate(logical: number): number | null;
     coordinateToLogical(x: number): number | null;
   };
+  panes?(): { getHeight(): number }[];
 }
 
 export interface SeriesApiLike {

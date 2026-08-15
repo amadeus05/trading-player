@@ -13,6 +13,7 @@ interface BindDrawingPointerClickOptions {
       width(): number;
       height(): number;
     };
+    panes?(): { getHeight(): number }[];
   };
   manager: DrawingManager;
   mode: DrawingMode;
@@ -25,13 +26,18 @@ function isIgnoredTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest(DRAWING_UI_SELECTOR) != null;
 }
 
+function plotBottom(container: HTMLElement, chart: BindDrawingPointerClickOptions["chart"]): number {
+  const paneHeight = chart.panes?.()[0]?.getHeight();
+  if (paneHeight && paneHeight > 0) return paneHeight;
+  return Math.max(0, container.getBoundingClientRect().height - chart.timeScale().height());
+}
+
 function isInsidePlotArea(container: HTMLElement, chart: BindDrawingPointerClickOptions["chart"], event: PointerEvent): boolean {
   const bounds = container.getBoundingClientRect();
   const x = event.clientX - bounds.left;
   const y = event.clientY - bounds.top;
   const plotRight = Math.max(0, chart.timeScale().width());
-  const plotBottom = Math.max(0, bounds.height - chart.timeScale().height());
-  return x >= 0 && x <= plotRight && y >= 0 && y <= plotBottom;
+  return x >= 0 && x <= plotRight && y >= 0 && y <= plotBottom(container, chart);
 }
 
 export function bindDrawingPointerClick(options: BindDrawingPointerClickOptions): () => void {

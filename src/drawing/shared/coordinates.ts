@@ -100,7 +100,9 @@ export function pointToPixel(chart: ChartApiLike, series: SeriesApiLike, point: 
 export function eventToPoint(event: PointerEvent, container: HTMLElement, chart: ChartApiLike, series: SeriesApiLike, candles: TimeCandle[]): DrawingPoint | null {
   const bounds = container.getBoundingClientRect();
   const x = event.clientX - bounds.left;
-  const y = event.clientY - bounds.top;
+  let y = event.clientY - bounds.top;
+  const paneHeight = chart.panes?.()[0]?.getHeight();
+  if (paneHeight && paneHeight > 0) y = Math.min(Math.max(0, y), paneHeight);
   const time = xToTime(chart, x, candles);
   const price = series.coordinateToPrice(y);
   return time == null || price == null ? null : { time, price };

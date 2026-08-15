@@ -45,8 +45,37 @@ const toCandlestickData = (candle: Candle): CandlestickData<UTCTimestamp> => ({
 const toVolumeData = (candle: Candle): HistogramData<UTCTimestamp> => ({
   time: candle.time as UTCTimestamp,
   value: candle.volume,
-  color: candle.close >= candle.open ? "#2bd9a855" : "#ff5c7355",
+  color: candle.close >= candle.open ? "#2bd9a8cc" : "#ff5c73cc",
 });
+
+const VOLUME_PANE_STRETCH_KEY = "player:volume-pane-stretch";
+const DEFAULT_PRICE_PANE_STRETCH = 0.78;
+const DEFAULT_VOLUME_PANE_STRETCH = 0.22;
+
+function readVolumePaneStretch(): { price: number; volume: number } {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(VOLUME_PANE_STRETCH_KEY) ?? "");
+    if (
+      typeof parsed?.price === "number"
+      && typeof parsed?.volume === "number"
+      && parsed.price > 0
+      && parsed.volume > 0
+    ) {
+      return { price: parsed.price, volume: parsed.volume };
+    }
+  } catch {
+    /* ignore */
+  }
+  return { price: DEFAULT_PRICE_PANE_STRETCH, volume: DEFAULT_VOLUME_PANE_STRETCH };
+}
+
+function writeVolumePaneStretch(price: number, volume: number) {
+  try {
+    localStorage.setItem(VOLUME_PANE_STRETCH_KEY, JSON.stringify({ price, volume }));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
 
 /**
  * Stable bar width with whitespace — avoids stretching a single replay bar across the chart.
@@ -284,7 +313,15 @@ export function ReplayChart({
     };
     const chart = createChart(ref.current, {
       autoSize: true,
-      layout: { background: { color: "#0d0f15" }, textColor: "#7f8494" },
+      layout: {
+        background: { color: "#0d0f15" },
+        textColor: "#7f8494",
+        panes: {
+          enableResize: true,
+          separatorColor: "#232632",
+          separatorHoverColor: "rgba(124, 108, 242, 0.28)",
+        },
+      },
       grid: {
         vertLines: { color: "#171a22" },
         horzLines: { color: "#171a22" },
@@ -336,10 +373,18 @@ export function ReplayChart({
     }
     const vs = chart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
-      priceScaleId: "vol",
+      priceLineVisible: false,
+      lastValueVisible: true,
+    }, 1);
+    vs.priceScale().applyOptions({
+      scaleMargins: { top: 0.08, bottom: 0 },
+      borderColor: "#232632",
     });
-    vs.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     vs.setData(candleStore.candles.map(toVolumeData));
+    const volumeStretch = readVolumePaneStretch();
+    const panes = chart.panes();
+    panes[0]?.setStretchFactor(volumeStretch.price);
+    panes[1]?.setStretchFactor(volumeStretch.volume);
     let replayUpdateInProgress = false;
     let lastPriceFitAt = 0;
     let lastFittedLow = Number.NaN;
@@ -737,12 +782,31 @@ export function ReplayChart({
     // серии уничтоженного графика падает внутри библиотеки ("Value is null" из
     // getPane). Причём падало уже ПОСЛЕ выключения autoScale — шкала оставалась
     // запертой без диапазона. У zoomPriceScale такая защита была, у этих двух нет.
+    const pricePaneBottom = () => {
+      const height = chart.panes()[0]?.getHeight();
+      if (height && height > 0) return height;
+      const element = ref.current;
+      if (!element) return 0;
+      return Math.max(0, element.getBoundingClientRect().height - timeScaleHeight);
+    };
+    const persistVolumePaneStretch = () => {
+      if (!chartAlive) return;
+      try {
+        const nextPanes = chart.panes();
+        if (nextPanes.length < 2) return;
+        writeVolumePaneStretch(nextPanes[0].getStretchFactor(), nextPanes[1].getStretchFactor());
+      } catch {
+        /* график уже снят */
+      }
+    };
     const markManualScale = (event: PointerEvent) => {
       if (!chartAlive) return;
       const element = ref.current;
       if (!element) return;
       const bounds = element.getBoundingClientRect();
-      if (event.clientX - bounds.left >= bounds.width - priceScaleWidth - 4) {
+      const x = event.clientX - bounds.left;
+      const y = event.clientY - bounds.top;
+      if (x >= bounds.width - priceScaleWidth - 4 && y < pricePaneBottom()) {
         primePriceScaleInteraction();
       }
     };
@@ -751,7 +815,9 @@ export function ReplayChart({
       const element = ref.current;
       if (!element) return;
       const bounds = element.getBoundingClientRect();
-      if (event.clientX - bounds.left >= bounds.width - priceScaleWidth - 4) {
+      const x = event.clientX - bounds.left;
+      const y = event.clientY - bounds.top;
+      if (x >= bounds.width - priceScaleWidth - 4 && y < pricePaneBottom()) {
         cs.priceScale().applyOptions({ autoScale: true });
       }
     };
@@ -764,9 +830,12 @@ export function ReplayChart({
       const y = event.clientY - bounds.top;
       const plotRight = bounds.width - priceScaleWidth - 4;
       const timeAxisTop = bounds.height - timeScaleHeight - 4;
-      const onPriceScale = x >= plotRight;
+      const paneBottom = pricePaneBottom();
+      const onCandlePriceScale = x >= plotRight && y >= 0 && y < paneBottom;
+      const onVolumePriceScale = x >= plotRight && y >= paneBottom && y < timeAxisTop;
       const withCtrl = event.ctrlKey || event.metaKey;
-      if (!onPriceScale && !withCtrl) return;
+      if (onVolumePriceScale && !withCtrl) return;
+      if (!onCandlePriceScale && !withCtrl) return;
       if (y >= timeAxisTop && x < plotRight) return;
       if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
       const range = cs.priceScale().getVisibleRange();
@@ -811,6 +880,7 @@ export function ReplayChart({
     ref.current.addEventListener("pointerdown", startChartInteractionOverlayLoop, { capture: true });
     window.addEventListener("pointerup", stopChartInteractionOverlayLoopNow);
     window.addEventListener("pointercancel", stopChartInteractionOverlayLoopNow);
+    window.addEventListener("pointerup", persistVolumePaneStretch);
     ref.current.addEventListener("wheel", syncOverlaysDuringWheel, { capture: true, passive: true });
     ref.current.addEventListener("pointerdown", markManualScale);
     ref.current.addEventListener("dblclick", resetManualScale);
@@ -1031,6 +1101,7 @@ export function ReplayChart({
       ref.current?.removeEventListener("pointerdown", startChartInteractionOverlayLoop, { capture: true });
       window.removeEventListener("pointerup", stopChartInteractionOverlayLoopNow);
       window.removeEventListener("pointercancel", stopChartInteractionOverlayLoopNow);
+      window.removeEventListener("pointerup", persistVolumePaneStretch);
       ref.current?.removeEventListener("wheel", syncOverlaysDuringWheel, { capture: true });
       stopChartInteractionOverlayLoopNow();
       ref.current?.removeEventListener("pointerdown", markManualScale);
