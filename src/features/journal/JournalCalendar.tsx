@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { ChevronLeft } from "lucide-react";
+import { CalendarDays, ChevronLeft } from "lucide-react";
 import type { Trade } from "../../types";
 import { formatNumber } from "../../shared/lib/market";
 import {
@@ -11,6 +11,7 @@ import {
   type CalendarDay,
   type CalendarMonth,
   type CalendarStats,
+  calendarWinRatePct,
 } from "./calendarModel";
 
 interface JournalCalendarProps {
@@ -27,14 +28,26 @@ function toneOf(stats: CalendarStats): "pos" | "neg" | "empty" {
   return stats.pnl >= 0 ? "pos" : "neg";
 }
 
-function StatsLine({ stats, compact = false }: { stats: CalendarStats; compact?: boolean }) {
+function StatsLine({ stats }: { stats: CalendarStats }) {
   return (
-    <div className={`journalCalMeta ${compact ? "is-compact" : ""}`}>
-      <span className="journalCalChip">{stats.trades} сд.</span>
-      <span className={`journalCalChip ${stats.takes ? "is-tp" : ""}`}>TP {stats.takes}</span>
-      <span className={`journalCalChip ${stats.stops ? "is-sl" : ""}`}>SL {stats.stops}</span>
+    <div className="journalCalMetaMetrics">
+      <span>
+        <i>сделки</i>
+        <em>{stats.trades}</em>
+      </span>
+      <span>
+        <i>TP / SL</i>
+        <em>
+          <b className={stats.takes ? "is-tp" : ""}>{stats.takes}</b>
+          <span>/</span>
+          <b className={stats.stops ? "is-sl" : ""}>{stats.stops}</b>
+        </em>
+      </span>
       {stats.drawdown > 0 && (
-        <span className="journalCalChip is-dd">DD {formatNumber(stats.drawdown)}</span>
+        <span className="is-dd">
+          <i>DD</i>
+          <em>{formatNumber(stats.drawdown)}</em>
+        </span>
       )}
     </div>
   );
@@ -67,35 +80,62 @@ export function JournalCalendar({ trades, onJumpToTrade, datasetName }: JournalC
     return <div className="journalEmpty">Закрытых сделок пока нет — календарь появится после первой.</div>;
   }
 
+  const activeStats = monthRow ?? yearRow;
+
   return (
     <div className="journalCal">
-      <div className="journalCalYears">
-        {model.years.map((value) => (
-          <button
-            key={value}
-            type="button"
-            className={`journalCalYear ${year === value ? "is-active" : ""}`}
-            onClick={() => {
-              setYear(value);
-              setMonth(null);
-              setDayKey(null);
-            }}
-          >
-            {value}
-          </button>
-        ))}
+      <div className="journalCalTopRow">
+        <div className="journalCalTopRowStart">
+          {monthRow ? (
+            <>
+              <button
+                type="button"
+                className="journalCalBack"
+                onClick={() => {
+                  setMonth(null);
+                  setDayKey(null);
+                }}
+              >
+                <ChevronLeft size={15} strokeWidth={2.2} />
+              </button>
+              <span className="journalCalTopRowTitle">{MONTH_NAMES[monthRow.month - 1]}</span>
+            </>
+          ) : (
+            <div className="journalCalYears">
+              {model.years.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`journalCalYear ${year === value ? "is-active" : ""}`}
+                  onClick={() => {
+                    setYear(value);
+                    setMonth(null);
+                    setDayKey(null);
+                  }}
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {activeStats && activeStats.trades > 0 && (
+          <b className={`journalCalTopPnl ${signClass(activeStats.pnl)}`}>{signed(activeStats.pnl)}</b>
+        )}
       </div>
 
+      {activeStats && activeStats.trades > 0 && (
+        <div className="journalCalMetaRow">
+          <StatsLine stats={activeStats} />
+          <span className={`journalCalMetaWr ${calendarWinRatePct(activeStats) >= 50 ? "pos" : "neg"}`}>
+            <i>WR</i>
+            <em>{calendarWinRatePct(activeStats).toFixed(0)}%</em>
+          </span>
+        </div>
+      )}
+
       {yearRow && !monthRow && (
-        <>
-          <div className="journalCalHead">
-            <div>
-              <span className="journalCalHeadLabel">{yearRow.year}</span>
-              <b className={signClass(yearRow.pnl)}>{signed(yearRow.pnl)}</b>
-            </div>
-            <StatsLine stats={yearRow} />
-          </div>
-          <div className="journalCalMonths">
+        <div className="journalCalMonths">
             {yearRow.months.map((item) => (
               <MonthCard
                 key={item.month}
@@ -107,30 +147,11 @@ export function JournalCalendar({ trades, onJumpToTrade, datasetName }: JournalC
                 }}
               />
             ))}
-          </div>
-        </>
+        </div>
       )}
 
       {yearRow && monthRow && (
         <>
-          <div className="journalCalHead">
-            <button
-              type="button"
-              className="journalCalBack"
-              onClick={() => {
-                setMonth(null);
-                setDayKey(null);
-              }}
-            >
-              <ChevronLeft size={15} strokeWidth={2.2} />
-              {yearRow.year}
-              <span className="journalCalHeadLabel">{MONTH_NAMES[monthRow.month - 1]}</span>
-            </button>
-            <b className={monthRow.trades ? signClass(monthRow.pnl) : ""}>
-              {monthRow.trades ? signed(monthRow.pnl) : "нет сделок"}
-            </b>
-            <StatsLine stats={monthRow} />
-          </div>
           <div className="journalCalWeekdays">
             {WEEKDAY_LABELS.map((label) => (
               <span key={label}>{label}</span>
@@ -171,6 +192,8 @@ function MonthCard({
 }) {
   const empty = month.trades === 0;
   const fill = empty ? 0 : Math.max(0.08, Math.abs(month.pnl) / peak);
+  const winRate = calendarWinRatePct(month);
+  const winTone = winRate >= 50 ? "pos" : "neg";
   return (
     <button
       type="button"
@@ -180,13 +203,36 @@ function MonthCard({
         "--journal-cal-fill": String(fill),
       } as CSSProperties}
     >
-      <span className="journalCalMonthName">{MONTH_NAMES[month.month - 1]}</span>
+      <span className="journalCalMonthTop">
+        <span className="journalCalMonthTitle">
+          <span className="journalCalMonthIcon" aria-hidden="true">
+            <CalendarDays size={13} strokeWidth={2} />
+          </span>
+          <span className="journalCalMonthName">{MONTH_NAMES[month.month - 1]}</span>
+        </span>
+        {!empty && <span className="journalCalMonthCount">{month.trades}</span>}
+      </span>
       {empty ? (
         <span className="journalCalMonthIdle">нет сделок</span>
       ) : (
         <>
-          <b className={signClass(month.pnl)}>{signed(month.pnl)}</b>
-          <StatsLine stats={month} compact />
+          <span className="journalCalMonthPnl">
+            <b className={signClass(month.pnl)}>{signed(month.pnl)}</b>
+            {month.drawdown > 0 && (
+              <span className="journalCalMonthDd">
+                <i>max. DD</i>
+                <em>{formatNumber(month.drawdown)}</em>
+              </span>
+            )}
+          </span>
+          <span className="journalCalMonthStats">
+            <span>
+              <span className={month.takes ? "is-tp" : ""}>TP {month.takes}</span>
+              <span className="journalCalMonthSlash">/</span>
+              <span className={month.stops ? "is-sl" : ""}>SL {month.stops}</span>
+            </span>
+            <span className={`journalCalMonthWr ${winTone}`}>WR {winRate.toFixed(0)}%</span>
+          </span>
         </>
       )}
     </button>

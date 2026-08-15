@@ -10,6 +10,7 @@ export const WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "
 export interface CalendarStats {
   trades: number;
   pnl: number;
+  wins: number;
   stops: number;
   takes: number;
   manuals: number;
@@ -43,6 +44,7 @@ export interface JournalCalendarModel {
 const EMPTY_STATS: CalendarStats = {
   trades: 0,
   pnl: 0,
+  wins: 0,
   stops: 0,
   takes: 0,
   manuals: 0,
@@ -86,10 +88,16 @@ function emptyStats(): CalendarStats {
 function addTrade(stats: CalendarStats, trade: Trade): void {
   stats.trades += 1;
   stats.pnl += trade.result ?? 0;
+  if ((trade.result ?? 0) > 0) stats.wins += 1;
   if (trade.outcome === "SL") stats.stops += 1;
   if (trade.outcome === "TP") stats.takes += 1;
   if (trade.outcome === "MANUAL") stats.manuals += 1;
   if (trade.outcome === "TIMEOUT") stats.timeouts += 1;
+}
+
+export function calendarWinRatePct(stats: CalendarStats): number {
+  if (!stats.trades) return 0;
+  return (stats.wins / stats.trades) * 100;
 }
 
 function periodDrawdown(trades: Trade[]): number {

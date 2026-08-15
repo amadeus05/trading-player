@@ -53,6 +53,7 @@ test("splits closed trades into utc years months and days", () => {
   assert.equal(y26.takes, 1);
   assert.equal(y26.stops, 1);
   assert.equal(y26.months[1].trades, 2);
+  assert.equal(y26.months[1].wins, 1);
   assert.equal(y26.months[1].days[2].trades, 2);
   assert.equal(y26.months[1].days[2].pnl, 12);
   assert.equal(y26.months[0].trades, 0);
