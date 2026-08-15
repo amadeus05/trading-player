@@ -122,3 +122,17 @@ test("filters trades by dataset, period, side and outcome", () => {
 
   assert.deepEqual(filtered.map((trade) => trade.id), ["loss-short"]);
 });
+
+test("filters trades by tag", () => {
+  const tagged: Trade[] = [
+    { ...trades[0], tags: ["FVG", "breakout"] },
+    { ...trades[1], tags: ["ошибка"] },
+    { ...trades[2], tags: ["fvg"] },
+    trades[3],
+  ];
+
+  assert.deepEqual(
+    filterTradesForAnalytics(tagged, { tag: "FVG" }).map((trade) => trade.id),
+    ["win-long", "manual-short"],
+  );
+});

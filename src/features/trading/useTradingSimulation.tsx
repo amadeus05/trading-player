@@ -219,5 +219,15 @@ export function useTradingSimulation({
     void message.success("Все сделки удалены");
   };
 
-  return { workingTrades, cancelOrder, closeTrade, deleteTrade, deleteAllTrades, placeOrder };
+  const updateTradeJournal = (
+    id: string,
+    patch: { comment?: string; screenshots?: Trade["screenshots"]; tags?: string[] },
+  ) => {
+    setState((current) => ({
+      ...current,
+      trades: current.trades.map((trade) => trade.id === id ? { ...trade, ...patch } : trade),
+    }));
+  };
+
+  return { workingTrades, cancelOrder, closeTrade, deleteTrade, deleteAllTrades, placeOrder, updateTradeJournal };
 }
