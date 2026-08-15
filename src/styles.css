@@ -2876,38 +2876,13 @@ g[data-channel-id].selected .pc-edge-line {
   font-variant-numeric: tabular-nums;
 }
 
-.journalCalDayTrade {
-  display: grid;
-  grid-template-columns: 52px minmax(0, 1fr) 64px auto;
-  gap: 8px;
-  align-items: center;
-  width: 100%;
-  padding: 8px 12px;
-  border: 0;
-  border-top: 1px solid #1a1f28;
-  background: transparent;
-  color: #d7dbe6;
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
+.journalCalDayList .journalRows {
+  flex: none;
+  overflow: visible;
 }
 
-.journalCalDayTrade:first-of-type {
-  border-top: 0;
-}
-
-.journalCalDayTrade:hover {
-  background: #161b24;
-}
-
-.journalCalDayTradeOut {
-  color: #7b8497;
-  font-size: 11px;
-}
-
-.journalCalDayTrade b {
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
+.journalCalDayList .journalRowsHead {
+  background: #11151d;
 }
 
 @media (max-width: 720px) {

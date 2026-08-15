@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { CalendarDays, ChevronLeft } from "lucide-react";
-import type { Trade } from "../../types";
+import type { Trade, TradeScreenshot } from "../../types";
 import { formatNumber } from "../../shared/lib/market";
 import {
   MONTH_NAMES,
@@ -13,11 +13,17 @@ import {
   type CalendarStats,
   calendarWinRatePct,
 } from "./calendarModel";
+import { JournalTradeTable } from "./JournalTradeTable";
 
 interface JournalCalendarProps {
   trades: Trade[];
-  onJumpToTrade?: (trade: Trade) => void;
   datasetName: (id?: string) => string;
+  knownTags: string[];
+  onJumpToTrade?: (trade: Trade) => void;
+  onCancelOrder: (id: string) => void;
+  onCloseTrade: (trade: Trade) => void;
+  onDeleteTrade: (id: string) => void;
+  onUpdateTradeJournal: (id: string, patch: { comment?: string; screenshots?: TradeScreenshot[]; tags?: string[] }) => void;
 }
 
 const signClass = (value: number) => (value >= 0 ? "pos" : "neg");
@@ -53,18 +59,45 @@ function StatsLine({ stats }: { stats: CalendarStats }) {
   );
 }
 
-export function JournalCalendar({ trades, onJumpToTrade, datasetName }: JournalCalendarProps) {
+export function JournalCalendar({
+  trades,
+  datasetName,
+  knownTags,
+  onJumpToTrade,
+  onCancelOrder,
+  onCloseTrade,
+  onDeleteTrade,
+  onUpdateTradeJournal,
+}: JournalCalendarProps) {
   const model = useMemo(() => buildJournalCalendar(trades), [trades]);
   const [year, setYear] = useState<number | null>(null);
   const [month, setMonth] = useState<number | null>(null);
   const [dayKey, setDayKey] = useState<string | null>(null);
 
   useEffect(() => {
-    const latest = model.years.at(-1) ?? null;
-    setYear((current) => (current != null && model.byYear.has(current) ? current : latest));
-    setMonth(null);
-    setDayKey(null);
-  }, [model]);
+    const nextYear = year != null && model.byYear.has(year) ? year : (model.years.at(-1) ?? null);
+    if (nextYear !== year) {
+      setYear(nextYear);
+      setMonth(null);
+      setDayKey(null);
+      return;
+    }
+    if (nextYear == null) {
+      setMonth(null);
+      setDayKey(null);
+      return;
+    }
+    const yearRow = model.byYear.get(nextYear);
+    if (month != null && !yearRow?.months[month - 1]) {
+      setMonth(null);
+      setDayKey(null);
+      return;
+    }
+    setDayKey((current) => {
+      if (!current || !yearRow) return null;
+      return yearRow.months.some((item) => item.days.some((day) => day.key === current)) ? current : null;
+    });
+  }, [model, year, month]);
 
   const yearRow = year != null ? model.byYear.get(year) : undefined;
   const monthRow = yearRow && month != null ? yearRow.months[month - 1] : undefined;
@@ -172,7 +205,12 @@ export function JournalCalendar({ trades, onJumpToTrade, datasetName }: JournalC
               day={monthRow.days.find((item) => item.key === dayKey)}
               trades={dayTrades}
               datasetName={datasetName}
+              knownTags={knownTags}
               onJumpToTrade={onJumpToTrade}
+              onCancelOrder={onCancelOrder}
+              onCloseTrade={onCloseTrade}
+              onDeleteTrade={onDeleteTrade}
+              onUpdateTradeJournal={onUpdateTradeJournal}
             />
           )}
         </>
@@ -276,12 +314,22 @@ function DayTrades({
   day,
   trades,
   datasetName,
+  knownTags,
   onJumpToTrade,
+  onCancelOrder,
+  onCloseTrade,
+  onDeleteTrade,
+  onUpdateTradeJournal,
 }: {
   day?: CalendarDay;
   trades: Trade[];
   datasetName: (id?: string) => string;
+  knownTags: string[];
   onJumpToTrade?: (trade: Trade) => void;
+  onCancelOrder: (id: string) => void;
+  onCloseTrade: (trade: Trade) => void;
+  onDeleteTrade: (id: string) => void;
+  onUpdateTradeJournal: JournalCalendarProps["onUpdateTradeJournal"];
 }) {
   if (!day) return null;
   return (
@@ -290,21 +338,16 @@ function DayTrades({
         {day.day} {MONTH_NAMES[day.month - 1].toLowerCase()}
         <b className={signClass(day.pnl)}>{signed(day.pnl)}</b>
       </div>
-      {trades.map((trade) => (
-        <button
-          key={trade.id}
-          type="button"
-          className="journalCalDayTrade"
-          onClick={() => onJumpToTrade?.(trade)}
-        >
-          <span className={trade.side === "LONG" ? "pos" : "neg"}>{trade.side}</span>
-          <span>{datasetName(trade.datasetId)}</span>
-          <span className="journalCalDayTradeOut">{trade.outcome ?? trade.status}</span>
-          <b className={trade.result == null ? "" : signClass(trade.result)}>
-            {trade.result == null ? "—" : signed(trade.result)}
-          </b>
-        </button>
-      ))}
+      <JournalTradeTable
+        trades={trades}
+        datasetName={datasetName}
+        knownTags={knownTags}
+        onJumpToTrade={onJumpToTrade}
+        onCancelOrder={onCancelOrder}
+        onCloseTrade={onCloseTrade}
+        onDeleteTrade={onDeleteTrade}
+        onUpdateTradeJournal={onUpdateTradeJournal}
+      />
     </div>
   );
 }
