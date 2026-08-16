@@ -580,17 +580,15 @@ export function ReplayChart({
           : (userMovedViewportRef.current ? false : shouldFollowRealtime);
         renderedIndex.current = nextIndex;
         if (datasetChanged) awaitingDatasetData.current = true;
+        else if (nextVisible.length) awaitingDatasetData.current = false;
         if (awaitingDatasetData.current) {
           // Ценовая шкала прежнего рынка новому не годится: SOL живёт около 150,
           // ETH около 1800. Держим автомасштаб, пока данные не сменились на самом
           // деле — по первому времени свечи. Разово подгонять нельзя: подгонка
           // ставит autoScale: false и запирает диапазон, а на этом шаге свечи ещё
           // от прошлой монеты либо окно приехало не целиком.
-          if (!datasetChanged && previousVisible.length && nextVisible[0]?.time !== previousVisible[0]?.time) {
-            awaitingDatasetData.current = false;
-          }
           cs.priceScale().applyOptions({ autoScale: true });
-        } else if (followCandleRef.current) {
+        } else if (followCandleRef.current && !canAppendOneBar) {
           fitPriceScaleToVisible(true);
         } else if (!canAppendOneBar && !forcedRange) {
           primePriceScaleInteraction();
