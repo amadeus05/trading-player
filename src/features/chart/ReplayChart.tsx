@@ -33,6 +33,7 @@ import { attachSessionsOverlay } from "./sessionsOverlay";
 import { attachFvgOverlay } from "./fvgOverlay";
 import { attachPriceMarkers } from "./priceMarkers";
 import type { DrawingActions, DrawingCollections } from "../drawings/useDrawingCollections";
+import { defaultFocusRange, isFocusRangeApplied } from "./chartFocusRange";
 
 const toCandlestickData = (candle: Candle): CandlestickData<UTCTimestamp> => ({
   time: candle.time as UTCTimestamp,
@@ -76,23 +77,6 @@ function writeVolumePaneStretch(price: number, volume: number) {
     /* ignore quota / private mode */
   }
 }
-
-/**
- * Stable bar width with whitespace — avoids stretching a single replay bar across the chart.
- *
- * Влево дальше первого бара не уезжаем. Иначе у начала датасета рамка смотрела
- * в пустоту: на первой свече показывались 80 несуществующих слотов слева, свеча
- * прижималась к правому краю, и выглядело так, будто график нарисован задом
- * наперёд. Ширина остаётся той же, окно просто сдвигается вправо.
- */
-const FOCUS_RANGE_BARS = 100;
-const FOCUS_RANGE_LOOKBACK = 80;
-const defaultFocusRange = (barIndex: number) => {
-  // Ноль, а не отрицательное: за левым краем свечей нет, и уход в минус давал
-  // пустую полосу слева, из-за которой первая свеча висела в воздухе.
-  const from = Math.max(0, barIndex - FOCUS_RANGE_LOOKBACK);
-  return { from, to: from + FOCUS_RANGE_BARS } as LogicalRange;
-};
 
 const cloneDatasetItems = <Item extends { datasetId: string }>(items: Item[], datasetId: string): Item[] =>
   structuredClone(items.filter((item) => item.datasetId === datasetId));
@@ -472,8 +456,10 @@ export function ReplayChart({
         renderedIndex.current = null;
         savedLogicalRange.current = null;
         savedPriceRange.current = null;
-        pendingFocusRange.current = null;
         followRealtime.current = false;
+        // Не трогаем pendingFocusRange, если нам только что передали рамку:
+        // иначе rAF после монтажа не знает, что ставить, и ряд липнет вправо.
+        if (forcedRange == null) pendingFocusRange.current = null;
       }
       // Обычное обновление (без навязанной рамки) — значит момент фокуса позади.
       // Снимаем флаг, иначе syncViewportState останется выключенным навсегда, а
@@ -638,6 +624,15 @@ export function ReplayChart({
     window.addEventListener("pointerup", onEarlierPointerUp);
     window.addEventListener("pointercancel", onEarlierPointerUp);
     const onVisibleRangeChange = () => {
+      const intended = pendingFocusRange.current;
+      if (intended) {
+        const actual = chart.timeScale().getVisibleLogicalRange();
+        if (isFocusRangeApplied(intended, actual)) {
+          savedLogicalRange.current = intended;
+          pendingFocusRange.current = null;
+        }
+        return;
+      }
       syncViewportState();
       if (!replayUpdateInProgress) {
         drawingManager.scheduleOverlaySync();
@@ -752,23 +747,25 @@ export function ReplayChart({
     }
     if (initialRange) pendingFocusRange.current = initialRange;
     applyReplayIndex(safeIndex, liveCandles, initialRange, restoreDrawings);
-    // Переприменяем окно кадром позже при любом initialRange, а не только при
-    // timeframeChanged: на свежем монтаже графика (переключение ТФ вверх)
-    // setVisibleLogicalRange до раскладки layout не приживается, график
-    // остаётся прижатым к правому краю, и следующий прогон это закрепляет.
+    // Ставим именно initialRange, не pending: applyReplayIndex на первом кадре
+    // считает смену датасета и раньше обнулял pending — rAF уходил в пустую
+    // и график оставался прижатым вправо, слева дыра.
+    const applyInitialFocusRange = (intended: LogicalRange): boolean => {
+      pendingFocusRange.current = intended;
+      chart.timeScale().setVisibleLogicalRange(intended);
+      fitPriceScaleToVisible(true, intended);
+      const actual = chart.timeScale().getVisibleLogicalRange();
+      if (!isFocusRangeApplied(intended, actual)) return false;
+      savedLogicalRange.current = intended;
+      pendingFocusRange.current = null;
+      return true;
+    };
     if (initialRange) {
       deferredTimeRangeFrame = requestAnimationFrame(() => {
-        chart.timeScale().setVisibleLogicalRange(initialRange!);
-        // Считаем ценовой диапазон по самим свечам, а не через
-        // primePriceScaleInteraction: тот берёт текущий видимый диапазон, а после
-        // прыжка автомасштаб пересчитаться ещё не успел — защёлкивался диапазон
-        // от прошлой позиции, и график оказывался пустым в чужих ценах.
-        fitPriceScaleToVisible(true, initialRange);
-        // Рамка применена на разложенном графике. Сохраняем именно её, а не
-        // прочитанное значение, и снимаем флаг — дальше syncViewportState снова
-        // следит за реальным диапазоном.
-        savedLogicalRange.current = initialRange;
-        pendingFocusRange.current = null;
+        if (applyInitialFocusRange(initialRange)) return;
+        deferredTimeRangeFrame = requestAnimationFrame(() => {
+          applyInitialFocusRange(initialRange);
+        });
       });
     }
     appliedFocusRevision.current = focusRevision;
@@ -784,6 +781,7 @@ export function ReplayChart({
     let priceScaleWidth = syncWorkspaceLayout();
     const layoutObserver = new ResizeObserver(() => {
       priceScaleWidth = syncWorkspaceLayout();
+      if (initialRange && pendingFocusRange.current) applyInitialFocusRange(initialRange);
     });
     if (ref.current) layoutObserver.observe(ref.current);
     const timeScaleHeight = Math.max(28, chart.timeScale().height());
