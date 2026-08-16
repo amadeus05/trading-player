@@ -223,6 +223,7 @@ export function ReplayChart({
   const drawingManagerRef = useRef<DrawingManager | null>(null);
   const appliedFocusRevision = useRef(focusRevision - 1);
   const appliedDrawingRestoreRevision = useRef(drawingRestoreRevision);
+  const chartDatasetId = useRef<string | null>(null);
   const chartRuntimeRef = useRef<{
     applyReplayIndex: (
       nextIndex: number,
@@ -286,7 +287,10 @@ export function ReplayChart({
     const timeframeChanged = savedCandleInterval.current != null
       && candleInterval != null
       && savedCandleInterval.current !== candleInterval;
-    const forceFocus = appliedFocusRevision.current !== focusRevision;
+    const datasetSwitched = chartDatasetId.current != null
+      && chartDatasetId.current !== datasetId;
+    chartDatasetId.current = datasetId;
+    const forceFocus = appliedFocusRevision.current !== focusRevision || datasetSwitched;
     const restoreDrawings = appliedDrawingRestoreRevision.current !== drawingRestoreRevision;
     const restoreViewportRange = restoreDrawings ? savedLogicalRange.current : null;
     const restorePriceRange = restoreDrawings ? savedPriceRange.current : null;
@@ -462,8 +466,7 @@ export function ReplayChart({
       // предыдущий состав свечей. Применять их к другому рынку нельзя — именно
       // так на новой монете оказывалась рамка от старой, и свечи рисовались
       // куском у правого края с пустотой слева.
-      const datasetChanged = renderedDatasetId.current != null
-        && renderedDatasetId.current !== datasetIdRef.current;
+      const datasetChanged = renderedDatasetId.current !== datasetIdRef.current;
       renderedDatasetId.current = datasetIdRef.current;
       if (datasetChanged) {
         renderedIndex.current = null;
@@ -598,7 +601,7 @@ export function ReplayChart({
       // Пока действует выставленная нами рамка и пользователь её не трогал, не
       // даём ещё не разложенному графику подменить намерение: он отдаёт диапазон,
       // прижатый к последней свече, и отсюда включалось «следование за краем».
-      if (pendingFocusRange.current) return;
+      if (pendingFocusRange.current || awaitingDatasetData.current) return;
       const range = chart.timeScale().getVisibleLogicalRange();
       if (!range) return;
       savedLogicalRange.current = range;
@@ -734,8 +737,15 @@ export function ReplayChart({
     let initialRange: LogicalRange | null = null;
     if (timeframeChanged || forceFocus) {
       // Keep a stable bar density when jumping to a bar or switching timeframe.
+      // Смена монеты тоже: без рамки setVisibleLogicalRange не приживается до
+      // layout, и график остаётся с пустотой слева / куском у правого края.
       initialRange = defaultFocusRange(safeIndex);
       if (forceFocus) followRealtime.current = false;
+      if (datasetSwitched) {
+        savedLogicalRange.current = null;
+        savedPriceRange.current = null;
+        renderedDatasetId.current = null;
+      }
     } else if (restoreDrawings) {
       initialRange = restoreViewportRange;
       followRealtime.current = false;
