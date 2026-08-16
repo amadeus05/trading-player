@@ -33,6 +33,7 @@ import { attachSessionsOverlay } from "./sessionsOverlay";
 import { attachFvgOverlay } from "./fvgOverlay";
 import { attachPriceMarkers } from "./priceMarkers";
 import type { DrawingActions, DrawingCollections } from "../drawings/useDrawingCollections";
+import { keepIncompleteLastBar } from "../replay/playheadCandle";
 import { defaultFocusRange, isFocusRangeApplied, resolveChartViewport } from "./chartFocusRange";
 
 const toCandlestickData = (candle: Candle): CandlestickData<UTCTimestamp> => ({
@@ -522,6 +523,14 @@ export function ReplayChart({
         && nextVisible.length === previousVisible.length + 1
         && previousVisible.length > 0
         && nextVisible[previousVisible.length - 1].time === previousVisible[previousVisible.length - 1].time;
+      // Зум/догрузка слева пересобирает серию. Последний бар не должен вырасти:
+      // дорисовка идёт только шагом Play (append) или refreshLastCandle.
+      const previousLast = previousVisible.at(-1);
+      const incomingLast = nextVisible.at(-1);
+      const retainedLast = keepIncompleteLastBar(previousLast, incomingLast, canAppendOneBar);
+      if (retainedLast && incomingLast && retainedLast !== incomingLast) {
+        nextVisible[nextVisible.length - 1] = retainedLast;
+      }
 
       replayUpdateInProgress = true;
       try {
