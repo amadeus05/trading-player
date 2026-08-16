@@ -33,7 +33,7 @@ import { attachSessionsOverlay } from "./sessionsOverlay";
 import { attachFvgOverlay } from "./fvgOverlay";
 import { attachPriceMarkers } from "./priceMarkers";
 import type { DrawingActions, DrawingCollections } from "../drawings/useDrawingCollections";
-import { defaultFocusRange, isFocusRangeApplied } from "./chartFocusRange";
+import { defaultFocusRange, isFocusRangeApplied, resolveChartViewport } from "./chartFocusRange";
 
 const toCandlestickData = (candle: Candle): CandlestickData<UTCTimestamp> => ({
   time: candle.time as UTCTimestamp,
@@ -185,6 +185,10 @@ export function ReplayChart({
   // сохраняем намерение, а не фактический диапазон, иначе cleanup решит, что
   // пользователь «следует за реальным временем», и закрепит край.
   const pendingFocusRange = useRef<LogicalRange | null>(null);
+  /** Пользователь потащил график: на пересборке держим живое окно, не старый прыжок. */
+  const userMovedViewportRef = useRef(false);
+  const indexRef = useRef(index);
+  indexRef.current = index;
   const renderedIndex = useRef<number | null>(null);
   // Датасет, свечи которого сейчас на графике. Нужен, чтобы отличить смену
   // монеты от обычного обновления: рамка, ценовой диапазон и компенсация
@@ -275,6 +279,7 @@ export function ReplayChart({
       && chartDatasetId.current !== datasetId;
     chartDatasetId.current = datasetId;
     const forceFocus = appliedFocusRevision.current !== focusRevision || datasetSwitched;
+    if (datasetSwitched || forceFocus) userMovedViewportRef.current = false;
     const restoreDrawings = appliedDrawingRestoreRevision.current !== drawingRestoreRevision;
     const restoreViewportRange = restoreDrawings ? savedLogicalRange.current : null;
     const restorePriceRange = restoreDrawings ? savedPriceRange.current : null;
@@ -497,14 +502,16 @@ export function ReplayChart({
       }
       // На смене монеты откат к getVisibleLogicalRange() недопустим: там всё ещё
       // рамка прежнего рынка. Отдаём null, чтобы ниже встала defaultFocusRange.
-      let preservedRange = forcedRange
-        ?? (datasetChanged
-          ? null
-          : preserveViewport
-            ? savedLogicalRange.current ?? chart.timeScale().getVisibleLogicalRange()
-            : shouldFollowRealtime
-              ? null
-              : savedLogicalRange.current ?? chart.timeScale().getVisibleLogicalRange());
+      // Если пользователь уже потащил график — живой диапазон, не фокус прыжка.
+      let preservedRange = resolveChartViewport({
+        forcedRange,
+        userMoved: userMovedViewportRef.current,
+        liveRange: chart.timeScale().getVisibleLogicalRange(),
+        savedRange: savedLogicalRange.current,
+        datasetChanged,
+        preserveViewport,
+        followRealtime: shouldFollowRealtime,
+      });
       if (preservedRange && prependedBars !== 0) {
         preservedRange = {
           from: preservedRange.from + prependedBars,
@@ -535,7 +542,13 @@ export function ReplayChart({
         // застревал на устаревшем диапазоне, и на следующем тике график
         // восстанавливал его — отсюда скачки масштаба и прижатие к правому краю.
         let appliedRange: LogicalRange | null = null;
-        if (preservedRange) {
+        const leaveViewportAlone = userMovedViewportRef.current
+          && !shouldFollowRealtime
+          && forcedRange == null
+          && (canAppendOneBar || preservedRange == null);
+        if (leaveViewportAlone) {
+          appliedRange = chart.timeScale().getVisibleLogicalRange();
+        } else if (preservedRange) {
           chart.timeScale().setVisibleLogicalRange(preservedRange);
           appliedRange = preservedRange;
         } else if (!preserveViewport && shouldFollowRealtime && nextVisible.length > 1) {
@@ -553,7 +566,9 @@ export function ReplayChart({
         // Ветка scrollToPosition своей рамки не задаёт — только там читаем факт.
         savedLogicalRange.current = appliedRange ?? chart.timeScale().getVisibleLogicalRange();
         savedPriceRange.current = cs.priceScale().getVisibleRange();
-        followRealtime.current = shouldFollowRealtime;
+        followRealtime.current = followCandleRef.current
+          ? shouldFollowRealtime
+          : (userMovedViewportRef.current ? false : shouldFollowRealtime);
         renderedIndex.current = nextIndex;
         if (datasetChanged) awaitingDatasetData.current = true;
         if (awaitingDatasetData.current) {
@@ -624,14 +639,16 @@ export function ReplayChart({
     window.addEventListener("pointerup", onEarlierPointerUp);
     window.addEventListener("pointercancel", onEarlierPointerUp);
     const onVisibleRangeChange = () => {
+      if (userMovedViewportRef.current) pendingFocusRange.current = null;
       const intended = pendingFocusRange.current;
-      if (intended) {
+      if (intended && !userMovedViewportRef.current) {
         const actual = chart.timeScale().getVisibleLogicalRange();
         if (isFocusRangeApplied(intended, actual)) {
           savedLogicalRange.current = intended;
           pendingFocusRange.current = null;
+        } else {
+          return;
         }
-        return;
       }
       syncViewportState();
       if (!replayUpdateInProgress) {
@@ -735,6 +752,7 @@ export function ReplayChart({
       // Смена монеты тоже: без рамки setVisibleLogicalRange не приживается до
       // layout, и график остаётся с пустотой слева / куском у правого края.
       initialRange = defaultFocusRange(safeIndex);
+      userMovedViewportRef.current = false;
       if (forceFocus) followRealtime.current = false;
       if (datasetSwitched) {
         savedLogicalRange.current = null;
@@ -751,7 +769,8 @@ export function ReplayChart({
     // считает смену датасета и раньше обнулял pending — rAF уходил в пустую
     // и график оставался прижатым вправо, слева дыра.
     const applyInitialFocusRange = (intended: LogicalRange): boolean => {
-      pendingFocusRange.current = intended;
+      // Если pending уже сброшен — пользователь сдвинул график. Не возвращаем окно.
+      if (userMovedViewportRef.current || pendingFocusRange.current == null) return true;
       chart.timeScale().setVisibleLogicalRange(intended);
       fitPriceScaleToVisible(true, intended);
       const actual = chart.timeScale().getVisibleLogicalRange();
@@ -863,8 +882,13 @@ export function ReplayChart({
     let chartInteractionWheelTimer = 0;
     const markManualViewportInteraction = () => {
       followRealtime.current = false;
+      userMovedViewportRef.current = true;
       // Пользователь сам подвигал график — намерение по рамке больше не актуально.
       pendingFocusRange.current = null;
+      if (deferredTimeRangeFrame) {
+        cancelAnimationFrame(deferredTimeRangeFrame);
+        deferredTimeRangeFrame = 0;
+      }
     };
     const startChartInteractionOverlayLoop = () => {
       markManualViewportInteraction();
@@ -1138,7 +1162,23 @@ export function ReplayChart({
       chartRuntimeRef.current = null;
       if (chartViewportRef) chartViewportRef.current = null;
     };
-  }, [candleInterval, focusRevision, pricePrecision, datasetId, chartViewportRef]);
+  }, [candleInterval, pricePrecision, datasetId, chartViewportRef]);
+
+  // Прыжок (рандом/дата) не пересоздаёт график: иначе зажатый пан срывается,
+  // а новый инстанс снова ставит стартовую рамку — «кидает обратно».
+  // Сам прыжок рамку всё равно ставит: клик/пан не должен глотать новую ревизию.
+  useEffect(() => {
+    if (appliedFocusRevision.current === focusRevision) return;
+    appliedFocusRevision.current = focusRevision;
+    userMovedViewportRef.current = false;
+    const runtime = chartRuntimeRef.current;
+    const all = candlesRef.current;
+    if (!runtime || !all.length) return;
+    const safeIndex = Math.max(0, Math.min(indexRef.current, all.length - 1));
+    const range = defaultFocusRange(safeIndex);
+    pendingFocusRange.current = range;
+    runtime.applyReplayIndex(indexRef.current, all, range);
+  }, [focusRevision]);
 
   /**
    * Отмена и повтор подменяют коллекции целиком. Раньше это доезжало до

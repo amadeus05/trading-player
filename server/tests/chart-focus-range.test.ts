@@ -5,6 +5,7 @@ import {
   FOCUS_RANGE_BARS,
   FOCUS_RANGE_LOOKBACK,
   isFocusRangeApplied,
+  resolveChartViewport,
 } from "../../src/features/chart/chartFocusRange.ts";
 
 test("at replay start the first bar sits on the left edge, not in negative space", () => {
@@ -30,4 +31,55 @@ test("a right-aligned library range is not treated as the intended focus", () =>
   assert.equal(isFocusRangeApplied(intended, { from: -19, to: 81 }), false);
   assert.equal(isFocusRangeApplied(intended, { from: 0, to: 100 }), true);
   assert.equal(isFocusRangeApplied(intended, null), false);
+});
+
+test("after the user pans, a later series rebuild keeps the live window, not the jump focus", () => {
+  const jumpFocus = defaultFocusRange(80);
+  const live = { from: -24, to: 76 };
+  assert.deepEqual(
+    resolveChartViewport({
+      forcedRange: null,
+      userMoved: true,
+      liveRange: live,
+      savedRange: jumpFocus,
+      datasetChanged: false,
+      preserveViewport: false,
+      followRealtime: false,
+    }),
+    live,
+  );
+});
+
+test("a new jump still wins after the user has panned", () => {
+  const jumpFocus = defaultFocusRange(200);
+  const live = { from: -24, to: 76 };
+  assert.deepEqual(
+    resolveChartViewport({
+      forcedRange: jumpFocus,
+      userMoved: true,
+      liveRange: live,
+      savedRange: defaultFocusRange(80),
+      datasetChanged: false,
+      preserveViewport: false,
+      followRealtime: false,
+    }),
+    jumpFocus,
+  );
+});
+
+test("follow-candle does not keep the panned window on a rebuild", () => {
+  const jumpFocus = defaultFocusRange(80);
+  const live = { from: -24, to: 76 };
+  assert.equal(
+    resolveChartViewport({
+      forcedRange: null,
+      userMoved: true,
+      liveRange: live,
+      savedRange: jumpFocus,
+      datasetChanged: false,
+      preserveViewport: false,
+      followRealtime: true,
+    }),
+    null,
+  );
 });

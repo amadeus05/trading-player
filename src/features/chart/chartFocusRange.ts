@@ -18,3 +18,29 @@ export function isFocusRangeApplied(
   if (!actual || !Number.isFinite(actual.from) || !Number.isFinite(actual.to)) return false;
   return Math.abs(actual.from - intended.from) < 0.75;
 }
+
+type Range = { from: number; to: number };
+
+/**
+ * Какую рамку ставить при пересборке серии.
+ * Если пользователь уже потащил график — берём живой диапазон, не сохранённый
+ * фокус прыжка. Иначе после догрузки истории окно возвращалось на место.
+ */
+export function resolveChartViewport(input: {
+  forcedRange: Range | null;
+  userMoved: boolean;
+  liveRange: Range | null;
+  savedRange: Range | null;
+  datasetChanged: boolean;
+  preserveViewport: boolean;
+  followRealtime: boolean;
+}): Range | null {
+  if (input.forcedRange) return input.forcedRange;
+  // Пан держит живое окно, но follow/forced прыжок важнее: иначе дата и
+  // «следовать за свечой» умирают после первого клика по графику.
+  if (input.userMoved && !input.followRealtime) return input.liveRange;
+  if (input.datasetChanged) return null;
+  if (input.preserveViewport) return input.savedRange ?? input.liveRange;
+  if (input.followRealtime) return null;
+  return input.savedRange ?? input.liveRange;
+}
