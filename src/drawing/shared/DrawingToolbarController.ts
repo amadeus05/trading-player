@@ -9,6 +9,7 @@ import {
   type DrawingTemplateKind,
   type DrawingTemplateState,
 } from "./drawingTemplates";
+import { openConfirmDialog } from "./confirmDialog";
 import { mountFloatingPanel } from "./floatingPanel";
 import { mountAnchoredPopup } from "./popup";
 import { hexToRgba } from "./colorUtils";
@@ -24,6 +25,7 @@ export interface DrawingToolbarState {
   width: number;
   style: DrawingLineStyle;
   locked?: boolean;
+  levels?: DrawingTemplateState["levels"];
 }
 
 export interface DrawingToolbarPatch {
@@ -36,6 +38,7 @@ export interface DrawingToolbarPatch {
   width?: number;
   style?: DrawingLineStyle;
   locked?: boolean;
+  levels?: DrawingTemplateState["levels"];
 }
 
 export type DrawingToolbarPreset = "full" | "stroke" | "line-only" | "channel" | "actions" | "none";
@@ -75,6 +78,12 @@ export interface DrawingToolbarControllerOptions<T> {
   onSync?: () => void;
   slots?: ToolbarSlot<T>[];
   onTextButtonClick?: (drawing: T, anchor: HTMLElement) => void;
+  /**
+   * Актуальный объект фигуры по id. Нужен, когда инструмент заменяет элемент
+   * в массиве при каждом update (fib levels) — иначе тулбар держит stale-копию
+   * и шаблон сохраняет/применяет старые уровни.
+   */
+  resolveDrawing?: (drawing: T) => T;
 }
 
 const PRESET_OPTIONS: Record<Exclude<DrawingToolbarPreset, "none">, Partial<DrawingToolbarOptions>> = {
@@ -123,6 +132,7 @@ function templateStateFromToolbar(state: DrawingToolbarState): DrawingTemplateSt
     ...(state.showLabel != null ? { showLabel: state.showLabel } : {}),
     width: state.width,
     style: state.style,
+    ...(state.levels?.length ? { levels: state.levels.map((level) => ({ ...level })) } : {}),
   };
 }
 
@@ -136,6 +146,7 @@ function templatePatchFromState(state: DrawingTemplateState): DrawingToolbarPatc
     ...(state.showLabel != null ? { showLabel: state.showLabel } : {}),
     width: state.width,
     style: state.style,
+    ...(state.levels?.length ? { levels: state.levels.map((level) => ({ ...level })) } : {}),
   };
 }
 
@@ -183,6 +194,7 @@ export class DrawingToolbarController<T> {
   private currentDrawing: T | null = null;
   private currentState: DrawingToolbarState | null = null;
   private cleanupPopup: (() => void) | null = null;
+  private cleanupConfirm: (() => void) | null = null;
   private cleanupDrag: (() => void) | null = null;
   private slotCleanups: Array<() => void> = [];
 
@@ -192,15 +204,20 @@ export class DrawingToolbarController<T> {
     return this.options.enabled !== false && this.options.preset !== "none";
   }
 
+  private live(drawing: T): T {
+    return this.options.resolveDrawing?.(drawing) ?? drawing;
+  }
+
   show(drawing: T): void {
     if (!this.enabled) return;
     this.hide();
-    this.currentDrawing = drawing;
-    this.mount(drawing);
+    this.currentDrawing = this.live(drawing);
+    this.mount(this.currentDrawing);
   }
 
   hide(): void {
     this.closePopups();
+    this.closeConfirm();
     this.slotCleanups.forEach((cleanup) => cleanup());
     this.slotCleanups = [];
     this.cleanupDrag?.();
@@ -213,7 +230,23 @@ export class DrawingToolbarController<T> {
 
   refresh(): void {
     if (!this.enabled || !this.currentDrawing || !this.panel) return;
-    this.applyState(this.currentState ?? this.options.getState(this.currentDrawing));
+    this.currentDrawing = this.live(this.currentDrawing);
+    // Всегда читаем актуальное состояние фигуры — уровни fib меняются в settings.
+    this.currentState = this.options.getState(this.currentDrawing);
+    this.applyState(this.currentState);
+  }
+
+  /** Открыть меню шаблонов с произвольного якоря (кнопка Template в settings). */
+  openTemplatesFrom(anchor: Element): void {
+    if (!this.enabled || !this.currentDrawing) return;
+    this.currentDrawing = this.live(this.currentDrawing);
+    this.openTemplatesMenu(anchor, this.currentDrawing);
+  }
+
+  /** Закрыть выпадающие меню (шаблоны/ширина) — при drag settings и смене фокуса. */
+  dismissPopups(): void {
+    this.closePopups();
+    this.closeConfirm();
   }
 
   destroy(): void {
@@ -329,14 +362,15 @@ export class DrawingToolbarController<T> {
   }
 
   private patchDrawing(drawing: T, patch: DrawingToolbarPatch): void {
-    this.options.onPatch(drawing, patch);
+    const target = this.live(drawing);
+    this.currentDrawing = target;
+    this.options.onPatch(target, patch);
     // Выбор в панели становится оформлением по умолчанию для следующих фигур
     // этого типа — как в TradingView. Содержимое и блокировка отсеиваются внутри.
     rememberDrawingStyle(this.options.templateKind, patch);
-    this.currentState = {
-      ...(this.currentState ?? this.options.getState(drawing)),
-      ...patch,
-    };
+    // После onPatch фигура могла снова замениться в сторе — читаем live state.
+    this.currentDrawing = this.live(target);
+    this.currentState = this.options.getState(this.currentDrawing);
     this.applyState(this.currentState);
     this.options.onSync?.();
   }
@@ -449,7 +483,7 @@ export class DrawingToolbarController<T> {
   }
 
   private applyTemplate(drawing: T, state: DrawingTemplateState) {
-    this.patchDrawing(drawing, templatePatchFromState(state));
+    this.patchDrawing(this.live(drawing), templatePatchFromState(state));
   }
 
   private openTemplatesMenu(anchor: Element, drawing: T) {
@@ -458,18 +492,23 @@ export class DrawingToolbarController<T> {
       return;
     }
 
+    const target = this.live(drawing);
+    this.currentDrawing = target;
+
     const menu = document.createElement("div");
     menu.className = "rect-templates-menu";
 
     const saveBtn = document.createElement("button");
     saveBtn.type = "button";
     saveBtn.className = "rect-line-menu-item rect-templates-action";
-    saveBtn.textContent = "Сохранить шаблон как…";
+    saveBtn.textContent = "Сохранить как…";
     saveBtn.addEventListener("click", (event) => {
       event.stopPropagation();
       const name = window.prompt("Имя шаблона");
       if (name == null) return;
-      const current = templateStateFromToolbar(this.currentState ?? this.options.getState(drawing));
+      const live = this.live(target);
+      // Берём state с фигуры, не кэш тулбара — иначе fib levels не попадут в шаблон.
+      const current = templateStateFromToolbar(this.options.getState(live));
       saveDrawingTemplate(this.options.templateKind, name, current);
       this.closePopups();
     });
@@ -478,10 +517,10 @@ export class DrawingToolbarController<T> {
     const defaultBtn = document.createElement("button");
     defaultBtn.type = "button";
     defaultBtn.className = "rect-line-menu-item rect-templates-action";
-    defaultBtn.textContent = "Применить шаблон по умолчанию";
+    defaultBtn.textContent = "Применить по умолчанию";
     defaultBtn.addEventListener("click", (event) => {
       event.stopPropagation();
-      this.applyTemplate(drawing, getDefaultDrawingTemplateState(this.options.templateKind));
+      this.applyTemplate(target, getDefaultDrawingTemplateState(this.options.templateKind));
       this.closePopups();
     });
     menu.appendChild(defaultBtn);
@@ -503,7 +542,9 @@ export class DrawingToolbarController<T> {
       applyBtn.textContent = template.name;
       applyBtn.addEventListener("click", (event) => {
         event.stopPropagation();
-        this.applyTemplate(drawing, template.state);
+        // Перечитываем из storage — на случай если state в списке устарел.
+        const fresh = listDrawingTemplates(this.options.templateKind).find((item) => item.id === template.id);
+        this.applyTemplate(target, fresh?.state ?? template.state);
         this.closePopups();
       });
 
@@ -514,9 +555,19 @@ export class DrawingToolbarController<T> {
       deleteBtn.innerHTML = removeDrawingIcon;
       deleteBtn.addEventListener("click", (event) => {
         event.stopPropagation();
-        deleteDrawingTemplate(template.id);
         this.closePopups();
-        this.openTemplatesMenu(anchor, drawing);
+        this.cleanupConfirm?.();
+        this.cleanupConfirm = openConfirmDialog({
+          container: this.options.container,
+          title: "Подтверждение",
+          message: `Удалить шаблон рисунка «${template.name}»?`,
+          cancelText: "Нет",
+          confirmText: "Да",
+          onConfirm: () => {
+            deleteDrawingTemplate(template.id);
+            this.cleanupConfirm = null;
+          },
+        });
       });
 
       row.appendChild(applyBtn);
@@ -524,12 +575,16 @@ export class DrawingToolbarController<T> {
       menu.appendChild(row);
     });
 
+    const fromToolbar = Boolean(this.panel?.contains(anchor));
     this.cleanupPopup = mountAnchoredPopup({
       container: this.options.container,
       anchor,
-      verticalAnchor: this.panel ?? undefined,
+      // Из футера настроек якорь — сама кнопка Template, не плавающий тулбар.
+      verticalAnchor: fromToolbar ? (this.panel ?? undefined) : undefined,
       popup: menu,
-      width: 248,
+      minWidth: 200,
+      fitContent: true,
+      preferAbove: !fromToolbar,
       onDismiss: () => { this.cleanupPopup = null; },
     });
   }
@@ -537,5 +592,10 @@ export class DrawingToolbarController<T> {
   private closePopups() {
     this.cleanupPopup?.();
     this.cleanupPopup = null;
+  }
+
+  private closeConfirm() {
+    this.cleanupConfirm?.();
+    this.cleanupConfirm = null;
   }
 }

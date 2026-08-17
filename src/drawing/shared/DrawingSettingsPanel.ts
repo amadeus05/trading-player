@@ -22,6 +22,8 @@ export interface DrawingSettingsPanelOptions {
   initialTab?: DrawingSettingsTabId;
   tabs?: DrawingSettingsTab[];
   renderTab?: (tabId: DrawingSettingsTabId, body: HTMLDivElement) => void;
+  onTemplateClick?: (anchor: HTMLElement) => void;
+  onDragStart?: () => void;
   onCancel?: () => void;
   onOk?: () => void;
   onClose?: () => void;
@@ -112,6 +114,15 @@ export function mountDrawingSettingsPanel(options: DrawingSettingsPanelOptions):
   template.type = "button";
   template.className = "drawing-settings-template";
   template.innerHTML = `<span>Template</span>${CHEVRON_ICON}`;
+  if (options.onTemplateClick) {
+    template.addEventListener("click", (event) => {
+      event.stopPropagation();
+      options.onTemplateClick?.(template);
+    });
+  } else {
+    template.disabled = true;
+    template.title = "Шаблоны недоступны";
+  }
 
   const actions = document.createElement("div");
   actions.className = "drawing-settings-actions";
@@ -134,13 +145,6 @@ export function mountDrawingSettingsPanel(options: DrawingSettingsPanelOptions):
 
   options.container.appendChild(panel);
 
-  const unmountFloating = mountFloatingPanel({
-    container: options.container,
-    panel,
-    grip: header,
-    persistenceKey: options.persistenceKey,
-  });
-
   function render() {
     body.replaceChildren();
     tabButtons.forEach((button, tabId) => {
@@ -155,7 +159,17 @@ export function mountDrawingSettingsPanel(options: DrawingSettingsPanelOptions):
     render();
   }
 
+  // Сначала контент — иначе offsetWidth=0 и панель уезжает за правый край.
   render();
+
+  const unmountFloating = mountFloatingPanel({
+    container: options.container,
+    panel,
+    grip: header,
+    persistenceKey: options.persistenceKey,
+    placement: "center",
+    onDragStart: options.onDragStart,
+  });
 
   return {
     panel,

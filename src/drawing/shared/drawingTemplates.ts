@@ -1,3 +1,5 @@
+import type { FibonacciLevel } from "../../types";
+import { getDefaultFibLevels } from "../fibonacci/fibLevels";
 import type { DrawingLineStyle } from "./DrawingToolbar";
 
 export type DrawingTemplateKind =
@@ -17,6 +19,8 @@ export interface DrawingTemplateState {
   showLabel?: boolean;
   width: number;
   style: DrawingLineStyle;
+  /** Уровни Fibonacci (вкл/выкл, цвет, значение) — для шаблонов fib. */
+  levels?: FibonacciLevel[];
 }
 
 export interface DrawingTemplate {
@@ -64,6 +68,7 @@ const DEFAULTS: Record<DrawingTemplateKind, DrawingTemplateState> = {
     lineColor: "#787b86",
     width: 1,
     style: "solid",
+    showLabel: true,
   },
   fibtrendext: {
     lineColor: "#787b86",
@@ -102,7 +107,11 @@ function writeStore(store: DrawingTemplatesStore): void {
 
 /** Заводское оформление. Им же отвечает пункт «Применить шаблон по умолчанию». */
 export function getDefaultDrawingTemplateState(kind: DrawingTemplateKind): DrawingTemplateState {
-  return { ...DEFAULTS[kind] };
+  const base = { ...DEFAULTS[kind] };
+  if (kind === "fibonacci") {
+    base.levels = getDefaultFibLevels();
+  }
+  return base;
 }
 
 /**
@@ -114,7 +123,14 @@ export function getDefaultDrawingTemplateState(kind: DrawingTemplateKind): Drawi
  * приходилось назначать заново.
  */
 export function getNewDrawingStyle(kind: DrawingTemplateKind): DrawingTemplateState {
-  return { ...DEFAULTS[kind], ...readStore().lastStyles[kind] };
+  const last = readStore().lastStyles[kind];
+  const base = getDefaultDrawingTemplateState(kind);
+  if (!last) return base;
+  return {
+    ...base,
+    ...last,
+    ...(last.levels?.length ? { levels: last.levels.map((level) => ({ ...level })) } : {}),
+  };
 }
 
 /**
@@ -131,6 +147,9 @@ export function rememberDrawingStyle(
   for (const key of keys) {
     const value = patch[key];
     if (value !== undefined) (next as Record<string, unknown>)[key] = value;
+  }
+  if (patch.levels?.length) {
+    next.levels = patch.levels.map((level) => ({ ...level }));
   }
   if (!Object.keys(next).length) return;
   const store = readStore();
