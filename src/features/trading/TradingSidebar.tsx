@@ -1,5 +1,5 @@
 import { Button, InputNumber, Select, Slider, Tooltip } from "antd";
-import { Check, CircleHelp, Pencil, X } from "lucide-react";
+import { Check, PanelRightClose, Pencil, X } from "lucide-react";
 import type { Candle, Trade } from "../../types";
 import { formatNumber, formatPrice } from "../../shared/lib/market";
 import type { AccountStats } from "./lib/calculateAccountStats";
@@ -15,6 +15,7 @@ interface TradingSidebarProps {
   workingTrades: Trade[];
   focusedTradeId: string | null;
   editingTradeId: string | null;
+  onCollapse?: () => void;
   onBeginOrderDraft: (side: Trade["side"]) => void;
   onCancelOrderDraft: () => void;
   onPlaceOrder: (side: Trade["side"]) => void;
@@ -97,6 +98,7 @@ export function TradingSidebar({
   workingTrades,
   focusedTradeId,
   editingTradeId,
+  onCollapse,
   onBeginOrderDraft,
   onCancelOrderDraft,
   onPlaceOrder,
@@ -177,8 +179,21 @@ export function TradingSidebar({
       : "OK";
 
   return (
-    <aside>
-      <div className="orderHeader"><b>Trade</b></div>
+    <aside className="tradeSidebar">
+      <div className="orderHeader">
+        <b>Trade</b>
+        {onCollapse ? (
+          <button
+            type="button"
+            className="tradeSidebarCollapse"
+            aria-label="Свернуть панель Trade"
+            title="Свернуть"
+            onClick={onCollapse}
+          >
+            <PanelRightClose size={16} />
+          </button>
+        ) : null}
+      </div>
       <div className="ticketTopRow">
         {/*
           Режим маржи выключен намеренно, а не «пока не сделали». Симулятор
@@ -211,7 +226,6 @@ export function TradingSidebar({
       <div className="orderTabs">
         <button className={orderType === "LIMIT" ? "active" : ""} onClick={() => onOrderTypeChange("LIMIT")}>Limit</button>
         <button className={orderType === "MARKET" ? "active" : ""} onClick={() => onOrderTypeChange("MARKET")}>Market</button>
-        <CircleHelp size={16} />
       </div>
       {orderType === "LIMIT" && (
         <div className="ticketField">

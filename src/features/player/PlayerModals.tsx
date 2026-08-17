@@ -12,13 +12,14 @@ interface PlayerModalsProps {
   onSettingsClose: () => void;
   onSettingsReset: () => void;
   onSettingChange: (
-    key: Exclude<keyof SimulationSettings, 'showClosedTradeOverlays' | 'ambiguousExitPolicy'>,
+    key: Exclude<keyof SimulationSettings, 'showClosedTradeOverlays' | 'followCandle' | 'tradePanelTabPinned' | 'showTradingSessions' | 'ambiguousExitPolicy'>,
     value: number | null,
   ) => void;
   onInitialBalanceChange: (value: number | null) => void;
   onAmbiguousExitPolicyChange: (value: AmbiguousExitPolicy) => void;
   onClosedTradeOverlaysChange: (checked: boolean) => void;
   onFollowCandleChange: (checked: boolean) => void;
+  onTradePanelTabPinnedChange: (checked: boolean) => void;
   onDatePickerClose: () => void;
   onReplayTimeSelect: (time: number) => void;
 }
@@ -37,6 +38,7 @@ export function PlayerModals({
   onAmbiguousExitPolicyChange,
   onClosedTradeOverlaysChange,
   onFollowCandleChange,
+  onTradePanelTabPinnedChange,
   onDatePickerClose,
   onReplayTimeSelect,
 }: PlayerModalsProps) {
@@ -85,6 +87,13 @@ export function PlayerModals({
           </label>
           <label className="settingsToggle"><span>Разметка закрытых сделок</span><Switch checked={settings.showClosedTradeOverlays} onChange={onClosedTradeOverlaysChange} /><small>Зоны TP/SL и линия фактического выхода на графике</small></label>
           <label className="settingsToggle"><span>Следовать за свечой</span><Switch checked={settings.followCandle} onChange={onFollowCandleChange} /><small>График центрируется и автоматически прокручивается за текущей свечой во время replay</small></label>
+          <label className="settingsToggle">
+            <span>Кнопка Trade всегда видна</span>
+            <Switch checked={settings.tradePanelTabPinned} onChange={onTradePanelTabPinnedChange} />
+            <small>
+              Вкл — вкладка Trade всегда справа при свёрнутой панели. Выкл — не перекрывает цены и выезжает на секунду у правого края экрана
+            </small>
+          </label>
         </div>
       </Modal>
 

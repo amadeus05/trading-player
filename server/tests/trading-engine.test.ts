@@ -4,16 +4,10 @@ import type { Candle, Persisted, SimulationSettings, Trade } from "../../src/typ
 import { createOrder } from "../../src/features/trading/lib/createOrder";
 import { calculateManualClose } from "../../src/features/trading/lib/calculateTradeResult";
 import { advanceSimulation } from "../../src/features/trading/lib/advanceSimulation";
+import { DEFAULT_SIMULATION_SETTINGS } from "../../src/shared/config/simulation";
 
 const settings: SimulationSettings = {
-  makerFeePct: 0.02,
-  takerFeePct: 0.055,
-  slippagePct: 0.02,
-  stopSlippagePct: 0.05,
-  showClosedTradeOverlays: true,
-  showTradingSessions: false,
-  followCandle: false,
-  ambiguousExitPolicy: "conservative",
+  ...DEFAULT_SIMULATION_SETTINGS,
 };
 
 const candle = (time: number, values: Partial<Candle> = {}): Candle => ({
