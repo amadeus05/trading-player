@@ -1,8 +1,7 @@
 import { useMemo, useState } from "react";
-import dayjs from "dayjs";
 import { Button, DatePicker, Drawer, Dropdown, Popover, Segmented, Select } from "antd";
 import type { Dayjs } from "dayjs";
-import { Filter, MoreHorizontal, Trash2 } from "lucide-react";
+import { ChartNoAxesCombined, Filter, List, MoreHorizontal, Trash2 } from "lucide-react";
 import type { AccountSettings, Trade } from "../../types";
 import { formatDateTime, formatNumber, formatTimeframe } from "../../shared/lib/market";
 import { useConfirmDelete } from "../../shared/ui/useConfirmDelete";
@@ -13,7 +12,6 @@ import {
   type AnalyticsFilters,
 } from "../trading/lib/calculateTradeAnalytics";
 
-type JournalPeriod = "all" | "today" | "week" | "month" | "custom";
 type JournalTab = "trades" | "stats";
 
 const EQUITY_WIDTH = 600;
@@ -94,7 +92,6 @@ export function JournalDrawer({
 }: JournalDrawerProps) {
   const confirmDelete = useConfirmDelete();
   const [tab, setTab] = useState<JournalTab>("trades");
-  const [period, setPeriod] = useState<JournalPeriod>("all");
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null);
   const [datasetId, setDatasetId] = useState<string>("all");
   const [timeframe, setTimeframe] = useState<number | "all">("all");
@@ -118,25 +115,18 @@ export function JournalDrawer({
     return values.map((value) => ({ value, label: formatTimeframe(value) }));
   }, [trades]);
 
-  const filters = useMemo<AnalyticsFilters>(() => {
-    const now = dayjs();
-    const periodRange = (() => {
-      if (period === "today") return { fromTime: now.startOf("day").unix() };
-      if (period === "week") return { fromTime: now.subtract(7, "day").startOf("day").unix() };
-      if (period === "month") return { fromTime: now.subtract(1, "month").startOf("day").unix() };
-      if (period === "custom" && dateRange) {
-        return { fromTime: dateRange[0].startOf("day").unix(), toTime: dateRange[1].endOf("day").unix() };
-      }
-      return {};
-    })();
-    return {
-      ...periodRange,
-      datasetId: datasetId === "all" ? undefined : datasetId,
-      timeframeMinutes: timeframe === "all" ? undefined : timeframe,
-      side: side === "all" ? undefined : side,
-      outcome: outcome === "all" ? undefined : outcome,
-    };
-  }, [datasetId, dateRange, outcome, period, side, timeframe]);
+  const filters = useMemo<AnalyticsFilters>(() => ({
+    ...(dateRange
+      ? {
+          fromTime: dateRange[0].startOf("day").unix(),
+          toTime: dateRange[1].endOf("day").unix(),
+        }
+      : {}),
+    datasetId: datasetId === "all" ? undefined : datasetId,
+    timeframeMinutes: timeframe === "all" ? undefined : timeframe,
+    side: side === "all" ? undefined : side,
+    outcome: outcome === "all" ? undefined : outcome,
+  }), [datasetId, dateRange, outcome, side, timeframe]);
 
   const filteredTrades = useMemo(
     () => filterTradesForAnalytics(trades, filters),
@@ -163,7 +153,7 @@ export function JournalDrawer({
   );
 
   const activeFilterCount = [
-    period !== "all",
+    dateRange != null,
     datasetId !== "all",
     timeframe !== "all",
     side !== "all",
@@ -175,7 +165,6 @@ export function JournalDrawer({
     : `Фильтров: ${activeFilterCount}`;
 
   const resetFilters = () => {
-    setPeriod("all");
     setDateRange(null);
     setDatasetId("all");
     setTimeframe("all");
@@ -194,31 +183,16 @@ export function JournalDrawer({
   const filterPanel = (
     <div className="journalFilterPanel">
       <label>
-        <span>Период</span>
-        <Select<JournalPeriod>
-          value={period}
-          onChange={setPeriod}
-          options={[
-            { value: "all", label: "Весь период" },
-            { value: "today", label: "Сегодня" },
-            { value: "week", label: "Последняя неделя" },
-            { value: "month", label: "Последний месяц" },
-            { value: "custom", label: "Даты" },
-          ]}
+        <span>Даты</span>
+        <DatePicker.RangePicker
+          value={dateRange}
+          allowClear
+          onChange={(value) => {
+            const [from, to] = value ?? [];
+            setDateRange(from && to ? [from, to] : null);
+          }}
         />
       </label>
-      {period === "custom" && (
-        <label>
-          <span>Даты</span>
-          <DatePicker.RangePicker
-            value={dateRange}
-            onChange={(value) => {
-              const [from, to] = value ?? [];
-              setDateRange(from && to ? [from, to] : null);
-            }}
-          />
-        </label>
-      )}
       <label>
         <span>Инструмент</span>
         <Select
@@ -276,12 +250,28 @@ export function JournalDrawer({
         <div className="journalHead">
           <span className="journalHeadTitle">Журнал</span>
           <Segmented<JournalTab>
-            size="small"
+            className="journalTabs"
             value={tab}
             onChange={setTab}
             options={[
-              { value: "trades", label: "Сделки" },
-              { value: "stats", label: "Статистика" },
+              {
+                value: "trades",
+                label: (
+                  <span className="journalTabLabel">
+                    <List size={13} strokeWidth={2.2} />
+                    Сделки
+                  </span>
+                ),
+              },
+              {
+                value: "stats",
+                label: (
+                  <span className="journalTabLabel">
+                    <ChartNoAxesCombined size={13} strokeWidth={2.2} />
+                    Статистика
+                  </span>
+                ),
+              },
             ]}
           />
         </div>
@@ -289,7 +279,7 @@ export function JournalDrawer({
       extra={(
         <div className="journalHeadActions">
           <Popover trigger="click" placement="bottomRight" content={filterPanel}>
-            <Button size="small" icon={<Filter size={13} />} className={activeFilterCount ? "journalFilterChip active" : "journalFilterChip"}>
+            <Button icon={<Filter size={13} strokeWidth={2.2} />} className={activeFilterCount ? "journalFilterChip active" : "journalFilterChip"}>
               {filterSummary}
             </Button>
           </Popover>
@@ -311,7 +301,7 @@ export function JournalDrawer({
               }),
             }}
           >
-            <Button size="small" type="text" aria-label="Действия журнала" icon={<MoreHorizontal size={16} />} />
+            <Button type="text" className="journalHeadMenu" aria-label="Действия журнала" icon={<MoreHorizontal size={16} />} />
           </Dropdown>
         </div>
       )}
