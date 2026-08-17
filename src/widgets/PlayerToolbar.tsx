@@ -71,8 +71,8 @@ export function PlayerToolbar({
           <Button
             type="text"
             className={`drawing-tool-btn ${chartFullscreenActive ? "is-active" : ""}`}
-            aria-label={chartFullscreenActive ? "Выйти из полноэкранного режима" : "График на весь экран"}
-            title={chartFullscreenActive ? "Выйти из полноэкранного режима · F11 / Esc" : "График на весь экран · F11"}
+            aria-label={chartFullscreenActive ? "Выйти из полноэкранного режима" : "На весь экран"}
+            title={chartFullscreenActive ? "Выйти из полноэкранного режима · F11 / Esc" : "На весь экран · F11"}
             aria-pressed={chartFullscreenActive}
             onClick={onToggleChartFullscreen}
           >

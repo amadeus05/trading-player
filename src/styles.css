@@ -84,32 +84,11 @@ body {
   overflow-x: hidden;
 }
 
+/* Fullscreen всей страницы (не только графика). */
 .app--chart-fullscreen {
-  background: #0d0f15;
-}
-
-.app--chart-fullscreen header,
-.app--chart-fullscreen aside {
-  display: none !important;
-}
-
-.app--chart-fullscreen main {
-  grid-template-columns: minmax(0, 1fr);
-  height: 100vh;
-}
-
-.app--chart-fullscreen .toolbar,
-.app--chart-fullscreen .replay {
-  display: none;
-}
-
-.app--chart-fullscreen .workspace {
+  min-height: 100%;
   height: 100%;
-}
-
-.app--chart-fullscreen .chartArea {
-  flex: 1;
-  min-height: 0;
+  background: #0d0f15;
 }
 
 header {
