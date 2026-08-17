@@ -373,7 +373,7 @@ export function PlayerPage() {
     takerFeePct: simulationSettings.takerFeePct,
   });
   function updateSimulationSetting(
-    key: Exclude<keyof SimulationSettings, "showClosedTradeOverlays" | "followCandle" | "tradePanelTabPinned" | "showTradingSessions" | "ambiguousExitPolicy">,
+    key: Exclude<keyof SimulationSettings, "showClosedTradeOverlays" | "followCandle" | "tradePanelTabPinned" | "headerStatsVariant" | "showTradingSessions" | "ambiguousExitPolicy">,
     value: number | null,
   ) {
     setState((current) => ({
@@ -432,6 +432,7 @@ export function PlayerPage() {
         tradeCount={state.trades.length}
         quoteAsset={quoteAsset}
         accountStats={accountStats}
+        headerStatsVariant={simulationSettings.headerStatsVariant}
         onSettingsOpen={() => setSettingsOpen(true)}
         onJournalOpen={() => setJournal(true)}
       />
@@ -632,6 +633,14 @@ export function PlayerPage() {
             ...DEFAULT_SIMULATION_SETTINGS,
             ...current.settings,
             tradePanelTabPinned: checked,
+          },
+        }))}
+        onHeaderStatsVariantChange={(value) => setState((current) => ({
+          ...current,
+          settings: {
+            ...DEFAULT_SIMULATION_SETTINGS,
+            ...current.settings,
+            headerStatsVariant: value,
           },
         }))}
         onDatePickerClose={() => setDatePickerOpen(false)}

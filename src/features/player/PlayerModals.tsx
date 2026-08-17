@@ -1,6 +1,16 @@
 import dayjs from 'dayjs';
 import { Button, DatePicker, InputNumber, Modal, Select, Switch } from 'antd';
-import type { AccountSettings, AmbiguousExitPolicy, Candle, SimulationSettings } from '../../types';
+import type { AccountSettings, AmbiguousExitPolicy, Candle, HeaderStatsVariant, SimulationSettings } from '../../types';
+
+const HEADER_STATS_VARIANTS: Array<{ value: HeaderStatsVariant; label: string }> = [
+  { value: "ticker", label: "Тикер" },
+  { value: "rail", label: "Рейл" },
+  { value: "chips", label: "Чипы" },
+  { value: "minimal", label: "Минимал" },
+  { value: "compact", label: "Компакт" },
+  { value: "accent", label: "Акцент" },
+  { value: "stack", label: "Стек" },
+];
 
 interface PlayerModalsProps {
   settingsOpen: boolean;
@@ -12,7 +22,7 @@ interface PlayerModalsProps {
   onSettingsClose: () => void;
   onSettingsReset: () => void;
   onSettingChange: (
-    key: Exclude<keyof SimulationSettings, 'showClosedTradeOverlays' | 'followCandle' | 'tradePanelTabPinned' | 'showTradingSessions' | 'ambiguousExitPolicy'>,
+    key: Exclude<keyof SimulationSettings, 'showClosedTradeOverlays' | 'followCandle' | 'tradePanelTabPinned' | 'headerStatsVariant' | 'showTradingSessions' | 'ambiguousExitPolicy'>,
     value: number | null,
   ) => void;
   onInitialBalanceChange: (value: number | null) => void;
@@ -20,6 +30,7 @@ interface PlayerModalsProps {
   onClosedTradeOverlaysChange: (checked: boolean) => void;
   onFollowCandleChange: (checked: boolean) => void;
   onTradePanelTabPinnedChange: (checked: boolean) => void;
+  onHeaderStatsVariantChange: (value: HeaderStatsVariant) => void;
   onDatePickerClose: () => void;
   onReplayTimeSelect: (time: number) => void;
 }
@@ -39,6 +50,7 @@ export function PlayerModals({
   onClosedTradeOverlaysChange,
   onFollowCandleChange,
   onTradePanelTabPinnedChange,
+  onHeaderStatsVariantChange,
   onDatePickerClose,
   onReplayTimeSelect,
 }: PlayerModalsProps) {
@@ -93,6 +105,21 @@ export function PlayerModals({
             <small>
               Вкл — вкладка Trade всегда справа при свёрнутой панели. Выкл — не перекрывает цены и выезжает на секунду у правого края экрана
             </small>
+          </label>
+          <label className="settingsToggle">
+            <span>Дизайн статистики в шапке</span>
+            <Button
+              className="settingsCycleBtn"
+              onClick={() => {
+                const index = HEADER_STATS_VARIANTS.findIndex((item) => item.value === settings.headerStatsVariant);
+                const next = HEADER_STATS_VARIANTS[(index + 1 + HEADER_STATS_VARIANTS.length) % HEADER_STATS_VARIANTS.length];
+                onHeaderStatsVariantChange(next.value);
+              }}
+            >
+              {HEADER_STATS_VARIANTS.find((item) => item.value === settings.headerStatsVariant)?.label
+                ?? HEADER_STATS_VARIANTS[0].label}
+            </Button>
+            <small>Клик переключает все варианты дизайна по кругу</small>
           </label>
         </div>
       </Modal>
