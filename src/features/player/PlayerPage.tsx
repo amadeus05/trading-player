@@ -346,6 +346,7 @@ export function PlayerPage() {
     deleteTrade,
     deleteAllTrades,
     placeOrder,
+    updateTradeJournal,
   } = useTradingSimulation({
     enabled: hydrated,
     datasetId: dataset,
@@ -656,6 +657,7 @@ export function PlayerPage() {
         onCloseTrade={closeTrade}
         onDeleteTrade={deleteTrade}
         onDeleteAllTrades={deleteAllTrades}
+        onUpdateTradeJournal={updateTradeJournal}
         onJumpToTrade={(trade) => {
           setJournal(false);
           selectReplayTimeWithData(trade.entryTime);

@@ -1,4 +1,5 @@
 import type { AccountSettings, Trade } from "../../../types";
+import { tradeHasTag } from "../../journal/tradeTags";
 
 export interface AnalyticsFilters {
   datasetId?: string;
@@ -7,6 +8,7 @@ export interface AnalyticsFilters {
   toTime?: number;
   side?: Trade["side"];
   outcome?: NonNullable<Trade["outcome"]>;
+  tag?: string;
 }
 
 export interface TradeAnalytics {
@@ -78,7 +80,8 @@ function matchesFilters(trade: Trade, filters: AnalyticsFilters): boolean {
     && (filters.toTime == null || time <= filters.toTime)
     && (filters.timeframeMinutes == null || trade.timeframeMinutes === filters.timeframeMinutes)
     && (filters.side == null || trade.side === filters.side)
-    && (filters.outcome == null || trade.outcome === filters.outcome);
+    && (filters.outcome == null || trade.outcome === filters.outcome)
+    && (filters.tag == null || tradeHasTag(trade, filters.tag));
 }
 
 export function tradeRisk(trade: Trade): number | null {

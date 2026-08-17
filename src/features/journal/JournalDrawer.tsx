@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { Button, DatePicker, Drawer, Dropdown, Popover, Segmented, Select } from "antd";
 import type { Dayjs } from "dayjs";
-import { ChartNoAxesCombined, Filter, List, MoreHorizontal, Trash2 } from "lucide-react";
-import type { AccountSettings, Trade } from "../../types";
+import { ChartNoAxesCombined, Filter, List, MessageSquare, MoreHorizontal, Trash2 } from "lucide-react";
+import type { AccountSettings, Trade, TradeScreenshot } from "../../types";
 import { formatDateTime, formatNumber, formatTimeframe } from "../../shared/lib/market";
 import { useConfirmDelete } from "../../shared/ui/useConfirmDelete";
 import {
@@ -11,6 +11,8 @@ import {
   tradeRisk,
   type AnalyticsFilters,
 } from "../trading/lib/calculateTradeAnalytics";
+import { JournalTradeNotes } from "./JournalTradeNotes";
+import { collectKnownTags } from "./tradeTags";
 
 type JournalTab = "trades" | "stats";
 
@@ -74,6 +76,7 @@ interface JournalDrawerProps {
   onCloseTrade: (trade: Trade) => void;
   onDeleteTrade: (id: string) => void;
   onDeleteAllTrades: () => void;
+  onUpdateTradeJournal: (id: string, patch: { comment?: string; screenshots?: TradeScreenshot[]; tags?: string[] }) => void;
   /** Перемотка плеера к сделке: журнал закрывается, график встаёт на её вход. */
   onJumpToTrade?: (trade: Trade) => void;
 }
@@ -88,15 +91,18 @@ export function JournalDrawer({
   onCloseTrade,
   onDeleteTrade,
   onDeleteAllTrades,
+  onUpdateTradeJournal,
   onJumpToTrade,
 }: JournalDrawerProps) {
   const confirmDelete = useConfirmDelete();
   const [tab, setTab] = useState<JournalTab>("trades");
+  const [notesTradeId, setNotesTradeId] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null);
   const [datasetId, setDatasetId] = useState<string>("all");
   const [timeframe, setTimeframe] = useState<number | "all">("all");
   const [side, setSide] = useState<Trade["side"] | "all">("all");
   const [outcome, setOutcome] = useState<NonNullable<Trade["outcome"]> | "all">("all");
+  const [tag, setTag] = useState<string>("all");
 
   const datasetNameById = useMemo(
     () => new Map(datasetOptions.map((option) => [option.id, option.name])),
@@ -126,7 +132,8 @@ export function JournalDrawer({
     timeframeMinutes: timeframe === "all" ? undefined : timeframe,
     side: side === "all" ? undefined : side,
     outcome: outcome === "all" ? undefined : outcome,
-  }), [datasetId, dateRange, outcome, side, timeframe]);
+    tag: tag === "all" ? undefined : tag,
+  }), [datasetId, dateRange, outcome, side, tag, timeframe]);
 
   const filteredTrades = useMemo(
     () => filterTradesForAnalytics(trades, filters),
@@ -151,6 +158,28 @@ export function JournalDrawer({
     () => groupTrades(filteredTrades, (trade) => trade.datasetId ?? null, datasetName),
     [datasetNameById, filteredTrades],
   );
+  const knownTags = useMemo(() => collectKnownTags(trades), [trades]);
+  const byTag = useMemo(() => {
+    const buckets = new Map<string, Bucket>();
+    for (const trade of filteredTrades) {
+      if (trade.status !== "CLOSED") continue;
+      const labels = trade.tags?.length ? [...new Set(trade.tags)] : ["__untagged__"];
+      for (const key of labels) {
+        const bucket = buckets.get(key) ?? {
+          key,
+          label: key === "__untagged__" ? "Без тега" : key,
+          trades: 0,
+          pnl: 0,
+          wins: 0,
+        };
+        bucket.trades += 1;
+        bucket.pnl += trade.result ?? 0;
+        if ((trade.result ?? 0) > 0) bucket.wins += 1;
+        buckets.set(key, bucket);
+      }
+    }
+    return [...buckets.values()].sort((left, right) => right.trades - left.trades);
+  }, [filteredTrades]);
 
   const activeFilterCount = [
     dateRange != null,
@@ -158,6 +187,7 @@ export function JournalDrawer({
     timeframe !== "all",
     side !== "all",
     outcome !== "all",
+    tag !== "all",
   ].filter(Boolean).length;
 
   const filterSummary = activeFilterCount === 0
@@ -170,6 +200,7 @@ export function JournalDrawer({
     setTimeframe("all");
     setSide("all");
     setOutcome("all");
+    setTag("all");
   };
 
   const signClass = (value: number) => value >= 0 ? "pos" : "neg";
@@ -233,6 +264,20 @@ export function JournalDrawer({
             { value: "MANUAL", label: "Manual" },
             { value: "TIMEOUT", label: "Timeout" },
           ]}
+        />
+      </label>
+      <label>
+        <span>Тег</span>
+        <Select
+          showSearch
+          value={tag}
+          onChange={setTag}
+          placeholder="Поиск тега"
+          optionFilterProp="label"
+          filterOption={(input, option) =>
+            String(option?.label ?? "").toLowerCase().includes(input.trim().toLowerCase())
+          }
+          options={[{ value: "all", label: "Все теги" }, ...knownTags.map((value) => ({ value, label: value }))]}
         />
       </label>
       <Button size="small" disabled={!activeFilterCount} onClick={resetFilters}>Сбросить</Button>
@@ -351,72 +396,97 @@ export function JournalDrawer({
             const risk = tradeRisk(trade);
             const rMultiple = risk != null && trade.result != null ? trade.result / risk : null;
             const tone = trade.status !== "CLOSED" ? "open" : (trade.result ?? 0) >= 0 ? "pos" : "neg";
+            const notesOpen = notesTradeId === trade.id;
+            const hasNotes = Boolean((trade.comment ?? "").trim())
+              || (trade.screenshots?.length ?? 0) > 0
+              || (trade.tags?.length ?? 0) > 0;
             return (
-              <div
-                key={trade.id}
-                className={`journalRow ${tone}`}
-                role={onJumpToTrade ? "button" : undefined}
-                tabIndex={onJumpToTrade ? 0 : undefined}
-                onClick={() => onJumpToTrade?.(trade)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    onJumpToTrade?.(trade);
-                  }
-                }}
-              >
-                <span className="journalRowTime">{formatDateTime(trade.entryTime)}</span>
-                <span className="journalRowSymbol">
-                  {datasetName(trade.datasetId)}
-                  {trade.timeframeMinutes ? <i>{formatTimeframe(trade.timeframeMinutes)}</i> : null}
-                </span>
-                <span className={trade.side === "LONG" ? "pos" : "neg"}>{trade.side}</span>
-                <span className="journalRowPrices">
-                  {formatNumber(trade.entry)}
-                  <i>→</i>
-                  {trade.exit == null
-                    ? <em>{trade.status === "PENDING" ? "заявка" : "открыта"}</em>
-                    : formatNumber(trade.exit)}
-                </span>
-                <span className="journalRowPnl num">
-                  <b className={trade.result == null ? "" : signClass(trade.result)}>
-                    {trade.result == null ? "—" : signed(trade.result)}
-                  </b>
-                  <i>
-                    {rMultiple == null ? "—" : `${rMultiple >= 0 ? "+" : ""}${rMultiple.toFixed(1)}R`}
-                    {" · "}
-                    {trade.outcome ?? trade.status}
-                  </i>
-                </span>
-                <span className="journalRowMenu" onClick={(event) => event.stopPropagation()}>
-                  <Dropdown
-                    trigger={["click"]}
-                    menu={{
-                      items: [
-                        ...(trade.status === "PENDING"
-                          ? [{ key: "cancel", label: "Отменить заявку" }]
-                          : []),
-                        ...(trade.status === "OPEN"
-                          ? [{ key: "close", label: "Закрыть сделку" }]
-                          : []),
-                        { key: "delete", danger: true, icon: <Trash2 size={14} />, label: "Удалить" },
-                      ],
-                      onClick: ({ key }) => {
-                        if (key === "cancel") onCancelOrder(trade.id);
-                        if (key === "close") onCloseTrade(trade);
-                        if (key === "delete") {
-                          confirmDelete({
-                            title: "Удалить сделку?",
-                            content: "Сделка и её разметка будут удалены.",
-                            onConfirm: () => onDeleteTrade(trade.id),
-                          });
-                        }
-                      },
-                    }}
-                  >
-                    <Button size="small" type="text" aria-label="Действия со сделкой" icon={<MoreHorizontal size={15} />} />
-                  </Dropdown>
-                </span>
+              <div key={trade.id} className={`journalRow ${tone} ${notesOpen ? "is-open" : ""}`}>
+                <div
+                  className="journalRowMain"
+                  role={onJumpToTrade ? "button" : undefined}
+                  tabIndex={onJumpToTrade ? 0 : undefined}
+                  onClick={() => onJumpToTrade?.(trade)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onJumpToTrade?.(trade);
+                    }
+                  }}
+                >
+                  <span className="journalRowTime">{formatDateTime(trade.entryTime)}</span>
+                  <span className="journalRowSymbol">
+                    {datasetName(trade.datasetId)}
+                    {trade.timeframeMinutes ? <i>{formatTimeframe(trade.timeframeMinutes)}</i> : null}
+                  </span>
+                  <span className={trade.side === "LONG" ? "pos" : "neg"}>{trade.side}</span>
+                  <span className="journalRowPrices">
+                    {formatNumber(trade.entry)}
+                    <i>→</i>
+                    {trade.exit == null
+                      ? <em>{trade.status === "PENDING" ? "заявка" : "открыта"}</em>
+                      : formatNumber(trade.exit)}
+                  </span>
+                  <span className="journalRowPnl num">
+                    <b className={trade.result == null ? "" : signClass(trade.result)}>
+                      {trade.result == null ? "—" : signed(trade.result)}
+                    </b>
+                    <i>
+                      {rMultiple == null ? "—" : `${rMultiple >= 0 ? "+" : ""}${rMultiple.toFixed(1)}R`}
+                      {" · "}
+                      {trade.outcome ?? trade.status}
+                    </i>
+                  </span>
+                  <span className="journalRowMenu" onClick={(event) => event.stopPropagation()}>
+                    <Button
+                      size="small"
+                      type="text"
+                      className={`journalNotesBtn ${notesOpen ? "is-active" : ""} ${hasNotes ? "has-notes" : ""}`}
+                      aria-label={notesOpen ? "Скрыть заметку" : "Заметка, теги и скрины"}
+                      title={notesOpen ? "Скрыть заметку" : "Заметка, теги и скрины"}
+                      icon={<MessageSquare size={15} />}
+                      onClick={() => setNotesTradeId(notesOpen ? null : trade.id)}
+                    />
+                    <Dropdown
+                      trigger={["click"]}
+                      menu={{
+                        items: [
+                          { key: "notes", label: notesOpen ? "Скрыть заметку" : "Заметка, теги и скрины" },
+                          ...(trade.status === "PENDING"
+                            ? [{ key: "cancel", label: "Отменить заявку" }]
+                            : []),
+                          ...(trade.status === "OPEN"
+                            ? [{ key: "close", label: "Закрыть сделку" }]
+                            : []),
+                          { key: "delete", danger: true, icon: <Trash2 size={14} />, label: "Удалить" },
+                        ],
+                        onClick: ({ key }) => {
+                          if (key === "notes") setNotesTradeId(notesOpen ? null : trade.id);
+                          if (key === "cancel") onCancelOrder(trade.id);
+                          if (key === "close") onCloseTrade(trade);
+                          if (key === "delete") {
+                            confirmDelete({
+                              title: "Удалить сделку?",
+                              content: "Сделка, заметка, теги и скрины будут удалены.",
+                              onConfirm: () => onDeleteTrade(trade.id),
+                            });
+                          }
+                        },
+                      }}
+                    >
+                      <Button size="small" type="text" aria-label="Действия со сделкой" icon={<MoreHorizontal size={15} />} />
+                    </Dropdown>
+                  </span>
+                </div>
+                {notesOpen && (
+                  <JournalTradeNotes
+                    trade={trade}
+                    knownTags={knownTags}
+                    onCommentChange={(comment) => onUpdateTradeJournal(trade.id, { comment })}
+                    onScreenshotsChange={(screenshots) => onUpdateTradeJournal(trade.id, { screenshots })}
+                    onTagsChange={(nextTags) => onUpdateTradeJournal(trade.id, { tags: nextTags })}
+                  />
+                )}
               </div>
             );
           })}
@@ -455,6 +525,11 @@ export function JournalDrawer({
           <section>
             <h4>По инструментам</h4>
             <BucketList buckets={bySymbol} signed={signed} signClass={signClass} />
+          </section>
+
+          <section>
+            <h4>По тегам</h4>
+            <BucketList buckets={byTag} signed={signed} signClass={signClass} />
           </section>
         </div>
       )}
