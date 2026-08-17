@@ -22,6 +22,8 @@ function orderValueFromMargin(margin: number, unit: AmountUnit, price: number, l
 
 interface UseOrderFormOptions {
   currentCandle?: Candle;
+  /** Последние видимые бары — от них считаем начальный отступ TP/SL. */
+  recentCandles?: Candle[];
   pricePrecision: number;
   settings: SimulationSettings;
   balance: number;
@@ -30,6 +32,7 @@ interface UseOrderFormOptions {
 
 export function useOrderForm({
   currentCandle,
+  recentCandles = [],
   pricePrecision,
   settings,
   balance,
@@ -128,26 +131,30 @@ export function useOrderForm({
   };
 
   const beginOrderDraft = (side: Trade["side"], visiblePriceRange?: ChartPriceRange | null) => {
-    if (!currentCandle?.close) return;
+    if (!currentCandle?.close) return null;
     setSelectedRiskPct(null);
     setRiskSizingCapped(false);
     const currentPrice = currentCandle.close;
     setOrderDraftSide(side);
+    const limitOnScreen = orderType === "LIMIT"
+      && limitPrice > 0
+      && visiblePriceRange
+      && limitPrice >= visiblePriceRange.from
+      && limitPrice <= visiblePriceRange.to;
     const entry = orderType === "LIMIT"
-      ? Number((limitPrice || currentPrice).toFixed(pricePrecision))
+      ? Number((limitOnScreen ? limitPrice : currentPrice).toFixed(pricePrecision))
       : currentPrice;
-    if (orderType === "LIMIT") {
-      setLimitPrice(entry);
-    }
+    if (orderType === "LIMIT") setLimitPrice(entry);
     const { tp, sl } = buildInitialProtectionPrices(
       side,
       entry,
       visiblePriceRange,
-      currentCandle,
+      recentCandles.length ? recentCandles : [currentCandle],
       pricePrecision,
     );
     setTakeProfit(tp);
     setStopLoss(sl);
+    return { entry, tp, sl };
   };
 
   const cancelOrderDraft = () => {

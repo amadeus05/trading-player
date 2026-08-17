@@ -6,6 +6,7 @@ import {
   HistogramSeries,
   type CandlestickData,
   type HistogramData,
+  type ISeriesApi,
   type LogicalRange,
   type MouseEventParams,
   type Time,
@@ -31,6 +32,7 @@ import {
 import { attachClosedTradeOverlay } from "./closedTradeOverlay";
 import { attachSessionsOverlay } from "./sessionsOverlay";
 import { attachPriceMarkers } from "./priceMarkers";
+import { keepIncompleteLastBar } from "../replay/playheadCandle";
 import type { DrawingActions, DrawingCollections } from "../drawings/useDrawingCollections";
 
 const toCandlestickData = (candle: Candle): CandlestickData<UTCTimestamp> => ({
@@ -74,6 +76,8 @@ interface PriceRange {
 
 export type ChartViewportRef = {
   getVisiblePriceRange: () => PriceRange | null;
+  /** Расширяет шкалу, чтобы стоп/тейк/вход не обрезались краем графика. */
+  ensurePricesVisible: (prices: number[]) => void;
 };
 
 interface ReplayChartProps {
@@ -182,6 +186,12 @@ export function ReplayChart({
   const awaitingDatasetData = useRef(false);
   const lastAppliedCandlesRef = useRef<Candle[] | null>(null);
   const followRealtime = useRef(true);
+  // Точность не должна пересоздавать график: после смены монеты она доезжает
+  // вторым кадром (сначала чужие свечи → 2 знака, потом свои → 4), монтаж без
+  // forceFocus уходит в scrollToPosition(0) и прижимает бары к правому краю.
+  const pricePrecisionRef = useRef(pricePrecision);
+  pricePrecisionRef.current = pricePrecision;
+  const candlestickSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   // Заведомо «непринятая» ревизия: на переключении ТФ вверх candles на кадр
   // пустеет, PlayerPage размонтирует график, и все ref'ы сбрасываются. Если
   // считать фокус уже применённым, свежий монтаж уходит в scrollToPosition и
@@ -319,8 +329,9 @@ export function ReplayChart({
       wickUpColor: "#2bd9a8",
       wickDownColor: "#ff5c73",
       borderVisible: false,
-      priceFormat: { type: "price", precision: pricePrecision, minMove: 10 ** -pricePrecision },
+      priceFormat: { type: "price", precision: pricePrecisionRef.current, minMove: 10 ** -pricePrecisionRef.current },
     });
+    candlestickSeriesRef.current = cs;
     cs.setData(candleStore.candles.map(toCandlestickData));
     // Сохранённый диапазон переживает смену датасета — применяем только если он
     // действительно про эти свечи.
@@ -475,6 +486,14 @@ export function ReplayChart({
         && nextVisible.length === previousVisible.length + 1
         && previousVisible.length > 0
         && nextVisible[previousVisible.length - 1].time === previousVisible[previousVisible.length - 1].time;
+      // Зум/догрузка слева пересобирает серию. Последний бар не должен вырасти:
+      // дорисовка идёт только шагом Play (append) или refreshLastCandle.
+      const previousLast = previousVisible.at(-1);
+      const incomingLast = nextVisible.at(-1);
+      const retainedLast = keepIncompleteLastBar(previousLast, incomingLast, canAppendOneBar);
+      if (retainedLast && incomingLast && retainedLast !== incomingLast) {
+        nextVisible[nextVisible.length - 1] = retainedLast;
+      }
 
       replayUpdateInProgress = true;
       try {
@@ -639,7 +658,7 @@ export function ReplayChart({
         trades: props.trades,
         entryMarker: props.entryMarker,
         editable: props.markersEditable,
-        pricePrecision,
+        pricePrecision: pricePrecisionRef.current,
         quoteAsset,
         onBarrierChange: (id, kind, price) =>
           callbacksRef.current.onBarrierChange(id, kind, price),
@@ -825,6 +844,26 @@ export function ReplayChart({
     if (chartViewportRef) {
       chartViewportRef.current = {
         getVisiblePriceRange: () => cs.priceScale().getVisibleRange() ?? null,
+        ensurePricesVisible: (prices) => {
+          const valid = prices.filter((price) => Number.isFinite(price) && price > 0);
+          if (!valid.length) return;
+          const current = cs.priceScale().getVisibleRange();
+          const min = Math.min(...valid);
+          const max = Math.max(...valid);
+          let from = current?.from ?? min;
+          let to = current?.to ?? max;
+          if (!(to > from)) {
+            from = min;
+            to = max;
+          }
+          const span = Math.max(to - from, max - min, 10 ** -pricePrecisionRef.current);
+          const pad = span * 0.16;
+          const nextFrom = Math.min(from, min - pad);
+          const nextTo = Math.max(to, max + pad);
+          if (nextFrom === from && nextTo === to) return;
+          cs.priceScale().applyOptions({ autoScale: false });
+          cs.priceScale().setVisibleRange({ from: nextFrom, to: nextTo });
+        },
       };
     }
     prevReplayIndexRef.current = index;
@@ -855,7 +894,7 @@ export function ReplayChart({
       horizontalLines: cloneDatasetItems(drawings.horizontalLines, datasetId),
       drawingMode,
       datasetId,
-      pricePrecision,
+      pricePrecision: pricePrecisionRef.current,
       callbacks: {
         onCreate: (line) => callbacksRef.current.drawingActions.horizontalLines.onCreate(line),
         onUpdate: (line) => callbacksRef.current.drawingActions.horizontalLines.onUpdate(line),
@@ -870,7 +909,7 @@ export function ReplayChart({
       series: cs,
       candleStore: drawingCandleStore,
       active: drawingMode === "measure",
-      pricePrecision,
+      pricePrecision: pricePrecisionRef.current,
       onComplete: () => callbacksRef.current.onDrawingComplete(),
     });
     const cleanupRectangles = attachRectangleTool({
@@ -898,7 +937,7 @@ export function ReplayChart({
       fibonacciRetracements: cloneDatasetItems(drawings.fibonacciRetracements, datasetId),
       drawingMode,
       datasetId,
-      pricePrecision,
+      pricePrecision: pricePrecisionRef.current,
       callbacks: {
         onCreate: (fibonacci) => callbacksRef.current.drawingActions.fibonacciRetracements.onCreate(fibonacci),
         onUpdate: (fibonacci) => callbacksRef.current.drawingActions.fibonacciRetracements.onUpdate(fibonacci),
@@ -915,7 +954,7 @@ export function ReplayChart({
       fibonacciTrendExtensions: cloneDatasetItems(drawings.fibonacciTrendExtensions, datasetId),
       drawingMode,
       datasetId,
-      pricePrecision,
+      pricePrecision: pricePrecisionRef.current,
       callbacks: {
         onCreate: (extension) => callbacksRef.current.drawingActions.fibonacciTrendExtensions.onCreate(extension),
         onUpdate: (extension) => callbacksRef.current.drawingActions.fibonacciTrendExtensions.onUpdate(extension),
@@ -1017,9 +1056,20 @@ export function ReplayChart({
       drawingManager.destroy();
       chart.remove();
       chartRuntimeRef.current = null;
+      candlestickSeriesRef.current = null;
       if (chartViewportRef) chartViewportRef.current = null;
     };
-  }, [candleInterval, focusRevision, pricePrecision, datasetId, chartViewportRef]);
+  }, [candleInterval, focusRevision, datasetId, chartViewportRef]);
+
+  const appliedPricePrecisionRef = useRef(pricePrecision);
+  useEffect(() => {
+    if (appliedPricePrecisionRef.current === pricePrecision) return;
+    appliedPricePrecisionRef.current = pricePrecision;
+    candlestickSeriesRef.current?.applyOptions({
+      priceFormat: { type: "price", precision: pricePrecision, minMove: 10 ** -pricePrecision },
+    });
+    chartRuntimeRef.current?.rebuildTradeOverlays();
+  }, [pricePrecision]);
 
   /**
    * Отмена и повтор подменяют коллекции целиком. Раньше это доезжало до
