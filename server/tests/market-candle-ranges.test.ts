@@ -4,6 +4,7 @@ import {
   buildInitialMarketCandleRange,
   buildNextMarketCandleRange,
   buildReplayStartMarketCandleRange,
+  clampPlayheadToLoadedWindow,
   hasLoadedMarketCandleRange,
   initialMarketCandleLimitForTimeframe,
   MARKET_CANDLE_INTERVAL_MS,
@@ -11,6 +12,7 @@ import {
   prefetchMarketCandleThresholdForTimeframe,
   REPLAY_BACK_TIMEFRAME_BARS,
   REPLAY_FORWARD_TIMEFRAME_BARS,
+  resolvePendingTimeframeChange,
   shouldPrefetchMarketCandles,
 } from "../../src/features/datasets/marketCandleRanges";
 
@@ -195,4 +197,71 @@ test("prefetch threshold expands for high timeframes", () => {
   assert.equal(oneDayThreshold, expected);
   assert.equal(shouldPrefetchMarketCandles(loaded, candle(50_000).time, oneDayThreshold), false);
   assert.equal(shouldPrefetchMarketCandles(loaded, candle(90_000).time, oneDayThreshold), true);
+});
+
+test("clampPlayheadToLoadedWindow snaps past last incomplete day onto last closed bar", () => {
+  const yesterday = 0;
+  const day = 86_400;
+  const candles = [{ time: yesterday - day }, { time: yesterday }];
+  const playheadInsideUnclosedToday = yesterday + day + 12 * 3_600;
+
+  assert.equal(
+    clampPlayheadToLoadedWindow(playheadInsideUnclosedToday, candles, 1_440),
+    yesterday + day - 1,
+  );
+});
+
+test("clampPlayheadToLoadedWindow does not move a playhead that already fits", () => {
+  const lastOpen = 200;
+  const lastEnd = lastOpen + 60;
+  const candles = [{ time: 100 }, { time: lastOpen }];
+
+  assert.equal(clampPlayheadToLoadedWindow(150, candles, 1), 150);
+  assert.equal(clampPlayheadToLoadedWindow(lastOpen, candles, 1), lastOpen);
+  assert.equal(clampPlayheadToLoadedWindow(lastEnd, candles, 1), lastEnd);
+  assert.equal(clampPlayheadToLoadedWindow(50, candles, 1), 50);
+});
+
+test("clampPlayheadToLoadedWindow leaves empty windows and NaN untouched", () => {
+  assert.equal(clampPlayheadToLoadedWindow(12, [], 1_440), 12);
+  assert.equal(Number.isNaN(clampPlayheadToLoadedWindow(Number.NaN, [{ time: 100 }], 1)), true);
+});
+
+const thirtyMinutes = (openTime: number) => ({ time: openTime });
+const daily = (openTime: number) => ({ time: openTime });
+
+test("pending TF still waits while the loaded window is the old resolution", () => {
+  const pending = { timeframe: 1_440, replayTime: 1_000 };
+  const thirtyMinuteWindow = [thirtyMinutes(0), thirtyMinutes(1_800), thirtyMinutes(3_600)];
+
+  assert.equal(resolvePendingTimeframeChange(pending, thirtyMinuteWindow), null);
+});
+
+test("pending TF applies the original playhead when it fits the new window", () => {
+  const yesterday = Date.UTC(2021, 2, 17) / 1_000;
+  const day = 86_400;
+  const playheadInsideLastClosedDay = yesterday + 12 * 3_600;
+  const dailyWindow = [daily(yesterday - day), daily(yesterday)];
+
+  assert.deepEqual(
+    resolvePendingTimeframeChange({ timeframe: 1_440, replayTime: playheadInsideLastClosedDay }, dailyWindow),
+    { timeframe: 1_440, replayTime: playheadInsideLastClosedDay },
+  );
+});
+
+test("pending TF clamps only when 30m playhead sits in an unclosed last 1d bucket", () => {
+  const yesterday = Date.UTC(2021, 2, 17) / 1_000;
+  const day = 86_400;
+  const playheadOnLastHistoryDay = yesterday + day + 10 * 1_800;
+  const dailyWindow = [daily(yesterday - 3 * day), daily(yesterday - 2 * day), daily(yesterday)];
+
+  assert.deepEqual(
+    resolvePendingTimeframeChange({ timeframe: 1_440, replayTime: playheadOnLastHistoryDay }, dailyWindow),
+    { timeframe: 1_440, replayTime: yesterday + day - 1 },
+  );
+});
+
+test("pending TF does not apply without candles or without a pending change", () => {
+  assert.equal(resolvePendingTimeframeChange({ timeframe: 1_440, replayTime: 1 }, []), null);
+  assert.equal(resolvePendingTimeframeChange(null, [{ time: 0 }, { time: 86_400 }]), null);
 });

@@ -25,7 +25,11 @@ import { calculateAccountStats } from "../trading/lib/calculateAccountStats";
 import { useMarketCatalog } from "../datasets/useMarketCatalog";
 import { useActiveMarketCandles, candleCacheKey } from "../datasets/useActiveMarketCandles";
 import { useBaseCandles } from "../datasets/useBaseCandles";
-import { prefetchMarketCandleThresholdForTimeframe, shouldPrefetchMarketCandles } from "../datasets/marketCandleRanges";
+import {
+  prefetchMarketCandleThresholdForTimeframe,
+  resolvePendingTimeframeChange,
+  shouldPrefetchMarketCandles,
+} from "../datasets/marketCandleRanges";
 
 const TRADE_PANEL_TAB_AUTO_HIDE_MS = 1000;
 
@@ -272,20 +276,12 @@ export function PlayerPage() {
     setPendingJumpReady(false);
   }, [pendingJumpReady, pendingReplayTime, raw, selectReplayTime]);
   useEffect(() => {
-    if (!pendingTimeframeChange || !raw.length) return;
-    // Ждём окно именно в НОВОМ разрешении: старые свечи это время тоже покрывают,
-    // и без проверки индекс считался бы по свечам прежнего таймфрейма — график
-    // уезжал в произвольное место.
-    const loadedTf = raw.length > 1 ? Math.round((raw[1].time - raw[0].time) / 60) : null;
-    // Якорь — конец текущей свечи, поэтому сравниваем с концом последней
-    // загруженной, иначе на последней свече датасета переключение зависало бы.
-    const lastEnd = raw.at(-1)!.time + (loadedTf ?? pendingTimeframeChange.timeframe) * 60;
-    if (pendingTimeframeChange.replayTime > lastEnd) return;
-    if (loadedTf != null && loadedTf !== pendingTimeframeChange.timeframe) return;
-    changeTimeframe(pendingTimeframeChange.timeframe, pendingTimeframeChange.replayTime);
+    const next = resolvePendingTimeframeChange(pendingTimeframeChange, raw);
+    if (!next) return;
+    changeTimeframe(next.timeframe, next.replayTime);
     setState((current) => ({
       ...current,
-      timeframeMinutes: pendingTimeframeChange.timeframe,
+      timeframeMinutes: next.timeframe,
     }));
     setPendingTimeframeChange(null);
   }, [changeTimeframe, pendingTimeframeChange, raw, setState]);

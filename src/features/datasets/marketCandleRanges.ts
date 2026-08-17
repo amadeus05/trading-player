@@ -124,6 +124,44 @@ export function hasLoadedMarketCandleRange(
   return firstTimeMs <= range.from && lastExclusiveMs >= range.to;
 }
 
+/**
+ * Голова правее последнего закрытого бакета — типичный случай 30m на последнем
+ * дне истории, затем переход на 1д: дневка этого дня ещё не закрыта и в окне
+ * нет. Ждать больше нечего, ставим якорь в конец последней доступной свечи.
+ * Левее окна не трогаем: так и раньше changeTimeframe ставил индекс на первую свечу.
+ */
+export function clampPlayheadToLoadedWindow(
+  playheadTime: number,
+  candles: { time: number }[],
+  timeframeMinutes: number,
+): number {
+  if (!candles.length || !Number.isFinite(playheadTime)) return playheadTime;
+  const lastOpen = candles[candles.length - 1].time;
+  const lastEnd = lastOpen + Math.max(1, timeframeMinutes) * 60;
+  return playheadTime > lastEnd ? lastEnd - 1 : playheadTime;
+}
+
+/**
+ * Решение эффекта смены ТФ: ждать, пока окно не в новом разрешении, и только
+ * если голова уехала за последний закрытый бакет — подрезать якорь.
+ */
+export function resolvePendingTimeframeChange(
+  pending: { timeframe: number; replayTime: number } | null,
+  candles: { time: number }[],
+): { timeframe: number; replayTime: number } | null {
+  if (!pending || !candles.length) return null;
+  const loadedTf = candles.length > 1 ? Math.round((candles[1].time - candles[0].time) / 60) : null;
+  if (loadedTf != null && loadedTf !== pending.timeframe) return null;
+  return {
+    timeframe: pending.timeframe,
+    replayTime: clampPlayheadToLoadedWindow(
+      pending.replayTime,
+      candles,
+      loadedTf ?? pending.timeframe,
+    ),
+  };
+}
+
 export function buildNextMarketCandleRange(
   boundary: MarketRangeBoundary,
   loadedCandles: { time: number }[],

@@ -38,3 +38,12 @@ test("кеш монеты разделён по таймфрейму: 1h ADA н�
   assert.equal(cache.get(candleCacheKey("market:linear:ADAUSDT", 15)), undefined);
   assert.ok(cache.get(candleCacheKey("market:linear:ADAUSDT", 60))?.length);
 });
+
+test("30m экран на дневном окне по-прежнему пустой, пока ТФ не применили", () => {
+  const daily = Array.from({ length: 4 }, (_, index) => {
+    const time = Date.UTC(2021, 2, 15 + index) / 1_000;
+    return { time, open: 1, high: 2, low: 0.5, close: 1.2, volume: 10 };
+  });
+  assert.equal(aggregateCandles(daily, 30, 1_440).length, 0);
+  assert.equal(aggregateCandles(daily, 1_440, 1_440).length, 4);
+});
