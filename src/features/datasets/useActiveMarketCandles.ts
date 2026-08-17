@@ -19,6 +19,9 @@ import {
 const inferLoadedTimeframe = (candles: Candle[], fallback: number): number =>
   candles.length > 1 ? Math.max(1, Math.round((candles[1].time - candles[0].time) / 60)) : fallback;
 
+export const candleCacheKey = (datasetId: string, timeframeMinutes: number) =>
+  `${datasetId}:${timeframeMinutes}`;
+
 const timeframeToMs = (timeframeMinutes: number) => Math.max(1, Math.round(timeframeMinutes)) * 60 * 1_000;
 
 /** Перезапросить базовое окно, когда голова подошла к его правому краю. */
@@ -37,6 +40,7 @@ export function useActiveMarketCandles(
   catalog: MarketCatalogItem[],
   cacheRef: RefObject<Map<string, Candle[]>>,
   initialTimeframeMinutes = BASE_TIMEFRAME_MINUTES,
+  displayTimeframeRef?: RefObject<number>,
 ) {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [intrabarCandles, setIntrabarCandles] = useState<Candle[]>([]);
@@ -49,6 +53,8 @@ export function useActiveMarketCandles(
   const intrabarLoadingRef = useRef(false);
   /** Диапазон, покрытый текущим базовым окном (мс). */
   const intrabarCoveredRef = useRef<{ datasetId: string; from: number; to: number } | null>(null);
+  /** Инвалидирует ответ, если уже ушли на другой датасет или таймфрейм. */
+  const loadGenerationRef = useRef(0);
   const parsedDataset = useMemo(() => parseMarketDatasetId(datasetId), [datasetId]);
   const catalogItem = useMemo(() => {
     if (!parsedDataset) return null;
@@ -74,8 +80,9 @@ export function useActiveMarketCandles(
       return;
     }
 
-    const cached = cacheRef.current?.get(datasetId);
-    if (cached) {
+    const loadTimeframe = displayTimeframeRef?.current ?? initialTimeframeMinutes;
+    const cached = cacheRef.current?.get(candleCacheKey(datasetId, loadTimeframe));
+    if (cached?.length) {
       setLoading(false);
       setLoadingMore(false);
       loadingMoreRef.current = false;
@@ -87,7 +94,6 @@ export function useActiveMarketCandles(
       setLoading(false);
       setLoadingMore(false);
       loadingMoreRef.current = false;
-      setCandles([]);
       return;
     }
 
@@ -95,45 +101,44 @@ export function useActiveMarketCandles(
       setLoading(false);
       setLoadingMore(false);
       loadingMoreRef.current = false;
-      setCandles([]);
       return;
     }
 
     const range = buildInitialMarketCandleRange(
       catalogItem,
-      initialMarketCandleLimitForTimeframe(initialTimeframeMinutes),
+      initialMarketCandleLimitForTimeframe(loadTimeframe),
     );
     if (!range) {
       setLoading(false);
       setLoadingMore(false);
       loadingMoreRef.current = false;
-      setCandles([]);
       return;
     }
 
-    let cancelled = false;
+    const generation = ++loadGenerationRef.current;
     setLoading(true);
     setLoadingMore(false);
     loadingMoreRef.current = false;
     intrabarCoveredRef.current = null;
     setIntrabarCandles([]);
-    void fetchMarketCandles(parsedDataset.category, parsedDataset.symbol, range.from, range.to, initialTimeframeMinutes)
+    void fetchMarketCandles(parsedDataset.category, parsedDataset.symbol, range.from, range.to, loadTimeframe)
       .then((rows) => {
-        if (cancelled) return;
-        cacheRef.current?.set(datasetId, rows);
+        if (generation !== loadGenerationRef.current) return;
+        if (!rows.length) return;
+        cacheRef.current?.set(candleCacheKey(datasetId, loadTimeframe), rows);
         setCandles(rows);
       })
       .catch(() => {
-        if (!cancelled) setCandles([]);
+        // Окно предыдущего рынка лучше пустого графика: ответ мог опоздать после смены монеты.
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (generation === loadGenerationRef.current) setLoading(false);
       });
 
     return () => {
-      cancelled = true;
+      loadGenerationRef.current += 1;
     };
-  }, [cacheRef, catalogItem, datasetId, initialTimeframeMinutes, parsedDataset]);
+  }, [cacheRef, catalogItem, datasetId, displayTimeframeRef, initialTimeframeMinutes, parsedDataset]);
 
   const loadMore = useCallback(async () => {
     if (!datasetId || !parsedDataset || !catalogItem || loading || loadingMoreRef.current) return;
@@ -146,11 +151,13 @@ export function useActiveMarketCandles(
     if (toMs <= fromMs) return;
     loadingMoreRef.current = true;
     setLoadingMore(true);
+    const generation = loadGenerationRef.current;
     try {
       const rows = await fetchMarketCandles(parsedDataset.category, parsedDataset.symbol, fromMs, toMs, tf);
+      if (generation !== loadGenerationRef.current) return;
       setCandles((current) => {
         const merged = mergeCandles(current, rows);
-        cacheRef.current?.set(datasetId, merged);
+        if (merged.length) cacheRef.current?.set(candleCacheKey(datasetId, tf), merged);
         return merged;
       });
     } catch {
@@ -189,13 +196,15 @@ export function useActiveMarketCandles(
 
     loadingEarlierRef.current = true;
     setLoadingEarlier(true);
+    const generation = loadGenerationRef.current;
     try {
       const rows = await fetchMarketCandles(parsedDataset.category, parsedDataset.symbol, fromMs, toMs, tf);
+      if (generation !== loadGenerationRef.current) return 0;
       const older = rows.filter((row) => row.time < first.time);
       if (!older.length) return 0;
       setCandles((current) => {
         const merged = mergeCandles(current, rows);
-        cacheRef.current?.set(datasetId, merged);
+        if (merged.length) cacheRef.current?.set(candleCacheKey(datasetId, tf), merged);
         return merged;
       });
       return older.length;
@@ -208,13 +217,14 @@ export function useActiveMarketCandles(
   }, [cacheRef, catalogItem, datasetId, initialTimeframeMinutes, loading, parsedDataset]);
 
   const loadAroundTime = useCallback(async (time: number, timeframeMinutes = BASE_TIMEFRAME_MINUTES): Promise<boolean> => {
-    if (!datasetId || !parsedDataset || !catalogItem || loading) return false;
+    if (!datasetId || !parsedDataset || !catalogItem) return false;
     const range = buildReplayStartMarketCandleRange(catalogItem, time * 1_000, timeframeMinutes);
     if (!range) return false;
     // Пропускаем перезагрузку, только если диапазон покрыт И текущее окно уже в
     // нужном разрешении: смена ТФ при том же времени всё равно требует рефетча.
     const loadedTf = inferLoadedTimeframe(candles, timeframeMinutes);
     if (loadedTf === timeframeMinutes && hasLoadedMarketCandleRange(candles, range)) return true;
+    const generation = ++loadGenerationRef.current;
     setLoading(true);
     setLoadingMore(false);
     loadingMoreRef.current = false;
@@ -222,15 +232,17 @@ export function useActiveMarketCandles(
     setIntrabarCandles([]);
     try {
       const rows = await fetchMarketCandles(parsedDataset.category, parsedDataset.symbol, range.from, range.to, timeframeMinutes);
-      cacheRef.current?.set(datasetId, rows);
+      if (generation !== loadGenerationRef.current) return false;
+      if (!rows.length) return false;
+      cacheRef.current?.set(candleCacheKey(datasetId, timeframeMinutes), rows);
       setCandles(rows);
-      return rows.length > 0;
+      return true;
     } catch {
       return false;
     } finally {
-      setLoading(false);
+      if (generation === loadGenerationRef.current) setLoading(false);
     }
-  }, [cacheRef, candles, catalogItem, datasetId, loading, parsedDataset]);
+  }, [cacheRef, candles, catalogItem, datasetId, parsedDataset]);
 
   /**
    * Держит базовое окно вокруг времени воспроизведения — для intrabar-резолвера SL/TP.

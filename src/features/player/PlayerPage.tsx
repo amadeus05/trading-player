@@ -23,7 +23,7 @@ import { useOrderForm } from "../trading/useOrderForm";
 import { useChartDisplayState } from "../chart/useChartDisplayState";
 import { calculateAccountStats } from "../trading/lib/calculateAccountStats";
 import { useMarketCatalog } from "../datasets/useMarketCatalog";
-import { useActiveMarketCandles } from "../datasets/useActiveMarketCandles";
+import { useActiveMarketCandles, candleCacheKey } from "../datasets/useActiveMarketCandles";
 import { useBaseCandles } from "../datasets/useBaseCandles";
 import { prefetchMarketCandleThresholdForTimeframe, shouldPrefetchMarketCandles } from "../datasets/marketCandleRanges";
 
@@ -37,6 +37,7 @@ export function PlayerPage() {
   const candleCacheRef = useRef<Map<string, Candle[]>>(new Map());
   const { appRef, chartFullscreenActive, toggleChartFullscreen } = useChartFullscreen();
   const { state, setState, initialDatasetId, initialTimeframe, hydrated } = usePersistedPlayerState();
+  const displayTimeframeRef = useRef(initialTimeframe);
   const { catalog, datasetOptions, ready: catalogReady, refresh: refreshCatalog } = useMarketCatalog();
   const drawingActions = useDrawingCollections(setState);
   const drawings = useMemo(
@@ -172,6 +173,7 @@ export function PlayerPage() {
     catalog,
     candleCacheRef,
     initialTimeframe,
+    displayTimeframeRef,
   );
   // Профиль объёма считается по базовому таймфрейму, а не по свечам экрана:
   // основное окно грузится сразу в отображаемом ТФ, и на часовом графике одна
@@ -217,6 +219,7 @@ export function PlayerPage() {
     interactionActiveRef: chartInteractionActive,
     initialTimeframe,
   });
+  displayTimeframeRef.current = tf;
   // Счётчик в баре плеера показывает положение во ВСЁМ датасете, а не в
   // загруженном окне: окно подгружается кусками и его размер прыгал, создавая
   // впечатление, что истории всего пара тысяч свечей.
@@ -421,7 +424,12 @@ export function PlayerPage() {
     // История открывает рынок без свечей: окно подтянет useActiveMarketCandles.
     // Пустой массив в кеш класть нельзя — хук считает любую запись готовыми
     // данными и на пустой показал бы голый график вместо загрузки.
-    if (market.candles.length) candleCacheRef.current.set(market.id, market.candles);
+    setPendingTimeframeChange(null);
+    setPendingReplayTime(null);
+    setPendingJumpReady(false);
+    if (market.candles.length) {
+      candleCacheRef.current.set(candleCacheKey(market.id, displayTimeframeRef.current), market.candles);
+    }
     void refreshCatalog();
     setDataset(market.id);
     setState((current) => ({ ...current, lastDatasetId: market.id }));
@@ -445,6 +453,9 @@ export function PlayerPage() {
             datasetsLoading={!catalogReady || candlesLoading}
             timeframe={tf}
             onDatasetChange={(nextDataset) => {
+              setPendingTimeframeChange(null);
+              setPendingReplayTime(null);
+              setPendingJumpReady(false);
               setDataset(nextDataset);
               setState((current) => ({ ...current, lastDatasetId: nextDataset }));
               setIdx(REPLAY_START_BAR_INDEX);
