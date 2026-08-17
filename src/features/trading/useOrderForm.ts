@@ -1,10 +1,24 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Candle, SimulationSettings, Trade } from "../../types";
 import type { AmountUnit, OrderType } from "./types";
 import { calculateLiquidationRisk, calculateOrderRisk, calculateRiskBasedSizing } from "./lib/calculateOrderRisk";
 import { buildInitialProtectionPrices, type ChartPriceRange } from "./lib/buildInitialProtectionPrices";
 
 export const RISK_PRESETS = [0.5, 1, 2] as const;
+
+/** Округляем вниз до центов, чтобы 100% никогда не просило больше, чем есть. */
+function maxAffordableMargin(available: number) {
+  if (!(available > 0)) return 0;
+  return Math.floor(available * 100) / 100;
+}
+
+function marginFromOrderValue(value: number, unit: AmountUnit, price: number, leverage: number) {
+  return unit === "USDT" ? value : price > 0 ? value * price / leverage : 0;
+}
+
+function orderValueFromMargin(margin: number, unit: AmountUnit, price: number, leverage: number) {
+  return unit === "USDT" ? margin : price > 0 ? margin * leverage / price : 0;
+}
 
 interface UseOrderFormOptions {
   currentCandle?: Candle;
@@ -32,6 +46,18 @@ export function useOrderForm({
   const [orderDraftSide, setOrderDraftSide] = useState<Trade["side"] | null>(null);
   const [takeProfit, setTakeProfit] = useState(0);
   const [stopLoss, setStopLoss] = useState(0);
+
+  const affordableMargin = maxAffordableMargin(availableBalance);
+
+  useEffect(() => {
+    const price = orderType === "MARKET"
+      ? currentCandle?.close ?? 0
+      : limitPrice || currentCandle?.close || 0;
+    const margin = marginFromOrderValue(orderValue, amountUnit, price, leverage);
+    if (!(margin > affordableMargin + 1e-9)) return;
+    setOrderValue(orderValueFromMargin(affordableMargin, amountUnit, price, leverage));
+    setAllocationPercent(availableBalance > 0 ? 100 : 0);
+  }, [affordableMargin, amountUnit, availableBalance, currentCandle?.close, leverage, limitPrice, orderType, orderValue]);
 
   const ticket = useMemo(() => {
     const ticketPrice = orderType === "MARKET"
@@ -72,7 +98,7 @@ export function useOrderForm({
           balance,
           riskPct,
           leverage,
-          maxMargin: availableBalance,
+          maxMargin: affordableMargin,
         });
         riskPresetCapped[riskPct] = sizing?.capped ?? false;
       });
@@ -92,7 +118,7 @@ export function useOrderForm({
         ? ticketPrice * (1 + 1 / leverage)
         : null,
     };
-  }, [amountUnit, availableBalance, balance, currentCandle?.close, leverage, limitPrice, orderDraftSide, orderType, orderValue, settings.takerFeePct, stopLoss, takeProfit]);
+  }, [affordableMargin, amountUnit, availableBalance, balance, currentCandle?.close, leverage, limitPrice, orderDraftSide, orderType, orderValue, settings.takerFeePct, stopLoss, takeProfit]);
 
   const changeOrderType = (nextOrderType: OrderType) => {
     setSelectedRiskPct(null);
@@ -135,10 +161,9 @@ export function useOrderForm({
   const changeOrderValue = (nextValue: number) => {
     setSelectedRiskPct(null);
     setRiskSizingCapped(false);
-    setOrderValue(nextValue);
-    const margin = amountUnit === "USDT"
-      ? nextValue
-      : ticket.ticketPrice > 0 ? nextValue * ticket.ticketPrice / leverage : 0;
+    const rawMargin = marginFromOrderValue(nextValue, amountUnit, ticket.ticketPrice, leverage);
+    const margin = Math.min(Math.max(0, rawMargin), affordableMargin);
+    setOrderValue(orderValueFromMargin(margin, amountUnit, ticket.ticketPrice, leverage));
     setAllocationPercent(
       availableBalance > 0 ? Math.min(100, margin / availableBalance * 100) : 0,
     );
@@ -164,7 +189,7 @@ export function useOrderForm({
       balance,
       riskPct,
       leverage: nextLeverage,
-      maxMargin: availableBalance,
+      maxMargin: affordableMargin,
     });
     if (!sizing) return false;
     setOrderValue(nextAmountUnit === "USDT" ? sizing.margin : sizing.quantity);
@@ -179,12 +204,8 @@ export function useOrderForm({
     setSelectedRiskPct(null);
     setRiskSizingCapped(false);
     setAllocationPercent(percent);
-    const margin = availableBalance * (percent / 100);
-    setOrderValue(
-      amountUnit === "USDT"
-        ? margin
-        : ticket.ticketPrice ? margin * leverage / ticket.ticketPrice : 0,
-    );
+    const margin = affordableMargin * (percent / 100);
+    setOrderValue(orderValueFromMargin(margin, amountUnit, ticket.ticketPrice, leverage));
   };
 
   const changeRiskPercent = (riskPct: number) => {

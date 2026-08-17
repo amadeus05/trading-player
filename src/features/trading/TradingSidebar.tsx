@@ -266,7 +266,13 @@ export function TradingSidebar({
         <div className="ticketFieldRow">
           <div className="ticketFieldMain">
             <span>{amountUnit === "USDT" ? "Margin" : "Quantity"}</span>
-            <InputNumber controls={false} min={0} value={orderValue} onChange={(value) => onOrderValueChange(value ?? 0)} />
+            <InputNumber
+              controls={false}
+              min={0}
+              precision={amountUnit === "USDT" ? 2 : Math.min(8, pricePrecision + 2)}
+              value={orderValue}
+              onChange={(value) => onOrderValueChange(value ?? 0)}
+            />
           </div>
           <div className="ticketFieldAside">
             <Select
