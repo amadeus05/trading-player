@@ -180,6 +180,7 @@ export function ReplayChart({
    * ним нельзя ни подгонять ценовую шкалу, ни запирать её.
    */
   const awaitingDatasetData = useRef(false);
+  const lastAppliedCandlesRef = useRef<Candle[] | null>(null);
   const followRealtime = useRef(true);
   // Заведомо «непринятая» ревизия: на переключении ТФ вверх candles на кадр
   // пустеет, PlayerPage размонтирует график, и все ref'ы сбрасываются. Если
@@ -514,17 +515,18 @@ export function ReplayChart({
         savedPriceRange.current = cs.priceScale().getVisibleRange();
         followRealtime.current = shouldFollowRealtime;
         renderedIndex.current = nextIndex;
-        if (datasetChanged) awaitingDatasetData.current = true;
-        if (awaitingDatasetData.current) {
-          // Ценовая шкала прежнего рынка новому не годится: SOL живёт около 150,
-          // ETH около 1800. Держим автомасштаб, пока данные не сменились на самом
-          // деле — по первому времени свечи. Разово подгонять нельзя: подгонка
-          // ставит autoScale: false и запирает диапазон, а на этом шаге свечи ещё
-          // от прошлой монеты либо окно приехало не целиком.
-          if (!datasetChanged && previousVisible.length && nextVisible[0]?.time !== previousVisible[0]?.time) {
-            awaitingDatasetData.current = false;
-          }
+        // Смена id при том же массиве — ещё старый рынок. Подгонять шкалу нельзя:
+        // защёлкнем BTC на ETH. Настоящие свечи — другой массив; тогда один fit
+        // с autoScale: false, иначе вертикальный drag мёртв, пока не прокрутишь.
+        const candlesAreNew = lastAppliedCandlesRef.current !== allCandles;
+        lastAppliedCandlesRef.current = allCandles;
+        const staleDatasetSwitch = datasetChanged && !candlesAreNew;
+        if (staleDatasetSwitch) {
+          awaitingDatasetData.current = true;
           cs.priceScale().applyOptions({ autoScale: true });
+        } else if (awaitingDatasetData.current || datasetChanged) {
+          awaitingDatasetData.current = false;
+          fitPriceScaleToVisible(true, appliedRange);
         } else if (followCandleRef.current) {
           fitPriceScaleToVisible(true);
         } else if (!canAppendOneBar && !forcedRange) {
