@@ -1,20 +1,20 @@
 import { useMemo, useState } from "react";
 import { Button, DatePicker, Drawer, Dropdown, Popover, Segmented, Select } from "antd";
 import type { Dayjs } from "dayjs";
-import { ChartNoAxesCombined, Filter, List, MessageSquare, MoreHorizontal, Trash2 } from "lucide-react";
+import { ChartNoAxesCombined, CalendarDays, Filter, List, MoreHorizontal, Trash2 } from "lucide-react";
 import type { AccountSettings, Trade, TradeScreenshot } from "../../types";
-import { formatDateTime, formatNumber, formatTimeframe } from "../../shared/lib/market";
+import { formatNumber, formatTimeframe } from "../../shared/lib/market";
 import { useConfirmDelete } from "../../shared/ui/useConfirmDelete";
 import {
   calculateTradeAnalytics,
   filterTradesForAnalytics,
-  tradeRisk,
   type AnalyticsFilters,
 } from "../trading/lib/calculateTradeAnalytics";
-import { JournalTradeNotes } from "./JournalTradeNotes";
+import { JournalTradeTable } from "./JournalTradeTable";
+import { JournalCalendar } from "./JournalCalendar";
 import { collectKnownTags } from "./tradeTags";
 
-type JournalTab = "trades" | "stats";
+type JournalTab = "trades" | "calendar" | "stats";
 
 const EQUITY_WIDTH = 600;
 const EQUITY_HEIGHT = 72;
@@ -96,7 +96,6 @@ export function JournalDrawer({
 }: JournalDrawerProps) {
   const confirmDelete = useConfirmDelete();
   const [tab, setTab] = useState<JournalTab>("trades");
-  const [notesTradeId, setNotesTradeId] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null);
   const [datasetId, setDatasetId] = useState<string>("all");
   const [timeframe, setTimeframe] = useState<number | "all">("all");
@@ -309,6 +308,15 @@ export function JournalDrawer({
                 ),
               },
               {
+                value: "calendar",
+                label: (
+                  <span className="journalTabLabel">
+                    <CalendarDays size={13} strokeWidth={2.2} />
+                    Календарь
+                  </span>
+                ),
+              },
+              {
                 value: "stats",
                 label: (
                   <span className="journalTabLabel">
@@ -351,146 +359,59 @@ export function JournalDrawer({
         </div>
       )}
     >
-      <div className="journalHero">
-        {equity.line && (
-          <svg className={`journalHeroCurve ${signClass(analytics.totalPnl)}`} viewBox={`0 0 ${EQUITY_WIDTH} ${EQUITY_HEIGHT}`} preserveAspectRatio="none" aria-hidden="true">
-            <path className="area" d={equity.area} />
-            <path className="line" d={equity.line} />
-          </svg>
-        )}
-        <div className="journalHeroBody">
-          <span className="journalHeroLabel">Net PnL</span>
-          <div className="journalHeroRow">
-            <b className={signClass(analytics.totalPnl)}>{signed(analytics.totalPnl)}</b>
-            <span className={signClass(analytics.totalPnl)}>{signed(pnlPct)}%</span>
-            <span className="journalHeroMeta">
-              {analytics.closedTrades} закрытых из {analytics.totalTrades} · комиссии {formatNumber(analytics.totalFees)}
-            </span>
+      <>
+      {tab !== "calendar" && (
+        <>
+          <div className="journalHero">
+            {equity.line && (
+              <svg className={`journalHeroCurve ${signClass(analytics.totalPnl)}`} viewBox={`0 0 ${EQUITY_WIDTH} ${EQUITY_HEIGHT}`} preserveAspectRatio="none" aria-hidden="true">
+                <path className="area" d={equity.area} />
+                <path className="line" d={equity.line} />
+              </svg>
+            )}
+            <div className="journalHeroBody">
+              <span className="journalHeroLabel">Net PnL</span>
+              <div className="journalHeroRow">
+                <b className={signClass(analytics.totalPnl)}>{signed(analytics.totalPnl)}</b>
+                <span className={signClass(analytics.totalPnl)}>{signed(pnlPct)}%</span>
+                <span className="journalHeroMeta">
+                  {analytics.closedTrades} закрытых из {analytics.totalTrades} · комиссии {formatNumber(analytics.totalFees)}
+                </span>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-
-      <div className="journalKpi">
-        <div><span>Winrate</span><b>{analytics.winRatePct.toFixed(1)}%</b></div>
-        <div><span>Profit factor</span><b>{analytics.profitFactor == null ? "∞" : analytics.profitFactor.toFixed(2)}</b></div>
-        <div><span>Expectancy</span><b className={signClass(analytics.expectancy)}>{signed(analytics.expectancy)}</b></div>
-        <div><span>Max DD</span><b className="neg">{formatNumber(analytics.maxDrawdown)} ({analytics.maxDrawdownPct.toFixed(1)}%)</b></div>
-      </div>
+          <div className="journalKpi">
+            <div><span>Winrate</span><b>{analytics.winRatePct.toFixed(1)}%</b></div>
+            <div><span>Profit factor</span><b>{analytics.profitFactor == null ? "∞" : analytics.profitFactor.toFixed(2)}</b></div>
+            <div><span>Expectancy</span><b className={signClass(analytics.expectancy)}>{signed(analytics.expectancy)}</b></div>
+            <div><span>Max DD</span><b className="neg">{formatNumber(analytics.maxDrawdown)} ({analytics.maxDrawdownPct.toFixed(1)}%)</b></div>
+          </div>
+        </>
+      )}
 
       {tab === "trades" ? (
-        <div className="journalRows">
-          <div className="journalRowsHead">
-            <span>Время</span>
-            <span>Инструмент</span>
-            <span>Side</span>
-            <span>Вход → выход</span>
-            <span className="num">P&L</span>
-            <span />
-          </div>
-          {rows.length === 0 && (
-            <div className="journalEmpty">
-              {trades.length ? "Под фильтр не попала ни одна сделка." : "Сделок пока нет — открой первую прямо на графике."}
-            </div>
-          )}
-          {rows.map((trade) => {
-            const risk = tradeRisk(trade);
-            const rMultiple = risk != null && trade.result != null ? trade.result / risk : null;
-            const tone = trade.status !== "CLOSED" ? "open" : (trade.result ?? 0) >= 0 ? "pos" : "neg";
-            const notesOpen = notesTradeId === trade.id;
-            const hasNotes = Boolean((trade.comment ?? "").trim())
-              || (trade.screenshots?.length ?? 0) > 0
-              || (trade.tags?.length ?? 0) > 0;
-            return (
-              <div key={trade.id} className={`journalRow ${tone} ${notesOpen ? "is-open" : ""}`}>
-                <div
-                  className="journalRowMain"
-                  role={onJumpToTrade ? "button" : undefined}
-                  tabIndex={onJumpToTrade ? 0 : undefined}
-                  onClick={() => onJumpToTrade?.(trade)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      onJumpToTrade?.(trade);
-                    }
-                  }}
-                >
-                  <span className="journalRowTime">{formatDateTime(trade.entryTime)}</span>
-                  <span className="journalRowSymbol">
-                    {datasetName(trade.datasetId)}
-                    {trade.timeframeMinutes ? <i>{formatTimeframe(trade.timeframeMinutes)}</i> : null}
-                  </span>
-                  <span className={trade.side === "LONG" ? "pos" : "neg"}>{trade.side}</span>
-                  <span className="journalRowPrices">
-                    {formatNumber(trade.entry)}
-                    <i>→</i>
-                    {trade.exit == null
-                      ? <em>{trade.status === "PENDING" ? "заявка" : "открыта"}</em>
-                      : formatNumber(trade.exit)}
-                  </span>
-                  <span className="journalRowPnl num">
-                    <b className={trade.result == null ? "" : signClass(trade.result)}>
-                      {trade.result == null ? "—" : signed(trade.result)}
-                    </b>
-                    <i>
-                      {rMultiple == null ? "—" : `${rMultiple >= 0 ? "+" : ""}${rMultiple.toFixed(1)}R`}
-                      {" · "}
-                      {trade.outcome ?? trade.status}
-                    </i>
-                  </span>
-                  <span className="journalRowMenu" onClick={(event) => event.stopPropagation()}>
-                    <Button
-                      size="small"
-                      type="text"
-                      className={`journalNotesBtn ${notesOpen ? "is-active" : ""} ${hasNotes ? "has-notes" : ""}`}
-                      aria-label={notesOpen ? "Скрыть заметку" : "Заметка, теги и скрины"}
-                      title={notesOpen ? "Скрыть заметку" : "Заметка, теги и скрины"}
-                      icon={<MessageSquare size={15} />}
-                      onClick={() => setNotesTradeId(notesOpen ? null : trade.id)}
-                    />
-                    <Dropdown
-                      trigger={["click"]}
-                      menu={{
-                        items: [
-                          { key: "notes", label: notesOpen ? "Скрыть заметку" : "Заметка, теги и скрины" },
-                          ...(trade.status === "PENDING"
-                            ? [{ key: "cancel", label: "Отменить заявку" }]
-                            : []),
-                          ...(trade.status === "OPEN"
-                            ? [{ key: "close", label: "Закрыть сделку" }]
-                            : []),
-                          { key: "delete", danger: true, icon: <Trash2 size={14} />, label: "Удалить" },
-                        ],
-                        onClick: ({ key }) => {
-                          if (key === "notes") setNotesTradeId(notesOpen ? null : trade.id);
-                          if (key === "cancel") onCancelOrder(trade.id);
-                          if (key === "close") onCloseTrade(trade);
-                          if (key === "delete") {
-                            confirmDelete({
-                              title: "Удалить сделку?",
-                              content: "Сделка, заметка, теги и скрины будут удалены.",
-                              onConfirm: () => onDeleteTrade(trade.id),
-                            });
-                          }
-                        },
-                      }}
-                    >
-                      <Button size="small" type="text" aria-label="Действия со сделкой" icon={<MoreHorizontal size={15} />} />
-                    </Dropdown>
-                  </span>
-                </div>
-                {notesOpen && (
-                  <JournalTradeNotes
-                    trade={trade}
-                    knownTags={knownTags}
-                    onCommentChange={(comment) => onUpdateTradeJournal(trade.id, { comment })}
-                    onScreenshotsChange={(screenshots) => onUpdateTradeJournal(trade.id, { screenshots })}
-                    onTagsChange={(nextTags) => onUpdateTradeJournal(trade.id, { tags: nextTags })}
-                  />
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <JournalTradeTable
+          trades={rows}
+          datasetName={datasetName}
+          knownTags={knownTags}
+          onJumpToTrade={onJumpToTrade}
+          onCancelOrder={onCancelOrder}
+          onCloseTrade={onCloseTrade}
+          onDeleteTrade={onDeleteTrade}
+          onUpdateTradeJournal={onUpdateTradeJournal}
+          emptyText={trades.length ? "Под фильтр не попала ни одна сделка." : "Сделок пока нет — открой первую прямо на графике."}
+        />
+      ) : tab === "calendar" ? (
+        <JournalCalendar
+          trades={filteredTrades}
+          datasetName={datasetName}
+          knownTags={knownTags}
+          onJumpToTrade={onJumpToTrade}
+          onCancelOrder={onCancelOrder}
+          onCloseTrade={onCloseTrade}
+          onDeleteTrade={onDeleteTrade}
+          onUpdateTradeJournal={onUpdateTradeJournal}
+        />
       ) : (
         <div className="journalStats">
           <section>
@@ -533,6 +454,7 @@ export function JournalDrawer({
           </section>
         </div>
       )}
+      </>
     </Drawer>
   );
 }
