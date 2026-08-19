@@ -3,6 +3,7 @@ import type { Candle, SimulationSettings, Trade } from "../../types";
 import type { AmountUnit, OrderType } from "./types";
 import { calculateLiquidationRisk, calculateOrderRisk, calculateRiskBasedSizing } from "./lib/calculateOrderRisk";
 import { buildInitialProtectionPrices, type ChartPriceRange } from "./lib/buildInitialProtectionPrices";
+import { DEFAULT_ORDER_MARGIN, resolveTicketMargin } from "./lib/resolveTicketMargin";
 
 export const RISK_PRESETS = [0.5, 1, 2] as const;
 
@@ -41,7 +42,7 @@ export function useOrderForm({
   const [orderType, setOrderType] = useState<OrderType>("MARKET");
   const [leverage, setLeverage] = useState(1);
   const [amountUnit, setAmountUnit] = useState<AmountUnit>("USDT");
-  const [orderValue, setOrderValue] = useState(100);
+  const [orderValue, setOrderValue] = useState(DEFAULT_ORDER_MARGIN);
   const [allocationPercent, setAllocationPercent] = useState(1);
   const [selectedRiskPct, setSelectedRiskPct] = useState<number | null>(null);
   const [riskSizingCapped, setRiskSizingCapped] = useState(false);
@@ -57,9 +58,12 @@ export function useOrderForm({
       ? currentCandle?.close ?? 0
       : limitPrice || currentCandle?.close || 0;
     const margin = marginFromOrderValue(orderValue, amountUnit, price, leverage);
-    if (!(margin > affordableMargin + 1e-9)) return;
-    setOrderValue(orderValueFromMargin(affordableMargin, amountUnit, price, leverage));
-    setAllocationPercent(availableBalance > 0 ? 100 : 0);
+    const nextMargin = resolveTicketMargin(margin, affordableMargin);
+    if (Math.abs(nextMargin - margin) <= 1e-9) return;
+    setOrderValue(orderValueFromMargin(nextMargin, amountUnit, price, leverage));
+    setAllocationPercent(
+      availableBalance > 0 ? Math.min(100, nextMargin / availableBalance * 100) : 0,
+    );
   }, [affordableMargin, amountUnit, availableBalance, currentCandle?.close, leverage, limitPrice, orderType, orderValue]);
 
   const ticket = useMemo(() => {

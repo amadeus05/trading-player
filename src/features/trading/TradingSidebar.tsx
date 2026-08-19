@@ -271,7 +271,10 @@ export function TradingSidebar({
               min={0}
               precision={amountUnit === "USDT" ? 2 : Math.min(8, pricePrecision + 2)}
               value={orderValue}
-              onChange={(value) => onOrderValueChange(value ?? 0)}
+              onChange={(value) => {
+                if (value == null) return;
+                onOrderValueChange(value);
+              }}
             />
           </div>
           <div className="ticketFieldAside">
