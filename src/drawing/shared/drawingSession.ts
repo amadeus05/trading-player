@@ -34,7 +34,7 @@ export function drawingPointFromClick(
 }
 
 export interface DrawingSessionOptions<P> {
-  mode: DrawingMode;
+  mode: DrawingMode | readonly DrawingMode[];
   manager: DrawingManager;
   container: HTMLElement;
   chart: IChartApi;

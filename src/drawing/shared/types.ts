@@ -1,4 +1,4 @@
-export type DrawingMode = "none" | "trendline" | "horizontalline" | "measure" | "rectangle" | "fibonacci" | "fibtrendext" | "parallelchannel" | "volumeprofile";
+export type DrawingMode = "none" | "trendline" | "arrow" | "horizontalline" | "measure" | "rectangle" | "fibonacci" | "fibtrendext" | "parallelchannel" | "volumeprofile";
 
 /**
  * Контракт состояния attach-инструментов: каждый инструмент при подключении

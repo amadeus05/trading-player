@@ -23,7 +23,12 @@ export function createTrendLineExtendSlots(
     {
       id: "extend-left",
       anchor: "before-lock",
-      mount: (drawing) => createExtendButton("left", Boolean(drawing.extendLeft)),
+      mount: (drawing) => {
+        const button = createExtendButton("left", Boolean(drawing.extendLeft));
+        // У стрелки наконечник на конце отрезка — продление за остриё ломает вид.
+        if (drawing.endArrow) button.style.display = "none";
+        return button;
+      },
       bind: (element, ctx) => {
         element.addEventListener("click", (event) => {
           event.stopPropagation();
@@ -39,7 +44,11 @@ export function createTrendLineExtendSlots(
     {
       id: "extend-right",
       anchor: "before-lock",
-      mount: (drawing) => createExtendButton("right", Boolean(drawing.extendRight)),
+      mount: (drawing) => {
+        const button = createExtendButton("right", Boolean(drawing.extendRight));
+        if (drawing.endArrow) button.style.display = "none";
+        return button;
+      },
       bind: (element, ctx) => {
         element.addEventListener("click", (event) => {
           event.stopPropagation();

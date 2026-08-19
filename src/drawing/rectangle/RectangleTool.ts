@@ -175,7 +175,6 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       const rect = rectangles.find((item) => item.id === id);
       if (rect) syncOne(rect);
     },
-    emptyCaretAtEnd: false,
   });
 
   function removeToolbar() {

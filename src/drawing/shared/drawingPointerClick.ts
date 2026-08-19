@@ -15,8 +15,12 @@ interface BindDrawingPointerClickOptions {
     };
   };
   manager: DrawingManager;
-  mode: DrawingMode;
+  mode: DrawingMode | readonly DrawingMode[];
   onClick: (event: DrawingPointerClickEvent) => void;
+}
+
+function modeMatches(configured: DrawingMode | readonly DrawingMode[], current: DrawingMode): boolean {
+  return typeof configured === "string" ? configured === current : configured.includes(current);
 }
 
 const CLICK_TOLERANCE_PX = 7;
@@ -38,7 +42,7 @@ export function bindDrawingPointerClick(options: BindDrawingPointerClickOptions)
   let pointerDown: { id: number; x: number; y: number } | null = null;
 
   const onPointerDown = (event: PointerEvent) => {
-    if (event.button !== 0 || managerMode() !== options.mode || isIgnoredTarget(event.target)) {
+    if (event.button !== 0 || !modeMatches(options.mode, managerMode()) || isIgnoredTarget(event.target)) {
       pointerDown = null;
       return;
     }
@@ -52,7 +56,7 @@ export function bindDrawingPointerClick(options: BindDrawingPointerClickOptions)
   const onPointerUp = (event: PointerEvent) => {
     const down = pointerDown;
     pointerDown = null;
-    if (!down || down.id !== event.pointerId || managerMode() !== options.mode || isIgnoredTarget(event.target)) return;
+    if (!down || down.id !== event.pointerId || !modeMatches(options.mode, managerMode()) || isIgnoredTarget(event.target)) return;
     if (!isInsidePlotArea(options.container, options.chart, event)) return;
     if (Math.hypot(event.clientX - down.x, event.clientY - down.y) > CLICK_TOLERANCE_PX) return;
     options.onClick({ sourceEvent: event });

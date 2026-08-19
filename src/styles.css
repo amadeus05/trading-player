@@ -860,6 +860,16 @@ main.trade-panel-collapsed {
   opacity: 0.6;
 }
 
+.trend-arrow-head,
+.trend-ghost-arrow {
+  pointer-events: none;
+  fill: none;
+}
+
+.trend-ghost-arrow {
+  opacity: 0.6;
+}
+
 .trend-label {
   font: 500 14px/1 system-ui, sans-serif;
   pointer-events: all;
@@ -925,8 +935,29 @@ main.trade-panel-collapsed {
   color: inherit;
 }
 
-.trend-line-label.is-editing.is-placeholder {
-  color: #d1d4dc;
+.trend-line-label.is-placeholder::before,
+.rectangle-label.is-placeholder::before {
+  content: attr(data-placeholder);
+  color: #787b86;
+  pointer-events: none;
+  user-select: none;
+}
+
+.trend-line-label.is-editing.is-placeholder::before,
+.rectangle-label.is-editing.is-placeholder::before {
+  content: attr(data-placeholder-editing);
+}
+
+/*
+ * Пока в поле только подсказка, коробка по ширине линии ставила каретку
+ * в геометрический центр — визуально в середину «Add text». Сжимаем до
+ * подсказки и оставляем каретку у её начала: сами буквы в DOM не живут.
+ */
+.trend-line-label.is-editing.is-placeholder,
+.rectangle-label.is-editing.is-placeholder {
+  width: max-content !important;
+  text-align: left;
+  color: #787b86;
   opacity: 0.85;
 }
 

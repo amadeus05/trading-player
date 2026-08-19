@@ -13,6 +13,7 @@ export interface DrawingSelectionBridge {
 
 const MODE_TO_KIND: Partial<Record<DrawingMode, DrawingSelectionKind>> = {
   trendline: "trendline",
+  arrow: "trendline",
   horizontalline: "horizontalline",
   rectangle: "rectangle",
   fibonacci: "fibonacci",

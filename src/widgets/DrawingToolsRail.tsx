@@ -36,6 +36,7 @@ const TOOL_GROUPS: ToolGroup[] = [
     label: "Линии",
     tools: [
       { mode: "trendline", label: "Трендовая линия", shortcut: { code: "KeyT", label: "Alt + T" } },
+      { mode: "arrow", label: "Стрелка", shortcut: { code: "KeyA", label: "Alt + A" } },
       { mode: "horizontalline", label: "Горизонтальная линия", shortcut: { code: "KeyH", label: "Alt + H" } },
     ],
   },

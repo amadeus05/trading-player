@@ -11,6 +11,7 @@ import { DrawingToolbarController } from "../shared/DrawingToolbarController";
 import { getNewDrawingStyle } from "../shared/drawingTemplates";
 import { lineLabelLayout } from "../shared/lineLabelLayout";
 import { createTrendLineExtendSlots } from "./trendLineToolbarSlots";
+import { arrowHeadGeometry, arrowHeadPointsAttr } from "./arrowHead";
 import { createDrawingOverlay } from "../shared/overlay";
 import { attachManagedDrawingLifecycle, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
 import { createDrawingSession, drawingPointFromClick } from "../shared/drawingSession";
@@ -72,6 +73,32 @@ function trendLineTextColor(tl: TrendLine): string {
   return tl.textColor ?? tl.color;
 }
 
+function applyArrowHead(
+  el: SVGPolylineElement,
+  from: PixelPoint,
+  to: PixelPoint,
+  color: string,
+  width: number,
+  visible: boolean,
+  dash = "",
+): PixelPoint {
+  if (!visible) {
+    el.setAttribute("visibility", "hidden");
+    return to;
+  }
+  const head = arrowHeadGeometry(from, to, width);
+  if (!head) {
+    el.setAttribute("visibility", "hidden");
+    return to;
+  }
+  el.setAttribute("points", arrowHeadPointsAttr(head));
+  el.setAttribute("stroke", color);
+  el.setAttribute("stroke-width", String(width));
+  el.setAttribute("stroke-dasharray", dash);
+  el.setAttribute("visibility", "visible");
+  return head.shaftEnd;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Coordinate conversions                                             */
 /* ------------------------------------------------------------------ */
@@ -108,6 +135,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
 
   /* ---- Selection state ---- */
   let ghostLine: SVGLineElement | null = null;
+  let ghostArrow: SVGPolylineElement | null = null;
   let dragActive = false;
 
   /* ---- Elements per line ---- */
@@ -118,6 +146,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     hitArea: SVGLineElement;
     handle1: SVGCircleElement;
     handle2: SVGCircleElement;
+    arrowHead: SVGPolylineElement;
   }
   const lineElements = new Map<string, LineEls>();
 
@@ -166,9 +195,6 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       const line = trendLines.find((item) => item.id === id);
       if (line) syncOne(line);
     },
-    // Каретка в начало пустого лейбла — как в прямоугольнике: иначе она встаёт
-    // за «+ Add text», и первый же символ печатается в конец подсказки.
-    emptyCaretAtEnd: false,
   });
 
   /** Короткая линия не должна зажимать текст в пару пикселей. */
@@ -348,6 +374,13 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
 
     const line = document.createElementNS(SVG_NS, "line");
     line.setAttribute("class", "trend-main-line");
+    line.setAttribute("stroke-linecap", "round");
+
+    const arrowHead = document.createElementNS(SVG_NS, "polyline");
+    arrowHead.setAttribute("class", "trend-arrow-head");
+    arrowHead.setAttribute("fill", "none");
+    arrowHead.setAttribute("stroke-linecap", "round");
+    arrowHead.setAttribute("stroke-linejoin", "round");
 
     const hitArea = document.createElementNS(SVG_NS, "line");
     hitArea.setAttribute("class", "trend-hit-area");
@@ -362,7 +395,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     handle2.setAttribute("r", "5");
     handle2.style.cursor = "grab";
 
-    group.append(extLine, line, hitArea, handle1, handle2);
+    group.append(extLine, line, arrowHead, hitArea, handle1, handle2);
 
     // Пустая подсказка проявляется по наведению на саму линию, а не на неё же:
     // невидимую надпись искать мышью бессмысленно. Класс снимаем при уходе, но
@@ -406,7 +439,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       startDragHandle(tl.id, "point2", e);
     });
 
-    return { group, line, extLine, hitArea, handle1, handle2 };
+    return { group, line, extLine, hitArea, handle1, handle2, arrowHead };
   }
 
   function syncLabelOverlay(tl: TrendLine, p1: PixelPoint, p2: PixelPoint, isSelected: boolean) {
@@ -456,15 +489,25 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     }
 
     const isSelected = selection.isSelected(tl.id);
+    const dash = strokeDashForStyle(tl.lineStyle);
+    const shaftEnd = applyArrowHead(
+      els.arrowHead,
+      p1,
+      p2,
+      tl.color,
+      tl.width,
+      Boolean(tl.endArrow),
+      dash,
+    );
 
     // Main line
     els.line.setAttribute("x1", String(p1.x));
     els.line.setAttribute("y1", String(p1.y));
-    els.line.setAttribute("x2", String(p2.x));
-    els.line.setAttribute("y2", String(p2.y));
+    els.line.setAttribute("x2", String(shaftEnd.x));
+    els.line.setAttribute("y2", String(shaftEnd.y));
     els.line.setAttribute("stroke", tl.color);
     els.line.setAttribute("stroke-width", String(tl.width));
-    els.line.setAttribute("stroke-dasharray", strokeDashForStyle(tl.lineStyle));
+    els.line.setAttribute("stroke-dasharray", dash);
 
     // Extended line
     if (tl.extendLeft || tl.extendRight) {
@@ -517,10 +560,19 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
   function previewAtPixels(tl: TrendLine, p1: PixelPoint, p2: PixelPoint) {
     const els = lineElements.get(tl.id);
     if (!els) return;
-    for (const element of [els.line, els.hitArea]) {
-      element.setAttribute("x1", String(p1.x)); element.setAttribute("y1", String(p1.y));
-      element.setAttribute("x2", String(p2.x)); element.setAttribute("y2", String(p2.y));
-    }
+    const shaftEnd = applyArrowHead(
+      els.arrowHead,
+      p1,
+      p2,
+      tl.color,
+      tl.width,
+      Boolean(tl.endArrow),
+      strokeDashForStyle(tl.lineStyle),
+    );
+    els.line.setAttribute("x1", String(p1.x)); els.line.setAttribute("y1", String(p1.y));
+    els.line.setAttribute("x2", String(shaftEnd.x)); els.line.setAttribute("y2", String(shaftEnd.y));
+    els.hitArea.setAttribute("x1", String(p1.x)); els.hitArea.setAttribute("y1", String(p1.y));
+    els.hitArea.setAttribute("x2", String(p2.x)); els.hitArea.setAttribute("y2", String(p2.y));
     els.handle1.setAttribute("cx", String(p1.x)); els.handle1.setAttribute("cy", String(p1.y));
     els.handle2.setAttribute("cx", String(p2.x)); els.handle2.setAttribute("cy", String(p2.y));
     if (tl.extendLeft || tl.extendRight) {
@@ -618,16 +670,18 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
   /* ---- Drawing mode ---- */
 
   const drawingSession = createDrawingSession<{ time: number; price: number }>({
-    mode: "trendline",
+    mode: ["trendline", "arrow"],
     manager,
     container,
     chart,
     pointCount: 2,
     pointFromClick: (event) => drawingPointFromClick(event, { container, chart, series, candleStore }),
     ghostUpdate: (points, cursor) => {
+      const drawingArrow = manager.getMode() === "arrow";
       if (!ghostLine) {
         ghostLine = document.createElementNS(SVG_NS, "line");
         ghostLine.setAttribute("class", "trend-ghost-line");
+        ghostLine.setAttribute("stroke-linecap", "round");
         // Цвет и толщина — от того оформления, которое получит готовая линия.
         // В классе лежат заводские, и при протяжке ты видел не свой стиль.
         // Пунктир призрака оставляем: он отличает «ещё рисую» от готовой фигуры.
@@ -636,19 +690,33 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
         ghostLine.setAttribute("stroke-width", String(tpl.width));
         svg.appendChild(ghostLine);
       }
+      if (!ghostArrow) {
+        ghostArrow = document.createElementNS(SVG_NS, "polyline");
+        ghostArrow.setAttribute("class", "trend-ghost-arrow");
+        ghostArrow.setAttribute("fill", "none");
+        ghostArrow.setAttribute("stroke-linecap", "round");
+        ghostArrow.setAttribute("stroke-linejoin", "round");
+        svg.appendChild(ghostArrow);
+      }
+      const color = ghostLine.getAttribute("stroke") ?? "#ff4976";
+      const width = Number(ghostLine.getAttribute("stroke-width") ?? 2);
       const anchor = points.length ? toPixel(points[0]) : null;
       const p1 = anchor ?? cursor;
       // Призрак обязан показывать уже примагниченное положение, иначе линия
       // прыгнет в момент отпускания и разметка окажется не там, где целились.
       const y2 = anchor && snapsToHorizontal(anchor.y, cursor.y) ? anchor.y : cursor.y;
+      const p2 = { x: cursor.x, y: y2 };
+      const shaftEnd = applyArrowHead(ghostArrow, p1, p2, color, width, drawingArrow);
       ghostLine.setAttribute("x1", String(p1.x));
       ghostLine.setAttribute("y1", String(p1.y));
-      ghostLine.setAttribute("x2", String(cursor.x));
-      ghostLine.setAttribute("y2", String(y2));
+      ghostLine.setAttribute("x2", String(shaftEnd.x));
+      ghostLine.setAttribute("y2", String(shaftEnd.y));
     },
     ghostRemove: () => {
       ghostLine?.remove();
       ghostLine = null;
+      ghostArrow?.remove();
+      ghostArrow = null;
     },
     commit: ([point1, point2]) => {
       const tpl = getNewDrawingStyle("trendline");
@@ -671,6 +739,7 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
         showLabel: false,
         label: "",
         locked: false,
+        endArrow: manager.getMode() === "arrow",
       };
       trendLines.push(newLine);
       callbacks.onCreate(newLine);
@@ -690,5 +759,6 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     toolbarController.destroy();
     removeToolbar();
     if (ghostLine) ghostLine.remove();
+    if (ghostArrow) ghostArrow.remove();
   };
 }

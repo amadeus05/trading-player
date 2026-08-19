@@ -3,13 +3,16 @@
  * Модуль владеет DOM-элементами лейблов и всей edit-механикой (placeholder,
  * caret, commit/cancel); позиционирование и правила видимости остаются
  * за инструментом.
+ *
+ * Подсказка никогда не живёт в textContent: иначе contentEditable даёт ходить
+ * по ней стрелками и стирать по буквам, как настоящий текст. Рисуем её через
+ * CSS ::before, а поле при открытии оставляем пустым.
  */
 
 export const LABEL_PLACEHOLDER = "+ Add text";
 /**
  * Подсказка внутри открытого редактора. Плюс — это приглашение «добавить», и
- * когда поле уже открыто, он лишний: пользователь стоит курсором перед ним и
- * начинает печатать прямо в него.
+ * когда поле уже открыто, он лишний.
  */
 const LABEL_PLACEHOLDER_EDITING = "Add text";
 /**
@@ -17,6 +20,17 @@ const LABEL_PLACEHOLDER_EDITING = "Add text";
  * содержание: почти белый #d1d4dc читался как настоящая надпись на линии.
  */
 const PLACEHOLDER_COLOR = "#787b86";
+
+const PLACEHOLDER_NAV_KEYS = new Set([
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "ArrowDown",
+  "Home",
+  "End",
+  "Backspace",
+  "Delete",
+]);
 
 export interface EditableLabelStoreOptions {
   container: HTMLElement;
@@ -30,8 +44,6 @@ export interface EditableLabelStoreOptions {
   onCommit: (id: string, value: string) => void;
   /** Отмена по Escape — инструмент должен пересинхронизировать лейбл. */
   onCancel: (id: string) => void;
-  /** Куда ставить caret при открытии пустого лейбла (у placeholder). */
-  emptyCaretAtEnd?: boolean;
 }
 
 export type EditableLabelContentState = "editing" | "hidden" | "visible";
@@ -54,35 +66,45 @@ export interface EditableLabelStore {
   destroy(): void;
 }
 
-function placeCaret(el: HTMLElement, atEnd: boolean) {
+function placeCaretAtStart(el: HTMLElement) {
   const range = document.createRange();
   const selection = window.getSelection();
-  const textNode = el.firstChild;
-  if (textNode?.nodeType === Node.TEXT_NODE) {
-    const offset = atEnd ? (textNode.textContent?.length ?? 0) : 0;
-    range.setStart(textNode, offset);
-  } else {
-    range.setStart(el, 0);
-  }
+  range.selectNodeContents(el);
   range.collapse(true);
   selection?.removeAllRanges();
   selection?.addRange(range);
 }
 
 /** Двойной rAF: даём браузеру применить focus/contentEditable перед установкой caret. */
-function placeCaretDeferred(el: HTMLElement, atEnd: boolean) {
+function placeCaretAtStartDeferred(el: HTMLElement) {
   requestAnimationFrame(() => {
-    requestAnimationFrame(() => placeCaret(el, atEnd));
+    requestAnimationFrame(() => placeCaretAtStart(el));
   });
 }
 
+function isPlaceholderHint(text: string): boolean {
+  const trimmed = text.trim();
+  return trimmed === "" || trimmed === LABEL_PLACEHOLDER || trimmed === LABEL_PLACEHOLDER_EDITING;
+}
+
 export function normalizeLabelValue(raw: string): string {
-  return raw.replaceAll(LABEL_PLACEHOLDER, "").trim();
+  return raw.replaceAll(LABEL_PLACEHOLDER, "").replaceAll(LABEL_PLACEHOLDER_EDITING, "").trim();
 }
 
 export function createEditableLabelStore(options: EditableLabelStoreOptions): EditableLabelStore {
   const labels = new Map<string, HTMLDivElement>();
   let editingId: string | null = null;
+
+  function showPlaceholder(el: HTMLDivElement) {
+    el.textContent = "";
+    el.classList.add("is-placeholder");
+    el.style.color = PLACEHOLDER_COLOR;
+  }
+
+  function clearPlaceholder(el: HTMLDivElement, id: string) {
+    el.classList.remove("is-placeholder");
+    el.style.color = options.getTextColor(id);
+  }
 
   function commitEdit(id: string) {
     if (editingId !== id) return;
@@ -94,7 +116,7 @@ export function createEditableLabelStore(options: EditableLabelStoreOptions): Ed
     // Пустой лейбл узнаём по классу, а не по совпадению строки: класс снимается
     // на первом же введённом символе. Вырезание текста подсказки затёрло бы
     // ввод у того, кто честно напечатал «Add text».
-    const untouched = el.classList.contains("is-placeholder");
+    const untouched = el.classList.contains("is-placeholder") || isPlaceholderHint(el.textContent ?? "");
     options.onCommit(id, untouched ? "" : normalizeLabelValue(el.textContent ?? ""));
   }
 
@@ -108,54 +130,55 @@ export function createEditableLabelStore(options: EditableLabelStoreOptions): Ed
     const el = document.createElement("div");
     el.className = options.className;
     el.dataset.placeholder = LABEL_PLACEHOLDER;
+    el.dataset.placeholderEditing = LABEL_PLACEHOLDER_EDITING;
 
     el.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
-      // По placeholder браузер тоже ставит каретку — по месту нажатия, то есть
-      // в середину подсказки. Наша установка идёт отложенно, через два кадра, и
-      // кто окажется последним, зависит от везения: иногда курсор оказывался
-      // между буквами «+ Add text». Отменяем поведение по умолчанию, фокус
-      // ставим сами ниже. Для непустого лейбла не мешаем: там клик по месту —
-      // это ровно то, что нужно.
+      // По настоящему тексту клик ставит каретку в место нажатия. По пустому
+      // полю браузер тоже пытается тыкать «внутрь» подсказки, если она лежит
+      // в DOM — отменяем default, фокус и каретку ставим сами.
       if (!options.getText(id).trim()) event.preventDefault();
       startEdit(id);
     });
     el.addEventListener("focus", () => {
       if (editingId !== id) return;
-      placeCaretDeferred(el, true);
+      if (!el.classList.contains("is-placeholder")) return;
+      placeCaretAtStartDeferred(el);
     });
     el.addEventListener("beforeinput", (event) => {
       if (editingId !== id) return;
       if (!el.classList.contains("is-placeholder")) return;
+      // Стирать и перемещать нечего: подсказки в поле нет. Delete/Backspace
+      // иначе могли бы проглотить служебный <br>, который Chrome суёт в пустой
+      // contentEditable, и подсказка мигала бы.
+      if (event.inputType.startsWith("delete") || event.inputType === "historyUndo") {
+        event.preventDefault();
+        return;
+      }
       if (!event.inputType.startsWith("insert")) return;
-      const data = (event as InputEvent).data;
-      if (!data) return;
-      event.preventDefault();
-      el.textContent = data;
-      el.classList.remove("is-placeholder");
-      el.style.color = options.getTextColor(id);
-      placeCaret(el, true);
+      clearPlaceholder(el, id);
     });
-    // Страховка на всё, что не проходит через beforeinput выше: вставка из
-    // буфера приходит без data, и без этого класс подсказки остался бы висеть,
-    // а commitEdit счёл бы лейбл нетронутым и выбросил вставленный текст.
+    // Страховка: вставка из буфера и IME не всегда дают data в beforeinput.
     el.addEventListener("input", () => {
       if (editingId !== id) return;
       if (!el.classList.contains("is-placeholder")) return;
-      const text = el.textContent ?? "";
-      if (text === LABEL_PLACEHOLDER_EDITING || text === LABEL_PLACEHOLDER) return;
-      el.classList.remove("is-placeholder");
-      el.style.color = options.getTextColor(id);
+      if (isPlaceholderHint(el.textContent ?? "")) return;
+      clearPlaceholder(el, id);
     });
     el.addEventListener("keydown", (event) => {
       if (editingId !== id) return;
       if (event.key === "Enter") {
         event.preventDefault();
         el.blur();
+        return;
       }
       if (event.key === "Escape") {
         event.preventDefault();
         cancelEdit(id);
+        return;
+      }
+      if (el.classList.contains("is-placeholder") && PLACEHOLDER_NAV_KEYS.has(event.key)) {
+        event.preventDefault();
       }
     });
     el.addEventListener("blur", () => {
@@ -179,17 +202,14 @@ export function createEditableLabelStore(options: EditableLabelStoreOptions): Ed
     const el = labels.get(id) ?? build(id);
 
     const hasText = Boolean(options.getText(id).trim());
-    if (!hasText) {
-      el.textContent = LABEL_PLACEHOLDER_EDITING;
-      el.classList.add("is-placeholder");
-      el.style.color = PLACEHOLDER_COLOR;
-    }
+    if (!hasText) showPlaceholder(el);
+    else clearPlaceholder(el, id);
 
     editingId = id;
     el.classList.add("is-editing");
     el.contentEditable = "true";
     el.focus({ preventScroll: true });
-    placeCaretDeferred(el, hasText || (options.emptyCaretAtEnd ?? true));
+    if (!hasText) placeCaretAtStartDeferred(el);
   }
 
   return {
@@ -206,14 +226,17 @@ export function createEditableLabelStore(options: EditableLabelStoreOptions): Ed
 
       const text = options.getText(id);
       const hasText = Boolean(text.trim());
-      const showPlaceholder = selected && !hasText;
-      if (!hasText && !showPlaceholder) return "hidden";
+      const showHint = selected && !hasText;
+      if (!hasText && !showHint) return "hidden";
 
       el.contentEditable = "false";
       el.classList.remove("is-editing");
-      el.style.color = hasText ? options.getTextColor(id) : PLACEHOLDER_COLOR;
-      el.textContent = hasText ? text : LABEL_PLACEHOLDER;
-      el.classList.toggle("is-placeholder", showPlaceholder);
+      if (hasText) {
+        el.textContent = text;
+        clearPlaceholder(el, id);
+      } else {
+        showPlaceholder(el);
+      }
       return "visible";
     },
     remove(id) {
