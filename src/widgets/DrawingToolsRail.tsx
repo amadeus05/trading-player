@@ -59,10 +59,18 @@ const TOOL_GROUPS: ToolGroup[] = [
   },
   {
     id: "measure",
-    label: "Измерение",
+    label: "Линейка",
+    tools: [{ mode: "measure", label: "Линейка", shortcut: { code: "KeyM", label: "Alt + M" } }],
+  },
+  {
+    id: "volumeprofile",
+    label: "Volume Profile",
     tools: [
-      { mode: "measure", label: "Линейка", shortcut: { code: "KeyM", label: "Alt + M" } },
-      { mode: "volumeprofile", label: "Volume Profile (диапазон по двум кликам)", shortcut: { code: "KeyB", label: "Alt + B" } },
+      {
+        mode: "volumeprofile",
+        label: "Volume Profile (диапазон по двум кликам)",
+        shortcut: { code: "KeyB", label: "Alt + B" },
+      },
     ],
   },
 ];
