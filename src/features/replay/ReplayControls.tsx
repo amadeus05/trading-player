@@ -1,5 +1,5 @@
 import { Button, Dropdown, Select, Spin } from "antd";
-import { CalendarDays, ChevronRight, Clock3, Crosshair, Dices, Flag, Pause, Play, RotateCcw } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Crosshair, Dices, Flag, Pause, Play, RotateCcw } from "lucide-react";
 import { HistoryManager } from "../datasets/HistoryManager";
 import type { Candle, Dataset } from "../../types";
 import { formatDateTime } from "../../shared/lib/market";
@@ -19,6 +19,7 @@ interface ReplayControlsProps {
   onStartAction: (key: string) => void;
   onReset: () => void;
   onPlayingChange: (playing: boolean) => void;
+  onStepBack: () => void;
   onStep: () => void;
   onSpeedChange: (speed: number) => void;
 }
@@ -37,6 +38,7 @@ export function ReplayControls({
   onStartAction,
   onReset,
   onPlayingChange,
+  onStepBack,
   onStep,
   onSpeedChange,
 }: ReplayControlsProps) {
@@ -65,6 +67,7 @@ export function ReplayControls({
           </Button>
         </Dropdown>
         <Button type="text" aria-label="Сбросить replay" icon={<RotateCcw size={18} />} disabled={startJumpPending} onClick={onReset} />
+        <Button type="text" aria-label="Предыдущая свеча" icon={<ChevronLeft size={22} />} disabled={startJumpPending} onClick={onStepBack} />
         <Button className="play" shape="circle" aria-label={playing ? "Пауза" : "Воспроизвести"} icon={playing ? <Pause size={20} /> : <Play size={20} />} disabled={startJumpPending} onClick={() => onPlayingChange(!playing)} />
         <Button type="text" aria-label="Следующая свеча" icon={<ChevronRight size={22} />} disabled={startJumpPending} onClick={onStep} />
         <Select

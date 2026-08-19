@@ -303,6 +303,20 @@ export function useReplayController({
   };
 
   const step = () => advanceRef.current();
+  const stepBack = () => {
+    // Иначе RAF-цикл Play на следующем тике делает +1 и шаг назад пропадает.
+    setPlaying(false);
+    setIndex((current) => {
+      const source = candlesRef.current;
+      const last = source.length - 1;
+      const safe = Math.max(0, Math.min(current, last));
+      if (safe <= 0) return safe;
+      const prev = safe - 1;
+      const prevEnd = candleEndTime(source, prev, timeframeRef.current);
+      if (prevEnd != null) playheadTimeRef.current = prevEnd;
+      return prev;
+    });
+  };
   const reset = () => {
     setPlaying(false);
     const next = Math.min(REPLAY_START_BAR_INDEX, lastIndex);
@@ -338,5 +352,6 @@ export function useReplayController({
     setPlaying,
     setSpeed,
     step,
+    stepBack,
   };
 }

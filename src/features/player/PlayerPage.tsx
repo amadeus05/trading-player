@@ -216,6 +216,7 @@ export function PlayerPage() {
     setPlaying,
     setSpeed,
     step,
+    stepBack,
   } = useReplayController({
     rawCandles: raw,
     intrabarCandles,
@@ -544,6 +545,7 @@ export function PlayerPage() {
             onStartAction={handleStartAction}
             onReset={reset}
             onPlayingChange={setPlaying}
+            onStepBack={stepBack}
             onStep={step}
             onSpeedChange={setSpeed}
           />
