@@ -520,6 +520,36 @@ main.trade-panel-collapsed {
   min-width: 0;
 }
 
+.marketSelectDropdown {
+  min-width: 240px;
+}
+
+.marketSelectDropdown .ant-select-item-option-content {
+  white-space: normal;
+}
+
+.marketOption {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
+}
+
+.marketOption b {
+  color: #e8ebf2;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.marketOption i {
+  color: #7b8497;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
 .toolbarPriceScaleSlot {
   display: flex;
   align-items: center;

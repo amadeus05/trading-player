@@ -38,8 +38,22 @@ export function PlayerToolbar({
         placeholder="Выберите историю"
         loading={datasetsLoading}
         onChange={onDatasetChange}
+        labelRender={({ value }) => (
+          datasetOptions.find((option) => option.id === value)?.symbol ?? String(value ?? "")
+        )}
+        optionRender={(option) => {
+          const item = datasetOptions.find((entry) => entry.id === option.value);
+          return (
+            <span className="marketOption">
+              <b>{item?.symbol ?? option.label}</b>
+              {item?.rangeLabel ? <i>{item.rangeLabel}</i> : null}
+            </span>
+          );
+        }}
         options={datasetOptions.map((option) => ({ value: option.id, label: option.label }))}
-        style={{ width: 280 }}
+        popupClassName="marketSelectDropdown"
+        popupMatchSelectWidth={false}
+        style={{ minWidth: 128 }}
       />
       <div className="tf">
         {TIMEFRAME_OPTIONS.map((value) => (

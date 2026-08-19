@@ -12,6 +12,7 @@ export type MarketDatasetOption = {
   baseCandles: number;
   name: string;
   label: string;
+  rangeLabel: string;
 };
 
 function buildDatasetOptions(catalog: MarketCatalogItem[]): MarketDatasetOption[] {
@@ -23,6 +24,7 @@ function buildDatasetOptions(catalog: MarketCatalogItem[]): MarketDatasetOption[
     to: item.to,
     baseCandles: item.candles,
     name: `${item.symbol} · Bybit`,
+    rangeLabel: `${formatMarketDate(item.from)} — ${formatMarketDate(item.to - 1)}`,
     label: `${item.symbol} · ${formatMarketDate(item.from)} — ${formatMarketDate(item.to - 1)}`,
   }));
 }
