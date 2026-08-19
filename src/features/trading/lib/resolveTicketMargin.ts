@@ -1,5 +1,10 @@
 export const DEFAULT_ORDER_MARGIN = 100;
 
+export function allocationPercentFromMargin(margin: number, available: number): number {
+  if (!(available > 0) || !(margin > 0)) return 0;
+  return Math.min(100, margin / available * 100);
+}
+
 /**
  * Кламп тикета к доступной марже. Ноль доступного не затирает размер:
  * иначе после закрытия позиции Available уже есть, а Long/Short остаются

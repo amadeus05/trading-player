@@ -3,7 +3,7 @@ import type { Candle, SimulationSettings, Trade } from "../../types";
 import type { AmountUnit, OrderType } from "./types";
 import { calculateLiquidationRisk, calculateOrderRisk, calculateRiskBasedSizing } from "./lib/calculateOrderRisk";
 import { buildInitialProtectionPrices, type ChartPriceRange } from "./lib/buildInitialProtectionPrices";
-import { DEFAULT_ORDER_MARGIN, resolveTicketMargin } from "./lib/resolveTicketMargin";
+import { DEFAULT_ORDER_MARGIN, allocationPercentFromMargin, resolveTicketMargin } from "./lib/resolveTicketMargin";
 
 export const RISK_PRESETS = [0.5, 1, 2] as const;
 
@@ -43,7 +43,6 @@ export function useOrderForm({
   const [leverage, setLeverage] = useState(1);
   const [amountUnit, setAmountUnit] = useState<AmountUnit>("USDT");
   const [orderValue, setOrderValue] = useState(DEFAULT_ORDER_MARGIN);
-  const [allocationPercent, setAllocationPercent] = useState(1);
   const [selectedRiskPct, setSelectedRiskPct] = useState<number | null>(null);
   const [riskSizingCapped, setRiskSizingCapped] = useState(false);
   const [limitPrice, setLimitPrice] = useState(0);
@@ -61,9 +60,6 @@ export function useOrderForm({
     const nextMargin = resolveTicketMargin(margin, affordableMargin);
     if (Math.abs(nextMargin - margin) <= 1e-9) return;
     setOrderValue(orderValueFromMargin(nextMargin, amountUnit, price, leverage));
-    setAllocationPercent(
-      availableBalance > 0 ? Math.min(100, nextMargin / availableBalance * 100) : 0,
-    );
   }, [affordableMargin, amountUnit, availableBalance, currentCandle?.close, leverage, limitPrice, orderType, orderValue]);
 
   const ticket = useMemo(() => {
@@ -127,6 +123,10 @@ export function useOrderForm({
     };
   }, [affordableMargin, amountUnit, availableBalance, balance, currentCandle?.close, leverage, limitPrice, orderDraftSide, orderType, orderValue, settings.takerFeePct, stopLoss, takeProfit]);
 
+  const allocationPercent = Math.round(
+    allocationPercentFromMargin(ticket.ticketMargin, availableBalance),
+  );
+
   const changeOrderType = (nextOrderType: OrderType) => {
     setSelectedRiskPct(null);
     setRiskSizingCapped(false);
@@ -175,9 +175,6 @@ export function useOrderForm({
     const rawMargin = marginFromOrderValue(nextValue, amountUnit, ticket.ticketPrice, leverage);
     const margin = Math.min(Math.max(0, rawMargin), affordableMargin);
     setOrderValue(orderValueFromMargin(margin, amountUnit, ticket.ticketPrice, leverage));
-    setAllocationPercent(
-      availableBalance > 0 ? Math.min(100, margin / availableBalance * 100) : 0,
-    );
   };
 
   const changeAmountUnit = (nextUnit: AmountUnit) => {
@@ -205,16 +202,12 @@ export function useOrderForm({
     if (!sizing) return false;
     setOrderValue(nextAmountUnit === "USDT" ? sizing.margin : sizing.quantity);
     setRiskSizingCapped(sizing.capped);
-    setAllocationPercent(
-      availableBalance > 0 ? Math.min(100, sizing.margin / availableBalance * 100) : 0,
-    );
     return true;
   };
 
   const changeAllocation = (percent: number) => {
     setSelectedRiskPct(null);
     setRiskSizingCapped(false);
-    setAllocationPercent(percent);
     const margin = affordableMargin * (percent / 100);
     setOrderValue(orderValueFromMargin(margin, amountUnit, ticket.ticketPrice, leverage));
   };
@@ -224,21 +217,11 @@ export function useOrderForm({
     setSelectedRiskPct(riskPct);
   };
 
-  const resyncAllocationForUnitPrice = (nextLeverage: number, nextTicketPrice: number) => {
-    if (amountUnit !== "COIN") return;
-    const margin = nextTicketPrice > 0 ? orderValue * nextTicketPrice / nextLeverage : 0;
-    setAllocationPercent(
-      availableBalance > 0 ? Math.min(100, margin / availableBalance * 100) : 0,
-    );
-  };
-
   const changeLeverage = (nextLeverage: number) => {
     setLeverage(nextLeverage);
     if (orderDraftSide && selectedRiskPct != null) {
       void applyRiskSizing(selectedRiskPct, nextLeverage);
-      return;
     }
-    resyncAllocationForUnitPrice(nextLeverage, ticket.ticketPrice);
   };
 
   const changeLimitPrice = (nextLimitPrice: number) => {
@@ -246,9 +229,7 @@ export function useOrderForm({
     const nextTicketPrice = nextLimitPrice || currentCandle?.close || 0;
     if (selectedRiskPct != null) {
       void applyRiskSizing(selectedRiskPct, leverage, stopLoss, nextTicketPrice);
-      return;
     }
-    resyncAllocationForUnitPrice(leverage, nextTicketPrice);
   };
 
   const changeStopLoss = (nextStopLoss: number) => {
