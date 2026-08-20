@@ -9,8 +9,57 @@ export const PAPER_BALANCE_USDT = 1_000;
  */
 export const BASE_TIMEFRAME_MINUTES = 1;
 
-export const TIMEFRAME_OPTIONS = [1, 5, 7, 10, 15, 30, 60, 120, 180, 240, 1_440] as const;
+/**
+ * Закреплённые по умолчанию, как избранное в TradingView.
+ * Пользователь меняет набор через «Редактировать»; остальное — в «Доступно».
+ */
+export const DEFAULT_PINNED_TIMEFRAMES = [1, 5, 15, 60, 240] as const;
+
+export const TIMEFRAME_OPTIONS = [1, 3, 5, 7, 10, 15, 30, 60, 120, 180, 240, 360, 720, 1_440] as const;
+export type TimeframeOption = (typeof TIMEFRAME_OPTIONS)[number];
 export const DEFAULT_TIMEFRAME_MINUTES = 15;
+
+const PINNED_STORAGE_KEY = "player:pinned-timeframes";
+
+export function isTimeframeOption(value: number): value is TimeframeOption {
+  return (TIMEFRAME_OPTIONS as readonly number[]).includes(value);
+}
+
+export function sanitizePinnedTimeframes(values: unknown): TimeframeOption[] {
+  if (!Array.isArray(values)) return [...DEFAULT_PINNED_TIMEFRAMES];
+  const unique: TimeframeOption[] = [];
+  for (const value of values) {
+    if (typeof value !== "number" || !isTimeframeOption(value) || unique.includes(value)) continue;
+    unique.push(value);
+  }
+  if (!unique.length) return [...DEFAULT_PINNED_TIMEFRAMES];
+  return unique.sort((left, right) => left - right);
+}
+
+export function sortTimeframes<T extends number>(values: readonly T[]): T[] {
+  return [...values].sort((left, right) => left - right);
+}
+
+export function availableTimeframes(pinned: readonly number[]): TimeframeOption[] {
+  const set = new Set(pinned);
+  return TIMEFRAME_OPTIONS.filter((value) => !set.has(value));
+}
+
+export function loadPinnedTimeframes(): TimeframeOption[] {
+  try {
+    const raw = localStorage.getItem(PINNED_STORAGE_KEY);
+    if (!raw) return [...DEFAULT_PINNED_TIMEFRAMES];
+    return sanitizePinnedTimeframes(JSON.parse(raw) as unknown);
+  } catch {
+    return [...DEFAULT_PINNED_TIMEFRAMES];
+  }
+}
+
+export function savePinnedTimeframes(values: readonly number[]): TimeframeOption[] {
+  const next = sanitizePinnedTimeframes(values);
+  localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(next));
+  return next;
+}
 
 /**
  * Свеча, на которой плеер стоит при открытии рынка и после сброса.

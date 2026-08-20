@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Persisted } from "../../types";
 import { loadPlayerState, savePlayerState } from "../../shared/api/playerStateApi";
-import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SIMULATION_SETTINGS, DEFAULT_TIMEFRAME_MINUTES, INITIAL_PLAYER_STATE, TIMEFRAME_OPTIONS } from "../../shared/config/simulation";
+import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SIMULATION_SETTINGS, DEFAULT_TIMEFRAME_MINUTES, INITIAL_PLAYER_STATE, isTimeframeOption } from "../../shared/config/simulation";
 
 export function usePersistedPlayerState() {
   const hydratedRef = useRef(false);
@@ -22,7 +22,7 @@ export function usePersistedPlayerState() {
           account: { ...DEFAULT_ACCOUNT_SETTINGS, ...loadedState.account },
         });
         setInitialDatasetId(loadedState.lastDatasetId ?? "");
-        setInitialTimeframe(TIMEFRAME_OPTIONS.includes(savedTimeframe as typeof TIMEFRAME_OPTIONS[number])
+        setInitialTimeframe(isTimeframeOption(savedTimeframe ?? NaN)
           ? savedTimeframe!
           : DEFAULT_TIMEFRAME_MINUTES);
       })

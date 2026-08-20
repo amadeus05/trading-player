@@ -1,9 +1,8 @@
 import { Button, Select } from "antd";
 import { Globe2 } from "lucide-react";
 import { ChartFocusIcon } from "./ChartFocusIcon";
+import { TimeframePicker } from "./TimeframePicker";
 import type { MarketDatasetOption } from "../features/datasets/useMarketCatalog";
-import { formatTimeframe } from "../shared/lib/market";
-import { TIMEFRAME_OPTIONS } from "../shared/config/simulation";
 
 interface PlayerToolbarProps {
   datasetOptions: MarketDatasetOption[];
@@ -55,18 +54,7 @@ export function PlayerToolbar({
         popupMatchSelectWidth={false}
         style={{ minWidth: 128 }}
       />
-      <div className="tf">
-        {TIMEFRAME_OPTIONS.map((value) => (
-          <Button
-            key={value}
-            type="text"
-            className={timeframe === value ? "is-active" : undefined}
-            onClick={() => onTimeframeChange(value)}
-          >
-            {formatTimeframe(value)}
-          </Button>
-        ))}
-      </div>
+      <TimeframePicker timeframe={timeframe} onTimeframeChange={onTimeframeChange} />
       {onToggleTradingSessions ? (
         <Button
           type="text"

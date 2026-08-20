@@ -565,6 +565,7 @@ main.trade-panel-collapsed {
 
 .tf {
   display: flex;
+  align-items: center;
   gap: 0;
   border-left: 1px solid #282b35;
   padding-left: 9px;
@@ -607,6 +608,170 @@ main.trade-panel-collapsed {
   height: 2px;
   border-radius: 2px;
   background: #7c6cf2;
+}
+
+.tf-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 30px;
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #9da3b4;
+  cursor: pointer;
+  outline: none;
+  box-shadow: none;
+  line-height: 0;
+}
+
+.tf-caret svg {
+  display: block;
+  /* Шеврон Lucide визуально сидит выше кегля 1m/5m — опускаем на линию букв. */
+  transform: translateY(2px);
+  transition: transform 120ms ease;
+}
+
+.tf-caret.is-open svg {
+  transform: translateY(2px) rotate(180deg);
+}
+
+.tf-caret:hover,
+.tf-caret:focus,
+.tf-caret:focus-visible,
+.tf-caret.is-open {
+  color: #9b8cff;
+  background: transparent;
+  outline: none;
+  box-shadow: none;
+}
+
+.tf-menu {
+  position: fixed;
+  z-index: 2000;
+  width: 328px;
+  padding: 10px 12px 14px;
+  border-radius: 8px;
+  background: #0d0f15;
+  border: 1px solid #282b35;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
+  overflow: visible;
+}
+
+.tf-menu__section + .tf-menu__section {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #1c1f28;
+}
+
+.tf-menu__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #7b8497;
+}
+
+.tf-menu__edit {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #9b8cff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tf-menu__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 8px;
+  padding: 6px 4px 2px 0;
+}
+
+.tf-menu__chip-wrap {
+  position: relative;
+}
+
+.tf-menu__chip {
+  min-width: 52px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #282b35;
+  border-radius: 6px;
+  background: #11131a;
+  color: #9da3b4;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.tf-menu__chip:hover {
+  border-color: #282b35;
+  background: #11131a;
+  color: #9da3b4;
+}
+
+.tf-menu__chip.is-active,
+.tf-menu__chip.is-active:hover {
+  border-color: #7c6cf2;
+  background: #17152a;
+  color: #9b8cff;
+}
+
+.tf-menu__badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid #3a3f4d;
+  border-radius: 50%;
+  background: #1a1d26;
+  color: #c4bcff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tf-menu__badge:hover {
+  border-color: #7c6cf2;
+  background: #25213f;
+  color: #ece8ff;
+}
+
+.tf-menu__badge:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.tf-menu__badge:disabled:hover {
+  border-color: #3a3f4d;
+  background: #1a1d26;
+  color: #c4bcff;
+}
+
+.tf-menu__section.is-disabled {
+  opacity: 0.42;
+}
+
+.tf-menu__hint {
+  margin: 0 2px;
+  font-size: 12px;
+  color: #7b8497;
 }
 
 .chartArea {

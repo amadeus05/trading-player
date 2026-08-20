@@ -37,8 +37,16 @@ export const formatMarketPair = (name?: string) => {
   return quote ? `${symbol.slice(0, -quote.length)} / ${quote}` : symbol;
 };
 
-export const formatTimeframe = (minutes: number) =>
-  minutes < 60 ? `${minutes}m` : minutes === 1_440 ? "1d" : `${minutes / 60}h`;
+export const formatTimeframe = (minutes: number) => {
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes % 1_440 === 0) {
+    const days = minutes / 1_440;
+    if (days === 7) return "1w";
+    return days === 1 ? "1d" : `${days}d`;
+  }
+  if (minutes % 60 === 0) return `${minutes / 60}h`;
+  return `${minutes}m`;
+};
 
 const decimalPlaces = (value: number) => {
   if (!Number.isFinite(value) || value === 0) return 0;
