@@ -144,11 +144,6 @@ export function JournalDrawer({
   );
   const equity = useMemo(() => buildEquityShape(analytics.equityCurve), [analytics.equityCurve]);
 
-  const rows = useMemo(
-    () => [...filteredTrades].sort((left, right) => (right.entryTime ?? 0) - (left.entryTime ?? 0)),
-    [filteredTrades],
-  );
-
   const byTimeframe = useMemo(
     () => groupTrades(filteredTrades, (trade) => trade.timeframeMinutes ? String(trade.timeframeMinutes) : null, (key) => formatTimeframe(Number(key))),
     [filteredTrades],
@@ -391,7 +386,7 @@ export function JournalDrawer({
 
       {tab === "trades" ? (
         <JournalTradeTable
-          trades={rows}
+          trades={filteredTrades}
           datasetName={datasetName}
           knownTags={knownTags}
           onJumpToTrade={onJumpToTrade}

@@ -20,6 +20,15 @@ export const formatDateTime = (timestamp: number) =>
     minute: "2-digit",
   });
 
+/** Фактическое время клика — локальная зона, не UTC графика. */
+export const formatLocalDateTime = (timestamp: number) =>
+  new Date(timestamp * 1_000).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
 export const formatMarketDate = (timestampMs: number) =>
   new Date(timestampMs).toLocaleDateString("ru-RU", {
     timeZone: "UTC",

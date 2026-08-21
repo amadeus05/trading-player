@@ -2153,7 +2153,7 @@ g[data-channel-id].selected .pc-edge-line {
 .journalRowsHead,
 .journalRowMain {
   display: grid;
-  grid-template-columns: 108px minmax(0, 1fr) 52px minmax(0, 1.1fr) 96px 68px;
+  grid-template-columns: 118px minmax(0, 1fr) 52px minmax(0, 1.1fr) 96px 68px;
   gap: 8px;
   align-items: center;
 }
@@ -2213,8 +2213,53 @@ g[data-channel-id].selected .pc-edge-line {
 }
 
 .journalRowTime {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   color: #7b8497;
   font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+.journalRowTime b {
+  color: #c5cde0;
+  font-weight: 500;
+}
+
+.journalRowTime i {
+  color: #7b8497;
+  font-style: normal;
+  font-size: 10px;
+}
+
+.journalRowTime b.is-sort,
+.journalRowTime i.is-sort {
+  color: #d7def0;
+}
+
+.journalSortHead {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+
+.journalSortBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #7b8497;
+  font: inherit;
+  cursor: pointer;
+}
+
+.journalSortBtn:hover,
+.journalSortBtn.is-active {
+  color: #d7def0;
 }
 
 .journalRowSymbol,

@@ -75,6 +75,8 @@ export function createOrder({
     side,
     entryTime: candle.time,
     createdTime: candle.time,
+    // Часы пользователя, не свеча: «последняя сделка» в журнале — по этой дате.
+    placedAt: Math.floor(Date.now() / 1_000),
     entry,
     size,
     sl: stopLoss,

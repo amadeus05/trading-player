@@ -104,9 +104,7 @@ export function JournalCalendar({
   const peakMonth = Math.max(1, ...(yearRow?.months.map((item) => Math.abs(item.pnl)) ?? [1]));
   const dayTrades = useMemo(() => {
     if (!dayKey) return [];
-    return trades
-      .filter((trade) => trade.status === "CLOSED" && tradeDayKey(trade) === dayKey)
-      .sort((left, right) => (right.exitTime ?? right.entryTime) - (left.exitTime ?? left.entryTime));
+    return trades.filter((trade) => trade.status === "CLOSED" && tradeDayKey(trade) === dayKey);
   }, [dayKey, trades]);
 
   if (!model.years.length) {

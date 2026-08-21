@@ -1,11 +1,18 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button, Dropdown } from "antd";
-import { MessageSquare, MoreHorizontal, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, MessageSquare, MoreHorizontal, Trash2 } from "lucide-react";
 import type { Trade, TradeScreenshot } from "../../types";
-import { formatDateTime, formatNumber, formatTimeframe } from "../../shared/lib/market";
+import { formatDateTime, formatLocalDateTime, formatNumber, formatTimeframe } from "../../shared/lib/market";
 import { useConfirmDelete } from "../../shared/ui/useConfirmDelete";
 import { tradeRisk } from "../trading/lib/calculateTradeAnalytics";
 import { JournalTradeNotes } from "./JournalTradeNotes";
+import {
+  loadJournalTradeSort,
+  nextJournalTradeSort,
+  saveJournalTradeSort,
+  sortJournalTrades,
+  type JournalTradeSortKey,
+} from "./sortJournalTrades";
 
 const signClass = (value: number) => (value >= 0 ? "pos" : "neg");
 const signed = (value: number) => `${value >= 0 ? "+" : ""}${formatNumber(value)}`;
@@ -22,6 +29,37 @@ export interface JournalTradeTableProps {
   emptyText?: string;
 }
 
+function SortButton({
+  label,
+  title,
+  sortKey,
+  activeKey,
+  dir,
+  onClick,
+}: {
+  label: string;
+  title: string;
+  sortKey: JournalTradeSortKey;
+  activeKey: JournalTradeSortKey;
+  dir: "asc" | "desc";
+  onClick: () => void;
+}) {
+  const active = activeKey === sortKey;
+  const Icon = dir === "desc" ? ChevronDown : ChevronUp;
+  return (
+    <button
+      type="button"
+      className={`journalSortBtn ${active ? "is-active" : ""}`}
+      title={title}
+      aria-pressed={active}
+      onClick={onClick}
+    >
+      {label}
+      {active ? <Icon size={11} strokeWidth={2.4} /> : null}
+    </button>
+  );
+}
+
 export function JournalTradeTable({
   trades,
   datasetName,
@@ -35,11 +73,36 @@ export function JournalTradeTable({
 }: JournalTradeTableProps) {
   const confirmDelete = useConfirmDelete();
   const [notesTradeId, setNotesTradeId] = useState<string | null>(null);
+  const [sort, setSort] = useState(loadJournalTradeSort);
+  const rows = useMemo(() => sortJournalTrades(trades, sort), [sort, trades]);
+
+  const changeSort = (key: JournalTradeSortKey) => {
+    const next = nextJournalTradeSort(sort, key);
+    setSort(next);
+    saveJournalTradeSort(next);
+  };
 
   return (
     <div className="journalRows">
       <div className="journalRowsHead">
-        <span>Время</span>
+        <span className="journalSortHead">
+          <SortButton
+            label="История"
+            title="Время свечи входа, UTC. Повторный клик меняет направление."
+            sortKey="entryTime"
+            activeKey={sort.key}
+            dir={sort.dir}
+            onClick={() => changeSort("entryTime")}
+          />
+          <SortButton
+            label="Факт"
+            title="Когда сделку открыли у себя. Повторный клик меняет направление."
+            sortKey="placedAt"
+            activeKey={sort.key}
+            dir={sort.dir}
+            onClick={() => changeSort("placedAt")}
+          />
+        </span>
         <span>Инструмент</span>
         <span>Side</span>
         <span>Вход → выход</span>
@@ -47,7 +110,7 @@ export function JournalTradeTable({
         <span />
       </div>
       {trades.length === 0 && emptyText ? <div className="journalEmpty">{emptyText}</div> : null}
-      {trades.map((trade) => {
+      {rows.map((trade) => {
         const risk = tradeRisk(trade);
         const rMultiple = risk != null && trade.result != null ? trade.result / risk : null;
         const tone = trade.status !== "CLOSED" ? "open" : (trade.result ?? 0) >= 0 ? "pos" : "neg";
@@ -72,7 +135,14 @@ export function JournalTradeTable({
                 }
               }}
             >
-              <span className="journalRowTime">{formatDateTime(trade.entryTime)}</span>
+              <span className="journalRowTime">
+                <b className={sort.key === "entryTime" ? "is-sort" : undefined}>
+                  {formatDateTime(trade.entryTime)}
+                </b>
+                <i className={sort.key === "placedAt" ? "is-sort" : undefined}>
+                  {trade.placedAt ? formatLocalDateTime(trade.placedAt) : "—"}
+                </i>
+              </span>
               <span className="journalRowSymbol">
                 {datasetName(trade.datasetId)}
                 {trade.timeframeMinutes ? <i>{formatTimeframe(trade.timeframeMinutes)}</i> : null}
