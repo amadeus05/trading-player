@@ -4781,7 +4781,9 @@ aside {
   .fib-level-hit,
   .fib-handle,
   .pc-hit-area,
-  .pc-mid-handle
+  .pc-mid-handle,
+  .vp-hit-el,
+  .vp-handle-el
 ) {
   pointer-events: none !important;
 }
@@ -5341,8 +5343,9 @@ aside {
   cursor: move;
 }
 
-.vp-selected .vp-handle-el {
-  fill: rgba(91, 138, 240, 0.15);
+.vp-edge-line {
+  stroke: #5b8af0;
+  stroke-width: 1;
 }
 
 .vp-ghost {

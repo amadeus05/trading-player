@@ -20,6 +20,8 @@ import { createSelectionController } from "../shared/selection";
 export type VolumeProfileCallbacks = DrawingCrudCallbacks<VolumeProfile>;
 
 const SVG_NS = "http://www.w3.org/2000/svg";
+const TV_HANDLE_RADIUS = 5;
+const EDGE_HIT_WIDTH = 12;
 const SETTINGS_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M18 14a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm-1 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"></path><path fill-rule="evenodd" d="M8.5 5h11l5 9-5 9h-11l-5-9 5-9Zm-3.86 9L9.1 6h9.82l4.45 8-4.45 8H9.1l-4.45-8Z"></path></svg>`;
 
 export const VOLUME_PROFILE_DEFAULTS: Omit<VolumeProfile, "id" | "datasetId" | "timeLeft" | "timeRight"> = {
@@ -43,6 +45,12 @@ interface BinEls {
   sell: SVGRectElement;
 }
 
+interface VpEdgeEls {
+  hit: SVGRectElement;
+  line: SVGLineElement;
+  grips: SVGCircleElement[];
+}
+
 interface VpEls {
   group: SVGGElement;
   binsGroup: SVGGElement;
@@ -52,8 +60,8 @@ interface VpEls {
   vaHighLine: SVGLineElement;
   vaLowLine: SVGLineElement;
   bodyHit: SVGRectElement;
-  leftHandle: SVGRectElement;
-  rightHandle: SVGRectElement;
+  leftEdge: VpEdgeEls;
+  rightEdge: VpEdgeEls;
 }
 
 interface PixelSpan { left: number; right: number; }
@@ -178,16 +186,14 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
     const bodyHit = document.createElementNS(SVG_NS, "rect");
     bodyHit.setAttribute("class", "vp-hit-el");
     bodyHit.setAttribute("fill", "transparent");
-    const leftHandle = document.createElementNS(SVG_NS, "rect");
-    leftHandle.setAttribute("class", "vp-handle-el");
-    leftHandle.setAttribute("fill", "transparent");
-    leftHandle.style.cursor = "ew-resize";
-    const rightHandle = document.createElementNS(SVG_NS, "rect");
-    rightHandle.setAttribute("class", "vp-handle-el");
-    rightHandle.setAttribute("fill", "transparent");
-    rightHandle.style.cursor = "ew-resize";
+    const leftEdge = makeEdgeEls();
+    const rightEdge = makeEdgeEls();
 
-    group.append(vaBg, binsGroup, pocLine, vaHighLine, vaLowLine, bodyHit, leftHandle, rightHandle);
+    group.append(
+      vaBg, binsGroup, pocLine, vaHighLine, vaLowLine, bodyHit,
+      leftEdge.hit, rightEdge.hit, leftEdge.line, rightEdge.line,
+      ...leftEdge.grips, ...rightEdge.grips,
+    );
 
     bodyHit.addEventListener("pointerdown", (e) => {
       if (!manager.canEditExistingDrawings()) return;
@@ -198,24 +204,63 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
       if (v.locked) return;
       startBodyDrag(vp.id, e as PointerEvent);
     });
-    leftHandle.addEventListener("pointerdown", (e) => {
-      if (!manager.canEditExistingDrawings()) return;
-      e.stopPropagation(); e.preventDefault();
-      const v = profiles.find((item) => item.id === vp.id);
-      if (!v || v.locked) return;
-      selectProfile(vp.id);
-      startEdgeDrag(vp.id, "left", e as PointerEvent);
-    });
-    rightHandle.addEventListener("pointerdown", (e) => {
-      if (!manager.canEditExistingDrawings()) return;
-      e.stopPropagation(); e.preventDefault();
-      const v = profiles.find((item) => item.id === vp.id);
-      if (!v || v.locked) return;
-      selectProfile(vp.id);
-      startEdgeDrag(vp.id, "right", e as PointerEvent);
-    });
+    bindEdgePointer(leftEdge, vp.id, "left");
+    bindEdgePointer(rightEdge, vp.id, "right");
 
-    return { group, binsGroup, bins: [], vaBg, pocLine, vaHighLine, vaLowLine, bodyHit, leftHandle, rightHandle };
+    return { group, binsGroup, bins: [], vaBg, pocLine, vaHighLine, vaLowLine, bodyHit, leftEdge, rightEdge };
+  }
+
+  /** Как у TV: тонкая граница диапазона и кружки, без залитого столбика. */
+  function makeEdgeEls(): VpEdgeEls {
+    const hit = document.createElementNS(SVG_NS, "rect");
+    hit.setAttribute("class", "vp-handle-el");
+    hit.setAttribute("fill", "transparent");
+    hit.style.cursor = "ew-resize";
+    const line = document.createElementNS(SVG_NS, "line");
+    line.setAttribute("class", "vp-edge-line");
+    line.setAttribute("pointer-events", "none");
+    const grips = [0, 1, 2].map(() => {
+      const grip = document.createElementNS(SVG_NS, "circle");
+      grip.setAttribute("class", "rect-handle-el vp-handle-el");
+      grip.setAttribute("r", String(TV_HANDLE_RADIUS));
+      grip.style.cursor = "ew-resize";
+      return grip;
+    });
+    return { hit, line, grips };
+  }
+
+  function bindEdgePointer(edgeEls: VpEdgeEls, id: string, edge: "left" | "right") {
+    const onDown = (e: Event) => {
+      if (!manager.canEditExistingDrawings()) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const v = profiles.find((item) => item.id === id);
+      if (!v || v.locked) return;
+      selectProfile(id);
+      startEdgeDrag(id, edge, e as PointerEvent);
+    };
+    edgeEls.hit.addEventListener("pointerdown", onDown);
+    edgeEls.grips.forEach((grip) => grip.addEventListener("pointerdown", onDown));
+  }
+
+  function layoutEdge(edgeEls: VpEdgeEls, x: number, top: number, height: number, visible: boolean) {
+    const show = visible ? "" : "none";
+    edgeEls.hit.setAttribute("x", String(x - EDGE_HIT_WIDTH / 2));
+    edgeEls.hit.setAttribute("y", String(top));
+    edgeEls.hit.setAttribute("width", String(EDGE_HIT_WIDTH));
+    edgeEls.hit.setAttribute("height", String(Math.max(0, height)));
+    edgeEls.hit.style.display = show;
+    edgeEls.line.setAttribute("x1", String(x));
+    edgeEls.line.setAttribute("x2", String(x));
+    edgeEls.line.setAttribute("y1", String(top));
+    edgeEls.line.setAttribute("y2", String(top + height));
+    edgeEls.line.style.display = show;
+    const ys = [top, top + height / 2, top + height];
+    edgeEls.grips.forEach((grip, index) => {
+      grip.setAttribute("cx", String(x));
+      grip.setAttribute("cy", String(ys[index]));
+      grip.style.display = show;
+    });
   }
 
   function ensureBinCount(els: VpEls, count: number) {
@@ -329,8 +374,8 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
     const yRangeBottom = series.priceToCoordinate(computed.rangeLow);
     if (yRangeTop == null || yRangeBottom == null) {
       els.bodyHit.style.display = "none";
-      els.leftHandle.style.display = "none";
-      els.rightHandle.style.display = "none";
+      layoutEdge(els.leftEdge, 0, 0, 0, false);
+      layoutEdge(els.rightEdge, 0, 0, 0, false);
       els.group.classList.toggle("vp-selected", selection.isSelected(vp.id));
       return;
     }
@@ -345,17 +390,9 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
     els.bodyHit.style.cursor = vp.locked ? "default" : "move";
 
     const selected = selection.isSelected(vp.id);
-    const handleW = 6;
-    els.leftHandle.setAttribute("x", String(left - handleW / 2));
-    els.leftHandle.setAttribute("y", String(top));
-    els.leftHandle.setAttribute("width", String(handleW));
-    els.leftHandle.setAttribute("height", String(rangeHeight));
-    els.leftHandle.style.display = selected && !vp.locked ? "" : "none";
-    els.rightHandle.setAttribute("x", String(right - handleW / 2));
-    els.rightHandle.setAttribute("y", String(top));
-    els.rightHandle.setAttribute("width", String(handleW));
-    els.rightHandle.setAttribute("height", String(rangeHeight));
-    els.rightHandle.style.display = selected && !vp.locked ? "" : "none";
+    const showHandles = selected && !vp.locked;
+    layoutEdge(els.leftEdge, left, top, rangeHeight, showHandles);
+    layoutEdge(els.rightEdge, right, top, rangeHeight, showHandles);
     els.group.classList.toggle("vp-selected", selected);
   }
 
