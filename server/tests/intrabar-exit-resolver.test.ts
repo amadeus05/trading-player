@@ -69,3 +69,99 @@ test("sorts lower candles before resolving their order", () => {
   const result = resolver.resolve([candle(10, 101, 94), candle(0), candle(5, 106)], START, 15 * M, long);
   assert.deepEqual(result, { kind: "resolved", outcome: "TP", candleTime: START + 5 * M });
 });
+
+test("playhead clips SL/TP to already-played lower bars inside a higher TF candle", () => {
+  const fourHour = 240 * M;
+  const bars = Array.from({ length: 48 }, (_, index) => {
+    // 10 сыгранных 5м, стоп только на 20-й — как ещё не доигранный хвост 4ч.
+    if (index === 19) return candle(index * 5, 101, 90);
+    return candle(index * 5);
+  });
+  const playheadAfterTen = START + 10 * 5 * M - 1;
+  assert.deepEqual(
+    resolver.resolve(bars, START, fourHour, long, playheadAfterTen),
+    { kind: "not-hit" },
+  );
+  assert.deepEqual(
+    resolver.resolve(bars, START, fourHour, long),
+    { kind: "resolved", outcome: "SL", candleTime: START + 19 * 5 * M },
+  );
+});
+
+test("playhead still resolves a hit that already happened before the playhead", () => {
+  const fourHour = 240 * M;
+  const bars = Array.from({ length: 48 }, (_, index) => (
+    index === 4 ? candle(index * 5, 106) : candle(index * 5)
+  ));
+  const playheadAfterTen = START + 10 * 5 * M - 1;
+  assert.deepEqual(
+    resolver.resolve(bars, START, fourHour, long, playheadAfterTen),
+    { kind: "resolved", outcome: "TP", candleTime: START + 4 * 5 * M },
+  );
+});
+
+test("playhead at the parent bar end matches resolve without a playhead", () => {
+  const bars = [candle(0), candle(5, 106), candle(10, 101, 94)];
+  const parentEnd = START + 15 * M - 1;
+  assert.deepEqual(
+    resolver.resolve(bars, START, 15 * M, long, parentEnd),
+    resolver.resolve(bars, START, 15 * M, long),
+  );
+});
+
+test("playhead before the parent bar is not a hit", () => {
+  const bars = [candle(0, 106), candle(5, 101, 94), candle(10)];
+  assert.deepEqual(
+    resolver.resolve(bars, START, 15 * M, long, START - 1),
+    { kind: "not-hit" },
+  );
+});
+
+test("a gap after the playhead does not invalidate the already-played prefix", () => {
+  const fourHour = 240 * M;
+  const bars = Array.from({ length: 48 }, (_, index) => candle(index * 5))
+    .filter((_, index) => index !== 30);
+  const playheadAfterTen = START + 10 * 5 * M - 1;
+  assert.deepEqual(
+    resolver.resolve(bars, START, fourHour, long, playheadAfterTen),
+    { kind: "not-hit" },
+  );
+  assert.deepEqual(
+    resolver.resolve(bars, START, fourHour, long),
+    { kind: "fallback", reason: "incomplete-window" },
+  );
+});
+
+test("a gap before the playhead still falls back", () => {
+  const bars = [candle(0), candle(10), candle(15)];
+  assert.deepEqual(
+    resolver.resolve(bars, START, 15 * M, long, START + 15 * M - 1),
+    { kind: "fallback", reason: "incomplete-window" },
+  );
+});
+
+test("playhead ignores SL on a later 5m for a short trade", () => {
+  const short = { side: "SHORT" as const, sl: 105, tp: 95 };
+  const bars = [candle(0), candle(5), candle(10, 106)];
+  assert.deepEqual(
+    resolver.resolve(bars, START, 15 * M, short, START + 10 * M - 1),
+    { kind: "not-hit" },
+  );
+  assert.deepEqual(
+    resolver.resolve(bars, START, 15 * M, short, START + 15 * M - 1),
+    { kind: "resolved", outcome: "SL", candleTime: START + 10 * M },
+  );
+});
+
+test("playhead ignores an ambiguous later 5m and still flags an ambiguous played 5m", () => {
+  const laterAmbiguous = [candle(0), candle(5), candle(10, 106, 94)];
+  assert.deepEqual(
+    resolver.resolve(laterAmbiguous, START, 15 * M, long, START + 10 * M - 1),
+    { kind: "not-hit" },
+  );
+  const playedAmbiguous = [candle(0, 106, 94), candle(5), candle(10)];
+  assert.deepEqual(
+    resolver.resolve(playedAmbiguous, START, 15 * M, long, START + 10 * M - 1),
+    { kind: "fallback", reason: "ambiguous-lower-candle" },
+  );
+});

@@ -361,6 +361,7 @@ export function PlayerPage() {
     rawCandles: intrabarCandles,
     currentCandle: cur,
     timeframe: tf,
+    getPlayheadTime,
     settings: simulationSettings,
     pricePrecision,
     availableBalance: accountStats.availableBalance,

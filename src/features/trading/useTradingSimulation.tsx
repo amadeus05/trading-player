@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, type Dispatch, type SetStateAc
 import { App as AntApp } from "antd";
 import type { Candle, Persisted, SimulationSettings, Trade } from "../../types";
 import { formatNumber, formatPrice } from "../../shared/lib/market";
-import { advanceSimulation, type SimulationEvent } from "./lib/advanceSimulation";
+import { advanceSimulation, simulationTickKey, type SimulationEvent } from "./lib/advanceSimulation";
 import { calculateManualClose } from "./lib/calculateTradeResult";
 import { createOrder, type CreateOrderError } from "./lib/createOrder";
 import type { TradeEditDraft } from "./types";
@@ -16,6 +16,7 @@ interface UseTradingSimulationOptions {
   rawCandles: Candle[];
   currentCandle?: Candle;
   timeframe: number;
+  getPlayheadTime?: () => number | null;
   settings: SimulationSettings;
   pricePrecision: number;
   availableBalance: number;
@@ -38,6 +39,7 @@ export function useTradingSimulation({
   rawCandles,
   currentCandle,
   timeframe,
+  getPlayheadTime,
   settings,
   pricePrecision,
   availableBalance,
@@ -64,9 +66,6 @@ export function useTradingSimulation({
     () => state.trades.filter((trade) => trade.status === "OPEN" || trade.status === "PENDING"),
     [state.trades],
   );
-  const tickKey = currentCandle
-    ? `${datasetId}:${timeframe}:${currentCandle.time}`
-    : null;
 
   const notifyTradeClosed = useCallback((
     trade: Trade,
@@ -105,7 +104,19 @@ export function useTradingSimulation({
   }, [message, notifyTradeClosed, pricePrecision]);
 
   useEffect(() => {
-    if (!enabled || !currentCandle || !tickKey || processedTick.current === tickKey) return;
+    if (!enabled || !currentCandle) return;
+    // Голову не подменяем open свечи: иначе scanUntil = open+1, а processedTick
+    // запоминает ложный not-hit. Пока ref пустой — просто ждём.
+    const playheadTime = getPlayheadTime?.() ?? null;
+    if (playheadTime == null) return;
+    const tickKey = simulationTickKey(
+      datasetId,
+      timeframe,
+      currentCandle.time,
+      playheadTime,
+      rawCandles,
+    );
+    if (processedTick.current === tickKey) return;
     processedTick.current = tickKey;
     const advanced = advanceSimulation({
       state,
@@ -113,18 +124,20 @@ export function useTradingSimulation({
       candle: currentCandle,
       timeframeMinutes: timeframe,
       settings,
+      playheadTime,
     });
     if (advanced.state !== state) setState(advanced.state);
     advanced.events.forEach(publishSimulationEvent);
   }, [
     currentCandle,
+    datasetId,
     enabled,
+    getPlayheadTime,
     publishSimulationEvent,
     rawCandles,
     setState,
     settings,
     state,
-    tickKey,
     timeframe,
   ]);
 

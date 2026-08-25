@@ -52,6 +52,7 @@ export class IntrabarExitResolver {
     parentOpenTime: number,
     parentTimeframeSeconds: number,
     barrier: ExitBarrier,
+    playheadTime?: number,
   ): IntrabarResolution {
     if (source.length < 2) return { kind: "fallback", reason: "insufficient-data" };
     const { ordered, interval: lowerTimeframe } = this.normalize(source);
@@ -60,17 +61,34 @@ export class IntrabarExitResolver {
       return { kind: "fallback", reason: "incompatible-timeframe" };
     }
 
-    const expectedCount = parentTimeframeSeconds / lowerTimeframe;
-    const endTime = parentOpenTime + parentTimeframeSeconds;
+    const parentEnd = parentOpenTime + parentTimeframeSeconds;
+    // Форвардный буфер уже содержит 5м после головы. График их не рисует —
+    // SL/TP тоже не должен. Без playhead проверяем родителя целиком.
+    const scanUntil = playheadTime == null ? parentEnd : Math.min(parentEnd, playheadTime + 1);
+    if (scanUntil <= parentOpenTime) return { kind: "not-hit" };
+
     const windowStart = this.lowerBound(ordered, parentOpenTime);
-    const windowEnd = this.lowerBound(ordered, endTime);
+    const windowEnd = this.lowerBound(ordered, scanUntil);
     const windowLength = windowEnd - windowStart;
-    if (
-      windowLength !== expectedCount ||
-      ordered[windowStart]?.time !== parentOpenTime ||
-      ordered[windowEnd - 1]?.time !== endTime - lowerTimeframe
-    ) {
-      return { kind: "fallback", reason: "incomplete-window" };
+    if (playheadTime == null) {
+      const expectedCount = parentTimeframeSeconds / lowerTimeframe;
+      if (
+        windowLength !== expectedCount ||
+        ordered[windowStart]?.time !== parentOpenTime ||
+        ordered[windowEnd - 1]?.time !== parentEnd - lowerTimeframe
+      ) {
+        return { kind: "fallback", reason: "incomplete-window" };
+      }
+    } else {
+      if (windowLength === 0) return { kind: "not-hit" };
+      if (ordered[windowStart]?.time !== parentOpenTime) {
+        return { kind: "fallback", reason: "incomplete-window" };
+      }
+      for (let offset = 0; offset < windowLength; offset += 1) {
+        if (ordered[windowStart + offset].time !== parentOpenTime + offset * lowerTimeframe) {
+          return { kind: "fallback", reason: "incomplete-window" };
+        }
+      }
     }
 
     for (let index = windowStart; index < windowEnd; index += 1) {

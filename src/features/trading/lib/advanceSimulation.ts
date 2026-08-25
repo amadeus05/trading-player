@@ -1,5 +1,6 @@
 import type { Candle, Persisted, SimulationSettings, Trade } from "../../../types";
 import { IntrabarExitResolver } from "../../../simulation/IntrabarExitResolver";
+import { buildPartialCandle } from "../../replay/playheadCandle";
 import { calculateBarrierClose } from "./calculateTradeResult";
 
 const intrabarExitResolver = new IntrabarExitResolver();
@@ -20,6 +21,21 @@ interface AdvanceSimulationOptions {
   candle: Candle;
   timeframeMinutes: number;
   settings: SimulationSettings;
+  /** Голова плеера: SL/TP видит тот же отрезок, что и частичная свеча на графике. */
+  playheadTime?: number;
+}
+
+/** Тик в UI зависит от головы и окна 5м, не только от открытия бакета. */
+export function simulationTickKey(
+  datasetId: string,
+  timeframeMinutes: number,
+  candleTime: number,
+  playheadTime: number,
+  rawCandles: Pick<Candle, "time">[],
+): string {
+  const from = rawCandles[0]?.time ?? "";
+  const to = rawCandles.at(-1)?.time ?? "";
+  return `${datasetId}:${timeframeMinutes}:${candleTime}:${playheadTime}:${rawCandles.length}:${from}:${to}`;
 }
 
 export interface AdvanceSimulationResult {
@@ -52,7 +68,11 @@ export function advanceSimulation({
   candle,
   timeframeMinutes,
   settings,
+  playheadTime,
 }: AdvanceSimulationOptions): AdvanceSimulationResult {
+  if (playheadTime != null && candle.time > playheadTime) {
+    return { state, events: [] };
+  }
   const events: SimulationEvent[] = [];
   const filledIds = new Set(
     state.trades
@@ -75,11 +95,16 @@ export function advanceSimulation({
       candle.time,
       timeframeMinutes * 60,
       trade,
+      playheadTime,
     );
     if (intrabar.kind === "not-hit") return [];
+    const playedCandle = playheadTime == null
+      ? candle
+      : buildPartialCandle(rawCandles, candle.time, playheadTime);
+    if (intrabar.kind !== "resolved" && !playedCandle) return [];
     const outcome = intrabar.kind === "resolved"
       ? intrabar.outcome
-      : resolveFallbackOutcome(trade, candle, settings);
+      : resolveFallbackOutcome(trade, playedCandle ?? candle, settings);
     if (!outcome) return [];
     const exitTime = intrabar.kind === "resolved" ? intrabar.candleTime : candle.time;
     const close = calculateBarrierClose(trade, outcome, settings);
