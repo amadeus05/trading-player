@@ -1,4 +1,4 @@
-export const MARKET_CATEGORIES = ["linear", "inverse", "spot"] as const;
+export const MARKET_CATEGORIES = ["linear", "inverse", "spot", "forex"] as const;
 export type MarketCategory = (typeof MARKET_CATEGORIES)[number];
 
 export interface DownloadRequest {

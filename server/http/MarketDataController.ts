@@ -2,6 +2,7 @@ import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import { SUPPORTED_TIMEFRAMES, type Timeframe } from "../domain/Candle.js";
 import { normalizeMarketCategory, normalizeMarketSymbol, normalizeRequest } from "../domain/MarketRequest.js";
+import { forexInstruments } from "../domain/instruments.js";
 import { MarketDataService } from "../application/MarketDataService.js";
 import { DownloadJobManager } from "../application/DownloadJobManager.js";
 
@@ -23,6 +24,9 @@ export class MarketDataController {
     this.router.get("/candles", this.candles);
     this.router.delete("/history/:category/:symbol", this.removeHistory);
     this.router.get("/timeframes", (_req, res) => res.json(SUPPORTED_TIMEFRAMES));
+    // Крипты у Bybit тысячи, её символ остаётся вводом; форекс же ограничен
+    // проверенным списком, и интерфейсу нужно откуда-то его брать.
+    this.router.get("/instruments", (_req, res) => res.json({ forex: forexInstruments() }));
   }
 
   private download = async (req: Request, res: Response) => {
