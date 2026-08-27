@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { BASE_INTERVAL_MS, isClosedMarketCandle } from "../domain/Candle.js";
-import { feedInstrument, FOREX_SYMBOLS } from "../domain/instruments.js";
+import { DUKASCOPY_SYMBOLS, feedInstrument } from "../domain/instruments.js";
 import { ticksToCandles, TICK_RECORD_SIZE } from "../infrastructure/dukascopy/ticksToCandles.js";
 
 const HOUR = Date.UTC(2024, 0, 3, 9);
@@ -96,7 +96,7 @@ describe("ticksToCandles", () => {
   });
 });
 
-describe("реестр инструментов", () => {
+describe("настройки тикового фида", () => {
   test("символ ищется без учёта регистра, неизвестный не выдумывается", () => {
     assert.equal(feedInstrument("eurusd")?.priceDivisor, 1e5);
     assert.equal(feedInstrument("XAUUSD")?.priceDivisor, 1e3);
@@ -104,10 +104,12 @@ describe("реестр инструментов", () => {
   });
 
   /**
-   * Результат сделки считается в валюте котировки, а конвертации у нас пока
-   * нет, поэтому в реестр допускаются только инструменты с долларом в котировке.
+   * Делитель цен нельзя вывести из кода инструмента, его проверяют запросом.
+   * Поэтому здесь только проверенные инструменты — в отличие от списка
+   * доступного для закачки, который целиком приходит от источника.
    */
-  test("в реестре только инструменты с котировкой в долларе", () => {
-    for (const symbol of FOREX_SYMBOLS) assert.match(symbol, /USD$/);
+  test("проверенных инструментов меньше, чем отдаёт источник", () => {
+    assert.ok(DUKASCOPY_SYMBOLS.length > 0);
+    for (const symbol of DUKASCOPY_SYMBOLS) assert.equal(feedInstrument(symbol)?.feedSymbol, symbol);
   });
 });

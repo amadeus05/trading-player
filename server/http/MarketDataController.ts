@@ -1,10 +1,16 @@
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import { SUPPORTED_TIMEFRAMES, type Timeframe } from "../domain/Candle.js";
-import { normalizeMarketCategory, normalizeMarketSymbol, normalizeRequest } from "../domain/MarketRequest.js";
-import { forexInstruments } from "../domain/instruments.js";
+import {
+  normalizeMarketCategory,
+  normalizeMarketSymbol,
+  normalizeRequest,
+  type MarketCategory,
+} from "../domain/MarketRequest.js";
+import { describeInstrument, type MarketInstrument } from "../domain/instruments.js";
 import { MarketDataService } from "../application/MarketDataService.js";
 import { DownloadJobManager } from "../application/DownloadJobManager.js";
+import type { InstrumentSource } from "../application/ports/InstrumentSource.js";
 
 const timestamp = (value: unknown): number => {
   const numeric = Number(value);
@@ -15,7 +21,12 @@ const timestamp = (value: unknown): number => {
 
 export class MarketDataController {
   readonly router: Router = createRouter();
-  constructor(private readonly service: MarketDataService,private readonly jobs:DownloadJobManager) {
+  constructor(
+    private readonly service: MarketDataService,
+    private readonly jobs: DownloadJobManager,
+    /** Категории, у которых набор инструментов конечен и известен провайдеру. */
+    private readonly instrumentSources: Partial<Record<MarketCategory, InstrumentSource>> = {},
+  ) {
     this.router.post("/download", this.download);
     this.router.get("/catalog",async(_req,res)=>res.json(await this.service.catalog()));
     this.router.get("/jobs",(_req,res)=>res.json(this.jobs.list()));
@@ -24,10 +35,28 @@ export class MarketDataController {
     this.router.get("/candles", this.candles);
     this.router.delete("/history/:category/:symbol", this.removeHistory);
     this.router.get("/timeframes", (_req, res) => res.json(SUPPORTED_TIMEFRAMES));
-    // Крипты у Bybit тысячи, её символ остаётся вводом; форекс же ограничен
-    // проверенным списком, и интерфейсу нужно откуда-то его брать.
-    this.router.get("/instruments", (_req, res) => res.json({ forex: forexInstruments() }));
+    this.router.get("/instruments", this.instruments);
   }
+
+  /**
+   * Что можно скачать в категориях с конечным набором инструментов. Список
+   * спрашивается у провайдера, поэтому новый инструмент источника появляется в
+   * выборе сам, без правок в приложении.
+   */
+  private instruments = async (_req: Request, res: Response) => {
+    const listed: Record<string, MarketInstrument[]> = {};
+    for (const [category, source] of Object.entries(this.instrumentSources)) {
+      try {
+        listed[category] = (await source.symbols()).map(describeInstrument);
+      } catch (error) {
+        // Пустой список интерфейс покажет ручным вводом тикера — это лучше, чем
+        // ронять весь диалог загрузки из-за недоступного справочника.
+        listed[category] = [];
+        console.warn(`Список инструментов ${category} недоступен:`, error instanceof Error ? error.message : error);
+      }
+    }
+    res.json(listed);
+  };
 
   private download = async (req: Request, res: Response) => {
     try {

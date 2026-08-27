@@ -1,7 +1,7 @@
 import { decompressFile } from "lzma-purejs";
 import type { Candle } from "../domain/Candle.js";
 import type { DownloadRequest } from "../domain/MarketRequest.js";
-import { feedInstrument, FOREX_SYMBOLS, type FeedInstrument } from "../domain/instruments.js";
+import { DUKASCOPY_SYMBOLS, feedInstrument, type FeedInstrument } from "../domain/instruments.js";
 import type { MarketDataProvider } from "../application/ports/MarketDataProvider.js";
 import { ticksToCandles } from "./dukascopy/ticksToCandles.js";
 
@@ -36,7 +36,9 @@ export class DukascopyTickClient implements MarketDataProvider {
   async getPage(request: DownloadRequest): Promise<Candle[]> {
     const instrument = feedInstrument(request.symbol);
     if (!instrument) {
-      throw new Error(`Инструмент ${request.symbol} не поддержан. Доступны: ${FOREX_SYMBOLS.join(", ")}`);
+      throw new Error(
+        `Делитель цен ${request.symbol} в фиде не проверен. Проверены: ${DUKASCOPY_SYMBOLS.join(", ")}`,
+      );
     }
 
     const hours: number[] = [];

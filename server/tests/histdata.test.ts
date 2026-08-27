@@ -5,6 +5,7 @@ import { BASE_INTERVAL_MS } from "../domain/Candle.js";
 import { HistDataClient } from "../infrastructure/HistDataClient.js";
 import { archivePeriods } from "../infrastructure/histdata/archivePeriods.js";
 import { parseHistDataCsv, sliceCandles } from "../infrastructure/histdata/histDataCsv.js";
+import { parseHistDataInstruments } from "../infrastructure/histdata/instrumentIndex.js";
 import { readZipEntries } from "../infrastructure/histdata/zipArchive.js";
 
 const DEFLATED = 8;
@@ -244,12 +245,20 @@ const YEAR_2021_CSV = Array.from(
   (_, index) => `20210103 17${String(index).padStart(2, "0")}00;1.1;1.2;1.0;1.15;0`,
 ).join("\n");
 
+/** Страница списка инструментов: коды заглавные, как в разметке источника. */
+const indexPage = (codes: string[]) => `<html><body><ul>
+${codes.map((code) => `<li><a href="/download-free-forex-historical-data/?/ascii/1-minute-bar-quotes/${code}"`
+  + ` title="Download Generic .CSV File Historical M1 Bar Data quotes for ${code} forex pair">${code}</a></li>`).join("\n")}
+</ul></body></html>`;
+
 interface FakeSite {
   fetchImpl: typeof fetch;
   calls: string[];
 }
 
-function fakeSite(options: { token?: string; archive?: Buffer } = {}): FakeSite {
+function fakeSite(
+  options: { token?: string; archive?: Buffer; codes?: string[]; indexBroken?: () => boolean } = {},
+): FakeSite {
   const calls: string[] = [];
   const archive = options.archive ?? buildStreamedZip([
     { name: "DAT_ASCII_EURUSD_M1_2021.csv", content: YEAR_2021_CSV },
@@ -259,7 +268,12 @@ function fakeSite(options: { token?: string; archive?: Buffer } = {}): FakeSite 
   const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     calls.push(`${init?.method ?? "GET"} ${url}`);
-    if (url.includes("get.php")) return new Response(archive);
+    if (url.includes("get.php")) return new Response(new Uint8Array(archive));
+    // Список инструментов лежит на своей странице, а не на странице закачки.
+    if (url.includes("/download-free-forex-data/")) {
+      if (options.indexBroken?.()) return new Response("недоступно", { status: 503 });
+      return new Response(indexPage(options.codes ?? ["EURUSD"]));
+    }
     return new Response(formPage({
       tk: options.token ?? "токен",
       date: "2021",
@@ -334,15 +348,95 @@ describe("HistDataClient", () => {
     }), /токен/i);
   });
 
-  test("неизвестный инструмент называет доступные", async () => {
-    const site = fakeSite();
+  /**
+   * Ради этого список и спрашивается у источника: инструмент, которого нет в
+   * коде приложения, должен качаться так же, как любой другой.
+   */
+  test("качается любой инструмент источника, а не заранее прописанный", async () => {
+    const site = fakeSite({ codes: ["EURUSD", "GRXEUR"] });
     const client = new HistDataClient("https://histdata.test", site.fetchImpl, NOW_2026);
+    const from = Date.UTC(2021, 0, 3, 22, 0);
+
+    const candles = await client.getPage({
+      category: "forex",
+      symbol: "GRXEUR",
+      from,
+      to: from + 3 * BASE_INTERVAL_MS,
+    });
+
+    assert.equal(candles.length, 3);
+    assert.deepEqual(site.calls, [
+      "GET https://histdata.test/download-free-forex-historical-data/?/ascii/1-minute-bar-quotes/grxeur/2021",
+      "POST https://histdata.test/get.php",
+    ]);
+  });
+
+  test("инструмента нет у источника — говорим прямо, не идём в сеть", async () => {
+    const site = fakeSite({ codes: ["EURUSD", "GRXEUR"] });
+    const client = new HistDataClient("https://histdata.test", site.fetchImpl, NOW_2026);
+    await client.symbols();
+    const callsBefore = site.calls.length;
 
     await assert.rejects(() => client.getPage({
       category: "forex",
-      symbol: "USDJPY",
+      symbol: "ABCXYZ",
       from: Date.UTC(2021, 0, 3, 22, 0),
       to: Date.UTC(2021, 0, 3, 23, 0),
-    }), /EURUSD/);
+    }), /ABCXYZ у HistData нет/);
+    assert.equal(site.calls.length, callsBefore);
+  });
+});
+
+describe("список инструментов HistData", () => {
+  test("коды берутся со страницы списка", () => {
+    const html = indexPage(["EURUSD", "GRXEUR", "USDJPY"])
+      + '<a href="/download-free-forex-data/?/ascii/tick-data-quotes">тики</a>';
+
+    assert.deepEqual(parseHistDataInstruments(html), ["EURUSD", "GRXEUR", "USDJPY"]);
+  });
+
+  /** Строчные коды встречаются в наших собственных адресах закачки. */
+  test("повторы схлопываются, адреса закачки инструментами не считаются", () => {
+    const html = indexPage(["EURUSD", "EURUSD"])
+      + '<a href="/download-free-forex-historical-data/?/ascii/1-minute-bar-quotes/eurusd/2021">2021</a>';
+
+    assert.deepEqual(parseHistDataInstruments(html), ["EURUSD"]);
+  });
+
+  test("список спрашивается один раз на срок кэша", async () => {
+    const site = fakeSite({ codes: ["EURUSD", "USDJPY"] });
+    const client = new HistDataClient("https://histdata.test", site.fetchImpl, NOW_2026);
+
+    assert.deepEqual(await client.symbols(), ["EURUSD", "USDJPY"]);
+    assert.deepEqual(await client.symbols(), ["EURUSD", "USDJPY"]);
+    assert.equal(site.calls.length, 1);
+  });
+
+  /** Сайт мог лечь на минуту, а набор инструментов от этого не пропал. */
+  test("недоступный список отдаётся просроченным, а не пустым", async () => {
+    let broken = false;
+    const site = fakeSite({ codes: ["EURUSD", "XAUUSD"], indexBroken: () => broken });
+    let clock = Date.UTC(2026, 7, 26);
+    const client = new HistDataClient("https://histdata.test", site.fetchImpl, () => clock, 3, 0);
+
+    await client.symbols();
+    broken = true;
+    clock += 7 * 3_600_000;
+
+    assert.deepEqual(await client.symbols(), ["EURUSD", "XAUUSD"]);
+  });
+
+  test("список не приходил и не пришёл — ошибка, а не тишина", async () => {
+    const site = fakeSite({ indexBroken: () => true });
+    const client = new HistDataClient("https://histdata.test", site.fetchImpl, NOW_2026, 3, 0);
+
+    await assert.rejects(() => client.symbols(), /HistData/);
+  });
+
+  test("страница без ссылок на инструменты считается поломкой", async () => {
+    const site = fakeSite({ codes: [] });
+    const client = new HistDataClient("https://histdata.test", site.fetchImpl, NOW_2026, 3, 0);
+
+    await assert.rejects(() => client.symbols(), /не перечислил инструменты/);
   });
 });

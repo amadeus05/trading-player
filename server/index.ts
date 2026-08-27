@@ -46,14 +46,15 @@ async function bootstrap() {
   const candleStore = new BinaryCandleStore(join(dataRoot, "market"));
   const storeReady = candleStore.init();
   const bybit = new BybitKlineClient();
+  // Форекс берём из годовых архивов HistData: тиковый фид Dukascopy отдаёт файл
+  // на час и глушит частые запросы, поэтому годами истории он качается сутками.
+  // DukascopyTickClient остаётся для точечной докачки дыр.
+  const histData = new HistDataClient();
   const provider = new MarketDataProviderRouter({
     linear: bybit,
     inverse: bybit,
     spot: bybit,
-    // Форекс берём из годовых архивов HistData: тиковый фид Dukascopy отдаёт
-    // файл на час и глушит частые запросы, поэтому годами истории он качается
-    // сутками. DukascopyTickClient остаётся для точечной докачки дыр.
-    forex: new HistDataClient(),
+    forex: histData,
   });
   const marketService = new MarketDataService(
     provider, candleStore, new RangePlanner(), new CandleValidator(), 8,
@@ -68,7 +69,7 @@ async function bootstrap() {
       res.status(503).json({ error: "Хранилище свечей не поднялось" });
     });
   });
-  app.use("/api/market", new MarketDataController(marketService, jobs).router);
+  app.use("/api/market", new MarketDataController(marketService, jobs, { forex: histData }).router);
   app.get("/api/health", (_req, res) => res.json({ ok: true, marketData: ready ? "ready" : "starting" }));
   app.listen(4174, () => console.log("Replay API: http://localhost:4174"));
   await storeReady;

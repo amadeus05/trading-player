@@ -1,9 +1,10 @@
 import type { Candle } from "../domain/Candle.js";
 import type { DownloadRequest } from "../domain/MarketRequest.js";
-import { feedInstrument, FOREX_SYMBOLS } from "../domain/instruments.js";
 import type { MarketDataProvider } from "../application/ports/MarketDataProvider.js";
+import type { InstrumentSource } from "../application/ports/InstrumentSource.js";
 import { archivePeriods, type ArchivePeriod } from "./histdata/archivePeriods.js";
 import { EMPTY_CANDLES, parseHistDataCsv, sliceCandles, type PackedCandles } from "./histdata/histDataCsv.js";
+import { INSTRUMENT_INDEX_PATH, parseHistDataInstruments } from "./histdata/instrumentIndex.js";
 import { isZip, readZipEntries } from "./histdata/zipArchive.js";
 
 /**
@@ -28,8 +29,9 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * собираются вручную, а берутся из формы целиком — так смена набора параметров
  * на стороне сайта не потребует правок здесь.
  */
-export class HistDataClient implements MarketDataProvider {
+export class HistDataClient implements MarketDataProvider, InstrumentSource {
   private readonly archives = new Map<string, Promise<PackedCandles>>();
+  private instruments: { at: number; codes: string[] } | null = null;
 
   constructor(
     private readonly baseUrl = "https://www.histdata.com",
@@ -37,18 +39,48 @@ export class HistDataClient implements MarketDataProvider {
     private readonly now: () => number = Date.now,
     private readonly cachedArchives = 3,
     private readonly retries = 3,
+    private readonly instrumentsTtlMs = 6 * 3_600_000,
   ) {}
 
+  /**
+   * Набор инструментов источника. Кэшируется на часы: он меняется парой записей
+   * в год, а спрашивают его каждым открытием диалога загрузки.
+   */
+  async symbols(): Promise<string[]> {
+    if (this.instruments && this.now() - this.instruments.at < this.instrumentsTtlMs) {
+      return this.instruments.codes;
+    }
+
+    const url = `${this.baseUrl}${INSTRUMENT_INDEX_PATH}`;
+    try {
+      const html = await this.request(url, { headers: { "user-agent": USER_AGENT, accept: "text/html" } })
+        .then((response) => response.text());
+      const codes = parseHistDataInstruments(html);
+      if (!codes.length) throw new Error(`HistData не перечислил инструменты по ${url}`);
+      this.instruments = { at: this.now(), codes };
+      return codes;
+    } catch (error) {
+      // Просроченный список лучше пустого: сайт мог лечь на минуту, а набор
+      // инструментов от этого никуда не делся.
+      if (this.instruments) return this.instruments.codes;
+      throw error;
+    }
+  }
+
   async getPage(request: DownloadRequest): Promise<Candle[]> {
-    const instrument = feedInstrument(request.symbol);
-    if (!instrument) {
-      throw new Error(`Инструмент ${request.symbol} не поддержан. Доступны: ${FOREX_SYMBOLS.join(", ")}`);
+    const pair = request.symbol.trim().toLowerCase();
+    // Проверяем только по уже известному списку и не идём за ним в сеть: иначе
+    // недоступный справочник ронял бы и саму загрузку. Если списка ещё нет,
+    // ошибку про несуществующий инструмент выдаст сам источник — страницы такой
+    // пары у него не будет.
+    if (this.instruments && !this.instruments.codes.includes(pair.toUpperCase())) {
+      throw new Error(`Инструмента ${request.symbol} у HistData нет`);
     }
 
     const currentYear = new Date(this.now()).getUTCFullYear();
     const candles: Candle[] = [];
     for (const period of archivePeriods(request.from, request.to, currentYear)) {
-      const packed = await this.archive(instrument.histDataPair, period);
+      const packed = await this.archive(pair, period);
       candles.push(...sliceCandles(packed, request.from, request.to));
     }
 
