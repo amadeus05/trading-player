@@ -1,6 +1,7 @@
 import type { IChartApi } from "lightweight-charts";
 import type { Candle } from "../../types";
 import { timeToX } from "../../drawing/shared/coordinates";
+import { inferTimeframeMinutes } from "../datasets/marketCandleRanges";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DAY = 24 * 3_600;
@@ -131,6 +132,58 @@ function sessionSegments(session: SessionDef, fromTs: number, toTs: number): Seg
   return segments;
 }
 
+/** Индекс последнего бара со временем не позже `time`; -1 — все бары позже. */
+function lastBarAtOrBefore(candles: Candle[], time: number): number {
+  let low = 0;
+  let high = candles.length - 1;
+  let found = -1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (candles[mid].time <= time) {
+      found = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return found;
+}
+
+/**
+ * Отрезок сессии, обрезанный по фактически торговавшимся барам.
+ *
+ * Шкала времени графика нумерует бары, а не минуты: простой рынка сжат на ней
+ * до одного шага бара. У круглосуточной крипты простоев нет, а у форекса
+ * выходные без баров превращали сессии субботы и воскресенья в узкие полоски-
+ * «щепки», висящие над графиком. Край отрезка, попавший в простой, притягиваем
+ * к ближайшему реальному бару, а отрезок целиком внутри простоя отбрасываем.
+ * На данных без простоев функция ничего не меняет.
+ */
+export function clampSegmentToBars(
+  segment: Segment,
+  candles: Candle[],
+  barStepSeconds: number,
+): Segment | null {
+  if (candles.length < 2) return null;
+  const gapLimit = Math.max(barStepSeconds, 1) * 1.5;
+
+  /** Соседи момента внутри простоя — иначе null. */
+  const gapAround = (time: number): { before: number; after: number } | null => {
+    const index = lastBarAtOrBefore(candles, time);
+    if (index < 0 || index >= candles.length - 1) return null;
+    if (candles[index].time === time) return null;
+    const before = candles[index].time;
+    const after = candles[index + 1].time;
+    return after - before > gapLimit ? { before, after } : null;
+  };
+
+  const startGap = gapAround(segment.start);
+  const endGap = gapAround(segment.end);
+  const start = startGap ? startGap.after : segment.start;
+  const end = endGap ? endGap.before : segment.end;
+  return start < end ? { start, end } : null;
+}
+
 export function attachSessionsOverlay({
   container,
   chart,
@@ -177,6 +230,18 @@ export function attachSessionsOverlay({
 
   const hideAll = () => TRADING_SESSIONS.forEach((session) => hideFrom(session, 0));
 
+  // Шаг бара нужен каждому кадру, а массив свечей меняется редко: считаем один
+  // раз на массив, чтобы не проходить его на каждой прокрутке.
+  let stepSource: Candle[] | null = null;
+  let stepSeconds = 60;
+  const barStep = (candles: Candle[]) => {
+    if (candles !== stepSource) {
+      stepSource = candles;
+      stepSeconds = inferTimeframeMinutes(candles, 1) * 60;
+    }
+    return stepSeconds;
+  };
+
   const sync = () => {
     if (!visible) {
       hideAll();
@@ -203,12 +268,15 @@ export function attachSessionsOverlay({
     }
 
     const plotWidth = Math.max(0, Number(chart.timeScale().width()) || 0);
+    const stepSeconds = barStep(candles);
 
     TRADING_SESSIONS.forEach((session, rowIndex) => {
       const y = RIBBON_TOP + rowIndex * (ROW_HEIGHT + ROW_GAP);
       const segments = sessionSegments(session, fromTs, toTs);
       let used = 0;
-      segments.forEach((segment) => {
+      segments.forEach((rawSegment) => {
+        const segment = clampSegmentToBars(rawSegment, candles, stepSeconds);
+        if (!segment) return;
         const rawX1 = timeToX(chart, segment.start, candles);
         const rawX2 = timeToX(chart, segment.end, candles);
         if (rawX1 == null || rawX2 == null) return;
