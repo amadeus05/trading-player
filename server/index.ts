@@ -3,9 +3,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BybitKlineClient } from "./infrastructure/BybitKlineClient.js";
+import { HistDataClient } from "./infrastructure/HistDataClient.js";
 import { BinaryCandleStore } from "./infrastructure/BinaryCandleStore.js";
 import { RangePlanner } from "./application/RangePlanner.js";
 import { CandleValidator } from "./application/CandleValidator.js";
+import { MarketDataProviderRouter } from "./application/MarketDataProviderRouter.js";
 import { MarketDataService } from "./application/MarketDataService.js";
 import { MarketDataController } from "./http/MarketDataController.js";
 import { DownloadJobManager } from "./application/DownloadJobManager.js";
@@ -43,8 +45,18 @@ async function bootstrap() {
   // одной папке символа, parquet файлами YYYY-MM.parquet, бинарь — YYYY.bin.
   const candleStore = new BinaryCandleStore(join(dataRoot, "market"));
   const storeReady = candleStore.init();
+  const bybit = new BybitKlineClient();
+  const provider = new MarketDataProviderRouter({
+    linear: bybit,
+    inverse: bybit,
+    spot: bybit,
+    // Форекс берём из годовых архивов HistData: тиковый фид Dukascopy отдаёт
+    // файл на час и глушит частые запросы, поэтому годами истории он качается
+    // сутками. DukascopyTickClient остаётся для точечной докачки дыр.
+    forex: new HistDataClient(),
+  });
   const marketService = new MarketDataService(
-    new BybitKlineClient(), candleStore, new RangePlanner(), new CandleValidator(), 8,
+    provider, candleStore, new RangePlanner(), new CandleValidator(), 8,
   );
   const jobs = new DownloadJobManager(marketService);
   let ready = false;
