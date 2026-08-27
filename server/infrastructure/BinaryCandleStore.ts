@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import type { FileHandle } from "node:fs/promises";
 import type { Candle, Timeframe } from "../domain/Candle.js";
 import { BASE_INTERVAL_MS, timeframeMs } from "../domain/Candle.js";
-import type { DownloadRequest, MarketCategory } from "../domain/MarketRequest.js";
+import { MARKET_CATEGORIES, type DownloadRequest, type MarketCategory } from "../domain/MarketRequest.js";
 import type { CandleRepository } from "../application/ports/CandleRepository.js";
 
 /**
@@ -54,6 +54,13 @@ const intervalLabel = (intervalMs: number): string => `${intervalMs / 60_000}m`;
 
 /** Цена не бывает нулевой, поэтому open=0 — надёжная метка пустого слота. */
 const isPresent = (view: Float64Array, slot: number): boolean => view[slot * RECORD_FIELDS] !== 0;
+
+/**
+ * Минута закрытого рынка: слот занят последней известной ценой, но торгов в нём
+ * не было. Метка — отрицательный оборот, см. CLOSED_MARKET_TURNOVER.
+ */
+const isClosedMarket = (view: Float64Array, slot: number): boolean =>
+  view[slot * RECORD_FIELDS + 5] < 0;
 
 function readHeader(buffer: Buffer): Header {
   if (buffer.readUInt32LE(0) !== MAGIC) throw new Error("Not a candle file");
@@ -200,9 +207,11 @@ export class BinaryCandleStore implements CandleRepository {
       view[at + 5] = candle.turnover;
     }
 
+    // Каталог должен показывать настоящую историю, поэтому минуты закрытого
+    // рынка не идут ни в счётчик, ни в границы диапазона.
     let present = 0, firstIndex = -1, lastIndex = -1;
     for (let slot = 0; slot < slots; slot += 1) {
-      if (!isPresent(view, slot)) continue;
+      if (!isPresent(view, slot) || isClosedMarket(view, slot)) continue;
       present += 1;
       if (firstIndex < 0) firstIndex = slot;
       lastIndex = slot;
@@ -233,7 +242,7 @@ export class BinaryCandleStore implements CandleRepository {
     const alignedFrom = Math.floor(from / bucketMs) * bucketMs;
     if (to <= alignedFrom) return [];
 
-    const buckets = new Map<number, { candle: Candle; count: number }>();
+    const buckets = new Map<number, { candle: Candle | null; count: number }>();
     for (let year = yearOf(alignedFrom); year <= yearOf(to - 1); year += 1) {
       const loaded = await this.readYear(category, symbol, year);
       if (!loaded) continue;
@@ -245,20 +254,24 @@ export class BinaryCandleStore implements CandleRepository {
         const at = slot * RECORD_FIELDS;
         const openTime = header.startTimeMs + slot * this.intervalMs;
         const bucketTime = Math.floor(openTime / bucketMs) * bucketMs;
-        const existing = buckets.get(bucketTime);
-        if (!existing) {
-          buckets.set(bucketTime, {
-            count: 1,
-            candle: {
-              openTime: bucketTime,
-              open: view[at], high: view[at + 1], low: view[at + 2],
-              close: view[at + 3], volume: view[at + 4], turnover: view[at + 5],
-            },
-          });
+        let entry = buckets.get(bucketTime);
+        if (!entry) {
+          entry = { candle: null, count: 0 };
+          buckets.set(bucketTime, entry);
+        }
+        entry.count += 1;
+        // Минута закрытого рынка занимает слот, поэтому держит полноту бакета,
+        // но в цены и объём не входит: торгов в ней не было.
+        if (isClosedMarket(view, slot)) continue;
+        if (!entry.candle) {
+          entry.candle = {
+            openTime: bucketTime,
+            open: view[at], high: view[at + 1], low: view[at + 2],
+            close: view[at + 3], volume: view[at + 4], turnover: view[at + 5],
+          };
           continue;
         }
-        existing.count += 1;
-        const candle = existing.candle;
+        const candle = entry.candle;
         if (view[at + 1] > candle.high) candle.high = view[at + 1];
         if (view[at + 2] < candle.low) candle.low = view[at + 2];
         candle.close = view[at + 3];
@@ -268,11 +281,13 @@ export class BinaryCandleStore implements CandleRepository {
     }
 
     // Неполный бакет не отдаём никогда: на плотном массиве count === factor
-    // означает, что все базовые свечи внутри на месте и идут подряд.
-    return [...buckets.values()]
-      .filter((entry) => entry.count === factor)
-      .map((entry) => entry.candle)
-      .sort((left, right) => left.openTime - right.openTime);
+    // означает, что все базовые свечи внутри на месте и идут подряд. Бакет из
+    // одних закрытых минут (выходные форекса) не отдаём тоже: цены в нём нет.
+    const result: Candle[] = [];
+    for (const entry of buckets.values()) {
+      if (entry.candle && entry.count === factor) result.push(entry.candle);
+    }
+    return result.sort((left, right) => left.openTime - right.openTime);
   }
 
   /** Сколько базовых свечей реально лежит в интервале [from, to). */
@@ -319,7 +334,7 @@ export class BinaryCandleStore implements CandleRepository {
     if (!existsSync(bybit)) return [];
     const result: Array<{category:MarketCategory;symbol:string;from:number;to:number;candles:number;bytes:number}> = [];
     for (const categoryName of await readdir(bybit)) {
-      if (!["linear", "inverse", "spot"].includes(categoryName)) continue;
+      if (!(MARKET_CATEGORIES as readonly string[]).includes(categoryName)) continue;
       const category = categoryName as MarketCategory;
       for (const symbol of await readdir(join(bybit, category))) {
         const dir = this.intervalDir(category, symbol);

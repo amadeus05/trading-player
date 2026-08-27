@@ -4,6 +4,7 @@ import type { MarketDataProvider } from "./ports/MarketDataProvider.js";
 import type { CandleRepository } from "./ports/CandleRepository.js";
 import { CandleValidator } from "./CandleValidator.js";
 import { RangePlanner } from "./RangePlanner.js";
+import { buildClosedMarketCandles } from "./marketClosures.js";
 
 export class MarketDataService {
   constructor(
@@ -32,11 +33,16 @@ export class MarketDataService {
     await Promise.all(workers);
     const validation = this.validator.validate(downloaded);
     progress({stage:"validating",completedPages:missing.length,totalPages:missing.length,candles:validation.candles.length});
+    // Там, где рынка не было, провайдер молчит: выходные форекса, ночной
+    // перерыв, минута без тика на бирже. Достраиваем такие минуты по скачанным
+    // страницам — иначе стор считал бы страницу недокачанной вечно, а старшие
+    // таймфреймы вокруг дырки не собрались бы.
+    const closures = buildClosedMarketCandles(validation.candles, missing);
     if (validation.candles.length) {
       progress({stage:"writing_parquet",completedPages:missing.length,totalPages:missing.length,candles:validation.candles.length});
-      await this.store.write(request.category, request.symbol, validation.candles);
+      await this.store.write(request.category, request.symbol, [...validation.candles, ...closures]);
     }
-    return { requestedPages: pages.length, downloadedPages: missing.length, candles: validation.candles.length, gaps: validation.gaps };
+    return { requestedPages: pages.length, downloadedPages: missing.length, candles: validation.candles.length, closures: closures.length, gaps: validation.gaps };
   }
 
   catalog(){return this.store.catalog()}
