@@ -49,9 +49,11 @@ export async function fetchMarketCatalog(): Promise<MarketCatalogItem[]> {
 export type MarketInstrument = {
   symbol: string;
   title: string;
+  /** Валюта, в которой получается результат сделки; null — код незнакомый. */
+  quote: string | null;
 };
 
-/** Категории с закрытым списком инструментов; крипта сюда не попадает. */
+/** Категории с конечным набором инструментов; крипта сюда не попадает. */
 export async function fetchMarketInstruments(): Promise<Record<string, MarketInstrument[]>> {
   const response = await fetch("/api/market/instruments");
   if (!response.ok) throw new Error(await readError(response));

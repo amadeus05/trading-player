@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   App as AntApp,
+  AutoComplete,
   Button,
   DatePicker,
   Form,
-  Input,
   Modal,
   Progress,
   Select,
@@ -18,7 +18,14 @@ import dayjs, { type Dayjs } from "dayjs";
 import { BarChart3, Database, Download, RefreshCw, Trash2 } from "lucide-react";
 import type { Dataset } from "../../types";
 import { useConfirmDelete } from "../../shared/ui/useConfirmDelete";
-import { fetchMarketInstruments, marketDatasetName, type MarketInstrument } from "../../shared/api/marketDataApi";
+import { fetchMarketInstruments, marketDatasetName } from "../../shared/api/marketDataApi";
+import {
+  categoryForInstrument,
+  foreignQuoteOf,
+  instrumentOptions,
+  matchInstrument,
+  type ListedInstruments,
+} from "./instrumentChoice";
 
 interface CatalogItem {
   category: string;
@@ -36,6 +43,7 @@ interface DownloadJob {
   completedPages: number;
   totalPages: number;
   candles: number;
+  request?: { category: string; symbol: string };
   error?: string;
 }
 
@@ -75,14 +83,16 @@ export function HistoryManager({ onOpen, iconOnly = false, activeDatasetId, onDe
   const confirmDelete = useConfirmDelete();
   const [open, setOpen] = useState(false);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
-  const [instruments, setInstruments] = useState<Record<string, MarketInstrument[]>>({});
+  const [instruments, setInstruments] = useState<ListedInstruments>({});
   const [job, setJob] = useState<DownloadJob | null>(null);
   const [loading, setLoading] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const [form] = Form.useForm<HistoryFormValues>();
-  const category = Form.useWatch("category", form) ?? "linear";
-  const listedInstruments = instruments[category] ?? [];
+  const symbol = String(Form.useWatch("symbol", form) ?? "").toUpperCase();
+  // Результат сделки получается в валюте котировки, а счёт ведётся в долларах:
+  // по инструментам вроде GRXEUR или USDJPY прибыль складывать нельзя.
+  const foreignQuote = foreignQuoteOf(symbol, instruments);
 
   const refresh = useCallback(async () => {
     try {
@@ -166,6 +176,13 @@ export function HistoryManager({ onOpen, iconOnly = false, activeDatasetId, onDe
     if (Object.values(instruments).some((list) => list.some((item) => item.symbol === symbol))) {
       form.setFieldValue("symbol", "BTCUSDT");
     }
+  };
+
+  /** Категорию выбирает инструмент, а не пользователь: иначе запрос уйдёт не туда. */
+  const changeSymbol = (next: string) => {
+    const current = String(form.getFieldValue("category") ?? "linear");
+    const owner = categoryForInstrument(next, instruments, current);
+    if (owner !== current) form.setFieldValue("category", owner);
   };
 
   const download = async () => {
@@ -281,24 +298,36 @@ export function HistoryManager({ onOpen, iconOnly = false, activeDatasetId, onDe
               />
             </Form.Item>
             <Form.Item name="symbol" rules={[{ required: true }]} noStyle>
-              {listedInstruments.length
-                ? (
-                  <Select
-                    style={{ width: 235 }}
-                    showSearch
-                    optionFilterProp="label"
-                    options={listedInstruments.map((item) => ({
-                      value: item.symbol,
-                      label: `${item.symbol} · ${item.title}`,
-                    }))}
-                  />
-                )
-                : <Input style={{ width: 130 }} placeholder="BTCUSDT" />}
+              <AutoComplete
+                style={{ width: 260 }}
+                placeholder="BTCUSDT, GER40, золото"
+                options={instrumentOptions(instruments)}
+                filterOption={(input, option) => matchInstrument(input, option?.label)}
+                onChange={changeSymbol}
+              />
             </Form.Item>
             <Form.Item name="range" rules={[{ required: true }]} noStyle><DatePicker.RangePicker allowClear={false} /></Form.Item>
             <Button className="history-form-download" type="primary" icon={<Download size={15} />} loading={loading} onClick={() => void download()}>Загрузить</Button>
           </div>
         </Form>
+        {foreignQuote && foreignQuote !== "USD" && (
+          <Alert
+            className="history-quote-note"
+            type="warning"
+            showIcon
+            title={`Прибыль по ${symbol} считается в ${foreignQuote}`}
+            description="История скачается и график будет работать, но статистика счёта сложит эту прибыль с долларовой. Пересчёт по курсу пока не сделан."
+          />
+        )}
+        {job?.status === "failed" && (
+          <Alert
+            className="history-job-error"
+            type="error"
+            showIcon
+            title={`Не удалось загрузить ${job.request?.symbol ?? "историю"}`}
+            description={job.error}
+          />
+        )}
         {job && !["completed", "failed"].includes(job.status) && (
           <div className="download-progress">
             <Space><RefreshCw size={15} /><b>{job.status}</b><span>{job.completedPages}/{job.totalPages} страниц · {job.candles.toLocaleString()} свечей</span></Space>

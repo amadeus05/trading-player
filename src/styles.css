@@ -1789,6 +1789,11 @@ g[data-channel-id].selected .pc-edge-line {
   display: inline-flex;
 }
 
+.history-quote-note,
+.history-job-error {
+  margin-bottom: 18px;
+}
+
 .download-progress {
   margin-bottom: 18px;
   padding: 12px 14px 5px;
