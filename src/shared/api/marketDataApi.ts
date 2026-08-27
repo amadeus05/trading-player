@@ -29,6 +29,11 @@ export function marketDatasetId(category: string, symbol: string) {
   return `market:${category}:${symbol.toUpperCase()}`;
 }
 
+/** Источник в подписи датасета: форекс приходит не с Bybit. */
+export function marketDatasetName(category: string, symbol: string) {
+  return `${symbol.toUpperCase()} · ${category === "forex" ? "Forex" : "Bybit"}`;
+}
+
 export function parseMarketDatasetId(id: string): { category: string; symbol: string } | null {
   const match = /^market:([^:]+):(.+)$/.exec(id);
   if (!match) return null;
@@ -39,6 +44,18 @@ export async function fetchMarketCatalog(): Promise<MarketCatalogItem[]> {
   const response = await fetch("/api/market/catalog");
   if (!response.ok) throw new Error(await readError(response));
   return response.json() as Promise<MarketCatalogItem[]>;
+}
+
+export type MarketInstrument = {
+  symbol: string;
+  title: string;
+};
+
+/** Категории с закрытым списком инструментов; крипта сюда не попадает. */
+export async function fetchMarketInstruments(): Promise<Record<string, MarketInstrument[]>> {
+  const response = await fetch("/api/market/instruments");
+  if (!response.ok) throw new Error(await readError(response));
+  return response.json() as Promise<Record<string, MarketInstrument[]>>;
 }
 
 /** Минуты → строка таймфрейма сервера (server/domain/Candle.ts); неизвестное → база. */

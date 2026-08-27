@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchMarketCatalog, marketDatasetId, type MarketCatalogItem } from "../../shared/api/marketDataApi";
+import {
+  fetchMarketCatalog,
+  marketDatasetId,
+  marketDatasetName,
+  type MarketCatalogItem,
+} from "../../shared/api/marketDataApi";
 import { formatMarketDate } from "../../shared/lib/market";
 
 export type MarketDatasetOption = {
@@ -23,7 +28,7 @@ function buildDatasetOptions(catalog: MarketCatalogItem[]): MarketDatasetOption[
     from: item.from,
     to: item.to,
     baseCandles: item.candles,
-    name: `${item.symbol} · Bybit`,
+    name: marketDatasetName(item.category, item.symbol),
     rangeLabel: `${formatMarketDate(item.from)} — ${formatMarketDate(item.to - 1)}`,
     label: `${item.symbol} · ${formatMarketDate(item.from)} — ${formatMarketDate(item.to - 1)}`,
   }));

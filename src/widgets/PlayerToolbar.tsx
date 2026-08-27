@@ -50,7 +50,7 @@ export function PlayerToolbar({
           );
         }}
         options={datasetOptions.map((option) => ({ value: option.id, label: option.label }))}
-        popupClassName="marketSelectDropdown"
+        classNames={{ popup: { root: "marketSelectDropdown" } }}
         popupMatchSelectWidth={false}
         style={{ minWidth: 128 }}
       />

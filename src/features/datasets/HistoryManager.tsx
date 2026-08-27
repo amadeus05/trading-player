@@ -18,6 +18,7 @@ import dayjs, { type Dayjs } from "dayjs";
 import { BarChart3, Database, Download, RefreshCw, Trash2 } from "lucide-react";
 import type { Dataset } from "../../types";
 import { useConfirmDelete } from "../../shared/ui/useConfirmDelete";
+import { fetchMarketInstruments, marketDatasetName, type MarketInstrument } from "../../shared/api/marketDataApi";
 
 interface CatalogItem {
   category: string;
@@ -54,6 +55,11 @@ interface HistoryManagerProps {
 
 const formatDate = (milliseconds: number) => dayjs(milliseconds).format("YYYY-MM-DD");
 
+const CATEGORIES = ["linear", "spot", "inverse", "forex"] as const;
+
+/** Символ по умолчанию при смене категории: у форекса свои инструменты. */
+const DEFAULT_SYMBOL: Record<string, string> = { forex: "EURUSD" };
+
 /** Короткие диапазоны весят десятки килобайт и в мегабайтах выглядели как «0.0 MB». */
 const formatBytes = (bytes: number) => bytes < 1_024 * 1_024
   ? `${Math.max(1, Math.round(bytes / 1_024))} KB`
@@ -69,11 +75,14 @@ export function HistoryManager({ onOpen, iconOnly = false, activeDatasetId, onDe
   const confirmDelete = useConfirmDelete();
   const [open, setOpen] = useState(false);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  const [instruments, setInstruments] = useState<Record<string, MarketInstrument[]>>({});
   const [job, setJob] = useState<DownloadJob | null>(null);
   const [loading, setLoading] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const [form] = Form.useForm<HistoryFormValues>();
+  const category = Form.useWatch("category", form) ?? "linear";
+  const listedInstruments = instruments[category] ?? [];
 
   const refresh = useCallback(async () => {
     try {
@@ -89,6 +98,11 @@ export function HistoryManager({ onOpen, iconOnly = false, activeDatasetId, onDe
     if (open) void refresh();
   }, [open, refresh]);
 
+  useEffect(() => {
+    if (!open) return;
+    fetchMarketInstruments().then(setInstruments).catch(() => setInstruments({}));
+  }, [open]);
+
   useEffect(() => () => eventSourceRef.current?.close(), []);
 
   /**
@@ -101,7 +115,7 @@ export function HistoryManager({ onOpen, iconOnly = false, activeDatasetId, onDe
    * Кнопка просто старше оконной загрузки: когда её писали, иначе было никак.
    */
   const openMarket = (category: string, symbol: string) => {
-    onOpen({ id: `market:${category}:${symbol}`, name: `${symbol} · Bybit`, candles: [] });
+    onOpen({ id: `market:${category}:${symbol}`, name: marketDatasetName(category, symbol), candles: [] });
     setOpen(false);
   };
 
@@ -133,6 +147,25 @@ export function HistoryManager({ onOpen, iconOnly = false, activeDatasetId, onDe
       okText: "Удалить",
       onConfirm: () => void removeHistory(item),
     });
+  };
+
+  /**
+   * Тикер одной категории в другой не существует, поэтому при переходе между
+   * криптой и форексом он заменяется. Внутри крипты выбор остаётся: linear,
+   * spot и inverse делят одни и те же символы.
+   */
+  const changeCategory = (next: string) => {
+    const listed = instruments[next] ?? [];
+    const symbol = String(form.getFieldValue("symbol") ?? "").toUpperCase();
+    if (listed.length) {
+      if (!listed.some((item) => item.symbol === symbol)) {
+        form.setFieldValue("symbol", DEFAULT_SYMBOL[next] ?? listed[0].symbol);
+      }
+      return;
+    }
+    if (Object.values(instruments).some((list) => list.some((item) => item.symbol === symbol))) {
+      form.setFieldValue("symbol", "BTCUSDT");
+    }
   };
 
   const download = async () => {
@@ -229,7 +262,7 @@ export function HistoryManager({ onOpen, iconOnly = false, activeDatasetId, onDe
       >
         {iconOnly ? null : "История"}
       </Button>
-      <Modal title="История Bybit" open={open} width={850} onCancel={() => setOpen(false)} footer={null} destroyOnHidden>
+      <Modal title="Локальная история" open={open} width={850} onCancel={() => setOpen(false)} footer={null} destroyOnHidden>
         <Form
           form={form}
           component={false}
@@ -240,8 +273,28 @@ export function HistoryManager({ onOpen, iconOnly = false, activeDatasetId, onDe
           }}
         >
           <div className="history-form">
-            <Form.Item name="category" noStyle><Select style={{ width: 105 }} options={["linear", "spot", "inverse"].map((value) => ({ value, label: value }))} /></Form.Item>
-            <Form.Item name="symbol" rules={[{ required: true }]} noStyle><Input style={{ width: 130 }} placeholder="BTCUSDT" /></Form.Item>
+            <Form.Item name="category" noStyle>
+              <Select
+                style={{ width: 105 }}
+                onChange={changeCategory}
+                options={CATEGORIES.map((value) => ({ value, label: value }))}
+              />
+            </Form.Item>
+            <Form.Item name="symbol" rules={[{ required: true }]} noStyle>
+              {listedInstruments.length
+                ? (
+                  <Select
+                    style={{ width: 235 }}
+                    showSearch
+                    optionFilterProp="label"
+                    options={listedInstruments.map((item) => ({
+                      value: item.symbol,
+                      label: `${item.symbol} · ${item.title}`,
+                    }))}
+                  />
+                )
+                : <Input style={{ width: 130 }} placeholder="BTCUSDT" />}
+            </Form.Item>
             <Form.Item name="range" rules={[{ required: true }]} noStyle><DatePicker.RangePicker allowClear={false} /></Form.Item>
             <Button className="history-form-download" type="primary" icon={<Download size={15} />} loading={loading} onClick={() => void download()}>Загрузить</Button>
           </div>
