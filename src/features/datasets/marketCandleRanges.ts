@@ -150,7 +150,7 @@ export function resolvePendingTimeframeChange(
   candles: { time: number }[],
 ): { timeframe: number; replayTime: number } | null {
   if (!pending || !candles.length) return null;
-  const loadedTf = candles.length > 1 ? Math.round((candles[1].time - candles[0].time) / 60) : null;
+  const loadedTf = candles.length > 1 ? inferTimeframeMinutes(candles, pending.timeframe) : null;
   if (loadedTf != null && loadedTf !== pending.timeframe) return null;
   return {
     timeframe: pending.timeframe,
@@ -160,6 +160,66 @@ export function resolvePendingTimeframeChange(
       loadedTf ?? pending.timeframe,
     ),
   };
+}
+
+/**
+ * Таймфрейм загруженного окна — по МИНИМАЛЬНОМУ расстоянию между барами.
+ *
+ * По первым двум свечам считать нельзя: у форекса окно нередко начинается перед
+ * выходными, и тогда «час» превращался в двое суток. От этого разъезжались и
+ * запросы догрузки, и распознавание смены таймфрейма.
+ */
+export function inferTimeframeMinutes(
+  candles: { time: number }[],
+  fallbackMinutes: number,
+): number {
+  let smallest = Infinity;
+  for (let index = 1; index < candles.length; index += 1) {
+    const delta = candles[index].time - candles[index - 1].time;
+    if (delta > 0 && delta < smallest) smallest = delta;
+  }
+  return Number.isFinite(smallest) ? Math.max(1, Math.round(smallest / 60)) : fallbackMinutes;
+}
+
+/**
+ * Среднее календарное расстояние между барами загруженного окна.
+ *
+ * У круглосуточной крипты оно равно таймфрейму, у форекса больше: выходные
+ * съедают почти треть недели. По нему и меряются окна догрузки — иначе число
+ * баров и календарное время расходятся.
+ */
+export function averageBarSpacingMs(candles: { time: number }[]): number | null {
+  if (candles.length < 2) return null;
+  const spanMs = (candles[candles.length - 1].time - candles[0].time) * 1_000;
+  return spanMs > 0 ? spanMs / (candles.length - 1) : null;
+}
+
+/**
+ * Окно влево под нужное число баров.
+ *
+ * Просить «missingBars × таймфрейм» назад нельзя: у форекса такой отрезок может
+ * целиком лежать в закрытом рынке и не дать ни одной свечи — график упирался в
+ * край и переставал догружать. Шаг берётся по фактической плотности окна, а
+ * attempt расширяет его, когда рынок молчал дольше обычного: праздники длиннее
+ * выходных, и одной попытки на них не хватает.
+ */
+export function buildEarlierMarketCandleRange(
+  boundary: MarketRangeBoundary,
+  loadedCandles: { time: number }[],
+  missingBars: number,
+  attempt = 0,
+  fallbackTimeframeMinutes = BASE_TIMEFRAME_MINUTES,
+): MarketCandleRange | null {
+  const first = loadedCandles[0];
+  if (!first || missingBars <= 0) return null;
+  const to = first.time * 1_000;
+  const boundaryFrom = alignDown(boundary.from);
+  if (to <= boundaryFrom) return null;
+
+  const timeframeMs = inferTimeframeMinutes(loadedCandles, fallbackTimeframeMinutes) * 60_000;
+  const spacing = Math.max(timeframeMs, averageBarSpacingMs(loadedCandles) ?? timeframeMs);
+  const from = Math.max(boundaryFrom, to - Math.ceil(missingBars * spacing * 3 ** attempt));
+  return from < to ? { from, to } : null;
 }
 
 export function buildNextMarketCandleRange(
@@ -174,6 +234,18 @@ export function buildNextMarketCandleRange(
   return to > from ? { from, to } : null;
 }
 
+/** Сколько загруженных баров осталось правее головы. */
+function barsAhead(loadedCandles: { time: number }[], currentTime: number): number {
+  let low = 0;
+  let high = loadedCandles.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (loadedCandles[middle].time <= currentTime) low = middle + 1;
+    else high = middle;
+  }
+  return loadedCandles.length - low;
+}
+
 export function shouldPrefetchMarketCandles(
   loadedCandles: { time: number }[],
   currentTime: number | null | undefined,
@@ -182,5 +254,10 @@ export function shouldPrefetchMarketCandles(
   const last = loadedCandles.at(-1);
   if (!last || currentTime == null) return false;
   const remainingMs = (last.time - currentTime) * 1_000;
-  return remainingMs <= threshold * MARKET_CANDLE_INTERVAL_MS;
+  if (remainingMs <= threshold * MARKET_CANDLE_INTERVAL_MS) return true;
+  // На закрытом рынке календарный остаток врёт: выходные внутри него раздувают
+  // время, а баров до края окна остаются единицы, и подкачка просыпалась, когда
+  // голова уже упиралась в край. Поэтому считаем ещё и сами бары. Круглосуточный
+  // рынок этой ветки не замечает: там календарный порог срабатывает не позже.
+  return barsAhead(loadedCandles, currentTime) <= MARKET_TIMEFRAME_PREFETCH_BARS;
 }

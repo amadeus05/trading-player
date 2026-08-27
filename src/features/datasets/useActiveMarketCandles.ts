@@ -5,19 +5,21 @@ import {
   parseMarketDatasetId,
   type MarketCatalogItem,
 } from "../../shared/api/marketDataApi";
+import { collectEarlierCandles } from "./earlierCandles";
 import {
   BASE_TIMEFRAME_MINUTES,
   buildInitialMarketCandleRange,
   buildIntrabarWindow,
   buildReplayStartMarketCandleRange,
   hasLoadedMarketCandleRange,
+  inferTimeframeMinutes,
   initialMarketCandleLimitForTimeframe,
   MARKET_CANDLE_INTERVAL_MS,
+  REPLAY_BACK_TIMEFRAME_BARS,
 } from "./marketCandleRanges";
 
-/** Таймфрейм загруженного окна (мин) — определяем по интервалу свечей. */
 const inferLoadedTimeframe = (candles: Candle[], fallback: number): number =>
-  candles.length > 1 ? Math.max(1, Math.round((candles[1].time - candles[0].time) / 60)) : fallback;
+  inferTimeframeMinutes(candles, fallback);
 
 export const candleCacheKey = (datasetId: string, timeframeMinutes: number) =>
   `${datasetId}:${timeframeMinutes}`;
@@ -189,25 +191,31 @@ export function useActiveMarketCandles(
     if (!first || displayBarsCount <= 0) return 0;
 
     const tf = inferLoadedTimeframe(candlesRef.current, initialTimeframeMinutes);
-    const tfMs = timeframeToMs(tf);
-    const toMs = first.time * 1_000; // эксклюзивно: первая уже загруженная свеча
-    const fromMs = Math.max(catalogItem.from, toMs - displayBarsCount * tfMs);
-    if (fromMs >= toMs) return 0;
 
     loadingEarlierRef.current = true;
     setLoadingEarlier(true);
     const generation = loadGenerationRef.current;
     try {
-      const rows = await fetchMarketCandles(parsedDataset.category, parsedDataset.symbol, fromMs, toMs, tf);
-      if (generation !== loadGenerationRef.current) return 0;
-      const older = rows.filter((row) => row.time < first.time);
-      if (!older.length) return 0;
+      const appended = await collectEarlierCandles({
+        boundary: catalogItem,
+        loaded: candlesRef.current,
+        missingBars: displayBarsCount,
+        fallbackTimeframeMinutes: initialTimeframeMinutes,
+        fetchRange: (fromMs, toMs) => fetchMarketCandles(
+          parsedDataset.category,
+          parsedDataset.symbol,
+          fromMs,
+          toMs,
+          tf,
+        ),
+      });
+      if (generation !== loadGenerationRef.current || !appended.length) return 0;
       setCandles((current) => {
-        const merged = mergeCandles(current, rows);
+        const merged = mergeCandles(current, appended);
         if (merged.length) cacheRef.current?.set(candleCacheKey(datasetId, tf), merged);
         return merged;
       });
-      return older.length;
+      return appended.length;
     } catch {
       return 0;
     } finally {
@@ -234,8 +242,33 @@ export function useActiveMarketCandles(
       const rows = await fetchMarketCandles(parsedDataset.category, parsedDataset.symbol, range.from, range.to, timeframeMinutes);
       if (generation !== loadGenerationRef.current) return false;
       if (!rows.length) return false;
-      cacheRef.current?.set(candleCacheKey(datasetId, timeframeMinutes), rows);
-      setCandles(rows);
+      // Предыстория рамки меряется барами, а диапазон запроса — календарём. На
+      // круглосуточной крипте это одно и то же, у форекса выходные внутри окна
+      // отдавали половину: голова уезжала на середину экрана, справа зияла
+      // пустота. Недостающие бары добираем тем же путём, что и уход за левый край.
+      const targetMs = time * 1_000;
+      let prehistory = 0;
+      while (prehistory < rows.length && rows[prehistory].time * 1_000 < targetMs) prehistory += 1;
+      const missingBars = REPLAY_BACK_TIMEFRAME_BARS - prehistory;
+      const earlier = missingBars > 0
+        ? await collectEarlierCandles({
+          boundary: catalogItem,
+          loaded: rows,
+          missingBars,
+          fallbackTimeframeMinutes: timeframeMinutes,
+          fetchRange: (fromMs, toMs) => fetchMarketCandles(
+            parsedDataset.category,
+            parsedDataset.symbol,
+            fromMs,
+            toMs,
+            timeframeMinutes,
+          ),
+        })
+        : [];
+      if (generation !== loadGenerationRef.current) return false;
+      const window = earlier.length ? [...earlier, ...rows] : rows;
+      cacheRef.current?.set(candleCacheKey(datasetId, timeframeMinutes), window);
+      setCandles(window);
       return true;
     } catch {
       return false;

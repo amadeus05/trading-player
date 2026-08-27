@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  averageBarSpacingMs,
+  buildEarlierMarketCandleRange,
   buildInitialMarketCandleRange,
   buildNextMarketCandleRange,
+  inferTimeframeMinutes,
   buildReplayStartMarketCandleRange,
   clampPlayheadToLoadedWindow,
   hasLoadedMarketCandleRange,
@@ -264,4 +267,86 @@ test("pending TF clamps only when 30m playhead sits in an unclosed last 1d bucke
 test("pending TF does not apply without candles or without a pending change", () => {
   assert.equal(resolvePendingTimeframeChange({ timeframe: 1_440, replayTime: 1 }, []), null);
   assert.equal(resolvePendingTimeframeChange(null, [{ time: 0 }, { time: 86_400 }]), null);
+});
+
+const HOUR_SECONDS = 3_600;
+const HOUR_MS = 3_600_000;
+
+/**
+ * Часовое окно форекса, которое начинается перед выходными: между первой и
+ * второй свечой двое суток, дальше обычный час. Именно на таком окне ломались
+ * и догрузка влево, и распознавание таймфрейма.
+ */
+const forexHourlyWindow = (bars: number) => {
+  const candles = [{ time: 0 }];
+  for (let index = 0; index < bars - 1; index += 1) {
+    candles.push({ time: (49 + index) * HOUR_SECONDS });
+  }
+  return candles;
+};
+
+test("таймфрейм окна берётся по минимальному шагу, а не по первой паре свечей", () => {
+  const window = forexHourlyWindow(50);
+
+  assert.equal(inferTimeframeMinutes(window, 5), 60);
+  // Круглосуточная крипта — тот же ответ, шаг везде одинаковый.
+  assert.equal(inferTimeframeMinutes([{ time: 0 }, { time: HOUR_SECONDS }], 5), 60);
+  assert.equal(inferTimeframeMinutes([{ time: 0 }], 5), 5, "по одной свече шаг неизвестен");
+  assert.equal(inferTimeframeMinutes([], 5), 5);
+});
+
+test("смена таймфрейма применяется, даже если окно начинается перед выходными", () => {
+  const window = forexHourlyWindow(50);
+  const playhead = window[10].time;
+
+  assert.deepEqual(
+    resolvePendingTimeframeChange({ timeframe: 60, replayTime: playhead }, window),
+    { timeframe: 60, replayTime: playhead },
+  );
+});
+
+test("средний шаг бара у форекса шире таймфрейма", () => {
+  const window = forexHourlyWindow(50);
+  const spacing = averageBarSpacingMs(window);
+
+  assert.ok(spacing !== null && spacing > HOUR_MS, "выходные растягивают средний шаг");
+  assert.equal(averageBarSpacingMs([{ time: 0 }]), null);
+});
+
+test("окно влево меряется плотностью бара, иначе запрос попадёт в закрытый рынок", () => {
+  const window = forexHourlyWindow(50);
+  const boundary = { from: -1_000 * HOUR_MS, to: 100 * HOUR_MS };
+  const missingBars = 80;
+
+  const range = buildEarlierMarketCandleRange(boundary, window, missingBars, 0, 5);
+  assert.ok(range);
+  assert.equal(range.to, 0, "правый край — первая уже загруженная свеча");
+  const span = range.to - range.from;
+  assert.ok(
+    span > missingBars * HOUR_MS,
+    `окно ${span} должно быть шире наивных ${missingBars * HOUR_MS} мс`,
+  );
+
+  // Праздники длиннее выходных, поэтому попытки расширяют окно втрое.
+  const wider = buildEarlierMarketCandleRange(boundary, window, missingBars, 1, 5);
+  assert.ok(wider);
+  assert.equal(wider.to - wider.from, span * 3);
+});
+
+test("окно влево не уходит за начало скачанной истории", () => {
+  const window = forexHourlyWindow(50);
+  const boundary = { from: -3 * HOUR_MS, to: 100 * HOUR_MS };
+
+  assert.deepEqual(buildEarlierMarketCandleRange(boundary, window, 80, 0, 5), {
+    from: -3 * HOUR_MS,
+    to: 0,
+  });
+});
+
+test("окно влево не строится, когда слева уже ничего нет", () => {
+  const window = forexHourlyWindow(50);
+
+  assert.equal(buildEarlierMarketCandleRange({ from: 0, to: 100 * HOUR_MS }, window, 80, 0, 5), null);
+  assert.equal(buildEarlierMarketCandleRange({ from: -100 * HOUR_MS, to: 0 }, [], 80, 0, 5), null);
+  assert.equal(buildEarlierMarketCandleRange({ from: -100 * HOUR_MS, to: 0 }, window, 0, 0, 5), null);
 });
