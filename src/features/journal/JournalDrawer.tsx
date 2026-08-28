@@ -4,6 +4,7 @@ import type { Dayjs } from "dayjs";
 import { ChartNoAxesCombined, CalendarDays, Filter, List, MoreHorizontal, Trash2 } from "lucide-react";
 import type { AccountSettings, Trade, TradeScreenshot } from "../../types";
 import { formatNumber, formatTimeframe } from "../../shared/lib/market";
+import { zonedDayBounds } from "../../shared/lib/chartTimezones";
 import { useConfirmDelete } from "../../shared/ui/useConfirmDelete";
 import {
   calculateTradeAnalytics,
@@ -71,6 +72,7 @@ interface JournalDrawerProps {
   account: AccountSettings;
   trades: Trade[];
   datasetOptions: Array<{ id: string; name: string }>;
+  timeZone?: string;
   onClose: () => void;
   onCancelOrder: (id: string) => void;
   onCloseTrade: (trade: Trade) => void;
@@ -86,6 +88,7 @@ export function JournalDrawer({
   account,
   trades,
   datasetOptions,
+  timeZone = "UTC",
   onClose,
   onCancelOrder,
   onCloseTrade,
@@ -123,8 +126,8 @@ export function JournalDrawer({
   const filters = useMemo<AnalyticsFilters>(() => ({
     ...(dateRange
       ? {
-          fromTime: dateRange[0].startOf("day").unix(),
-          toTime: dateRange[1].endOf("day").unix(),
+          fromTime: zonedDayBounds(timeZone, dateRange[0].year(), dateRange[0].month() + 1, dateRange[0].date()).from,
+          toTime: zonedDayBounds(timeZone, dateRange[1].year(), dateRange[1].month() + 1, dateRange[1].date()).to,
         }
       : {}),
     datasetId: datasetId === "all" ? undefined : datasetId,
@@ -132,7 +135,7 @@ export function JournalDrawer({
     side: side === "all" ? undefined : side,
     outcome: outcome === "all" ? undefined : outcome,
     tag: tag === "all" ? undefined : tag,
-  }), [datasetId, dateRange, outcome, side, tag, timeframe]);
+  }), [datasetId, dateRange, outcome, side, tag, timeframe, timeZone]);
 
   const filteredTrades = useMemo(
     () => filterTradesForAnalytics(trades, filters),
@@ -389,6 +392,7 @@ export function JournalDrawer({
           trades={filteredTrades}
           datasetName={datasetName}
           knownTags={knownTags}
+          timeZone={timeZone}
           onJumpToTrade={onJumpToTrade}
           onCancelOrder={onCancelOrder}
           onCloseTrade={onCloseTrade}
@@ -401,6 +405,7 @@ export function JournalDrawer({
           trades={filteredTrades}
           datasetName={datasetName}
           knownTags={knownTags}
+          timeZone={timeZone}
           onJumpToTrade={onJumpToTrade}
           onCancelOrder={onCancelOrder}
           onCloseTrade={onCloseTrade}

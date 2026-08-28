@@ -774,6 +774,102 @@ main.trade-panel-collapsed {
   color: #7b8497;
 }
 
+.tz {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  border-left: 1px solid #282b35;
+  padding-left: 10px;
+}
+
+.tz-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #9da3b4;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tz-trigger svg {
+  display: block;
+  transform: translateY(1px);
+  transition: transform 120ms ease;
+}
+
+.tz-trigger.is-open svg,
+.tz.is-open .tz-trigger svg {
+  transform: translateY(1px) rotate(180deg);
+}
+
+.tz-trigger:hover,
+.tz-trigger.is-open {
+  color: #d7d9e2;
+}
+
+.tz-menu {
+  position: fixed;
+  z-index: 2000;
+  width: 240px;
+  max-height: 360px;
+  padding: 6px 0;
+  overflow-y: auto;
+  border-radius: 8px;
+  background: #0d0f15;
+  border: 1px solid #282b35;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.tz-menu__sep {
+  height: 1px;
+  margin: 6px 10px;
+  background: #1c1f28;
+}
+
+.tz-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 12px 0 8px;
+  border: 0;
+  background: transparent;
+  color: #c5c9d4;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tz-menu__item:hover {
+  background: #161922;
+  color: #e8ebf2;
+}
+
+.tz-menu__item.is-active {
+  color: #9b8cff;
+}
+
+.tz-menu__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: #9b8cff;
+}
+
 .chartArea {
   display: flex;
   flex: 1;

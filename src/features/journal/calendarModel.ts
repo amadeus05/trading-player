@@ -1,4 +1,5 @@
 import type { Trade } from "../../types";
+import { zonedDateParts } from "../../shared/lib/chartTimezones";
 
 export const MONTH_NAMES = [
   "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
@@ -56,13 +57,9 @@ export function tradeCalendarTime(trade: Trade): number {
   return trade.exitTime ?? trade.entryTime;
 }
 
-export function utcDateParts(unixSeconds: number): { year: number; month: number; day: number } {
-  const date = new Date(unixSeconds * 1_000);
-  return {
-    year: date.getUTCFullYear(),
-    month: date.getUTCMonth() + 1,
-    day: date.getUTCDate(),
-  };
+export function utcDateParts(unixSeconds: number, timeZone = "UTC"): { year: number; month: number; day: number } {
+  const parts = zonedDateParts(timeZone, unixSeconds);
+  return { year: parts.year, month: parts.month, day: parts.day };
 }
 
 export function utcDayBounds(year: number, month: number, day: number): { from: number; to: number } {
@@ -117,8 +114,8 @@ function dayKey(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-export function tradeDayKey(trade: Trade): string {
-  const { year, month, day } = utcDateParts(tradeCalendarTime(trade));
+export function tradeDayKey(trade: Trade, timeZone = "UTC"): string {
+  const { year, month, day } = utcDateParts(tradeCalendarTime(trade), timeZone);
   return dayKey(year, month, day);
 }
 
@@ -139,7 +136,7 @@ function emptyYear(year: number): CalendarYear {
   };
 }
 
-export function buildJournalCalendar(trades: Trade[]): JournalCalendarModel {
+export function buildJournalCalendar(trades: Trade[], timeZone = "UTC"): JournalCalendarModel {
   const closed = trades.filter((trade) => trade.status === "CLOSED");
   const byYear = new Map<number, CalendarYear>();
   const tradesByYear = new Map<number, Trade[]>();
@@ -147,7 +144,7 @@ export function buildJournalCalendar(trades: Trade[]): JournalCalendarModel {
   const tradesByDay = new Map<string, Trade[]>();
 
   for (const trade of closed) {
-    const { year, month, day } = utcDateParts(tradeCalendarTime(trade));
+    const { year, month, day } = utcDateParts(tradeCalendarTime(trade), timeZone);
     const yearRow = byYear.get(year) ?? emptyYear(year);
     const monthRow = yearRow.months[month - 1];
     const dayRow = monthRow.days[day - 1];

@@ -1,4 +1,5 @@
 import type { AccountSettings, Barrier, Persisted, SimulationSettings } from "../../types";
+import { DEFAULT_CHART_TIMEZONE } from "../lib/chartTimezones";
 
 export const PAPER_BALANCE_USDT = 1_000;
 
@@ -84,6 +85,7 @@ export const DEFAULT_SIMULATION_SETTINGS: SimulationSettings = {
   tradePanelTabPinned: true,
   headerStatsVariant: "ticker",
   ambiguousExitPolicy: "conservative",
+  chartTimeZone: DEFAULT_CHART_TIMEZONE,
 };
 
 export const DEFAULT_ACCOUNT_SETTINGS: AccountSettings = {

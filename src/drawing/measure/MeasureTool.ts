@@ -8,6 +8,7 @@ import { timeToLogical, timeToX, xToTime } from "../shared/coordinates";
 import { bindDrawingPointerClick } from "../shared/drawingPointerClick";
 import { createDrawingOverlay } from "../shared/overlay";
 import type { ManagedDrawingToolOptions, ChartCandleStore, SeriesApiLike } from "../shared/types";
+import { formatChartAxisTime } from "../../shared/lib/chartTimezones";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const TV_BLUE = "#2962FF";
@@ -61,21 +62,6 @@ function formatTicks(delta: number, precision: number): string {
   return ticks.toFixed(2);
 }
 
-function formatAxisTime(unixSec: number, timeframeSec: number): string {
-  const d = new Date(unixSec * 1000);
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const dd = String(d.getUTCDate()).padStart(2, "0");
-  const yy = String(d.getUTCFullYear()).slice(2);
-  const datePart = `${days[d.getUTCDay()]} ${dd} ${months[d.getUTCMonth()]} '${yy}`;
-  if (timeframeSec < 86400) {
-    const hh = String(d.getUTCHours()).padStart(2, "0");
-    const mm = String(d.getUTCMinutes()).padStart(2, "0");
-    return `${datePart} ${hh}:${mm}`;
-  }
-  return datePart;
-}
-
 function makeLine(className: string): SVGLineElement {
   const line = document.createElementNS(SVG_NS, "line");
   line.setAttribute("class", className);
@@ -97,9 +83,11 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
   candleStore: ChartCandleStore;
   active: boolean;
   pricePrecision: number;
+  getTimeZone?: () => string;
   onComplete: () => void;
 }): () => void {
-  const { container, chart, series, candleStore, pricePrecision, onComplete, manager } = opts;
+  const { container, chart, series, candleStore, pricePrecision, getTimeZone, onComplete, manager } = opts;
+  const timeZone = () => getTimeZone?.() ?? "UTC";
 
   let volumePrefix = new Float64Array(0);
   const ensureVolumePrefix = () => {
@@ -331,8 +319,8 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
 
     showPriceLabel(priceLabelTop, formatPrice(highPrice, pricePrecision), top, priceScaleWidth);
     showPriceLabel(priceLabelBottom, formatPrice(lowPrice, pricePrecision), bottom, priceScaleWidth);
-    showTimeLabel(timeLabelLeft, formatAxisTime(earlyTime, timeframeSec()), left, plotBottom, timeScaleHeight);
-    showTimeLabel(timeLabelRight, formatAxisTime(lateTime, timeframeSec()), right, plotBottom, timeScaleHeight);
+    showTimeLabel(timeLabelLeft, formatChartAxisTime(earlyTime, timeframeSec(), timeZone()), left, plotBottom, timeScaleHeight);
+    showTimeLabel(timeLabelRight, formatChartAxisTime(lateTime, timeframeSec(), timeZone()), right, plotBottom, timeScaleHeight);
   }
 
   function hideAll() {

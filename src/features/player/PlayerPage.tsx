@@ -13,6 +13,7 @@ import { DrawingToolsRail, DRAWING_TOOL_SHORTCUTS } from "../../widgets/DrawingT
 import { TradingSidebar } from "../trading/TradingSidebar";
 import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SIMULATION_SETTINGS, REPLAY_START_BAR_INDEX } from "../../shared/config/simulation";
 import { formatMarketPair, formatTimeframe, getMarketAssets, inferPricePrecision } from "../../shared/lib/market";
+import { resolveChartTimeZoneIana, sanitizeChartTimeZone } from "../../shared/lib/chartTimezones";
 import { usePersistedPlayerState } from "./usePersistedPlayerState";
 import { useChartFullscreen } from "./useChartFullscreen";
 import { useReplayController } from "../replay/useReplayController";
@@ -131,6 +132,8 @@ export function PlayerPage() {
     () => ({ ...DEFAULT_SIMULATION_SETTINGS, ...state.settings }),
     [state.settings],
   );
+  const chartTimeZoneId = sanitizeChartTimeZone(simulationSettings.chartTimeZone);
+  const chartTimeZoneIana = resolveChartTimeZoneIana(chartTimeZoneId, activeDataset?.category);
   const tradePanelTabPinned = simulationSettings.tradePanelTabPinned;
   const clearTradePanelTabHideTimer = useCallback(() => {
     if (tradePanelTabHideTimerRef.current != null) {
@@ -381,7 +384,7 @@ export function PlayerPage() {
     takerFeePct: simulationSettings.takerFeePct,
   });
   function updateSimulationSetting(
-    key: Exclude<keyof SimulationSettings, "showClosedTradeOverlays" | "followCandle" | "tradePanelTabPinned" | "headerStatsVariant" | "showTradingSessions" | "ambiguousExitPolicy">,
+    key: Exclude<keyof SimulationSettings, "showClosedTradeOverlays" | "followCandle" | "tradePanelTabPinned" | "headerStatsVariant" | "showTradingSessions" | "ambiguousExitPolicy" | "chartTimeZone">,
     value: number | null,
   ) {
     setState((current) => ({
@@ -465,6 +468,16 @@ export function PlayerPage() {
               setIdx(REPLAY_START_BAR_INDEX);
             }}
             onTimeframeChange={handleTimeframeChange}
+            chartTimeZone={chartTimeZoneId}
+            chartTimeZoneCategory={activeDataset?.category}
+            onChartTimeZoneChange={(id) => setState((current) => ({
+              ...current,
+              settings: {
+                ...DEFAULT_SIMULATION_SETTINGS,
+                ...current.settings,
+                chartTimeZone: sanitizeChartTimeZone(id),
+              },
+            }))}
             chartFullscreenActive={chartFullscreenActive}
             onToggleChartFullscreen={toggleChartFullscreen}
             tradingSessionsActive={simulationSettings.showTradingSessions}
@@ -509,6 +522,7 @@ export function PlayerPage() {
                   onEntryMarkerChange={moveEntryMarker}
                   showClosedTradeOverlays={simulationSettings.showClosedTradeOverlays}
                   showTradingSessions={simulationSettings.showTradingSessions}
+                  timeZone={chartTimeZoneIana}
                   markersEditable={chartDisplay.markersEditable}
                   drawings={drawings}
                   drawingActions={drawingActions}
@@ -537,6 +551,7 @@ export function PlayerPage() {
             playing={playing}
             speed={speed}
             currentCandle={cur}
+            timeZone={chartTimeZoneIana}
             replayPosition={replayPosition}
             datasetCandleCount={datasetCandleCount}
             startJumpPending={startJumpPending}
@@ -619,6 +634,8 @@ export function PlayerPage() {
         settingsOpen={settingsOpen}
         datePickerOpen={datePickerOpen}
         settings={simulationSettings}
+        chartTimeZone={chartTimeZoneIana}
+        timeframeMinutes={tf}
         account={accountSettings}
         candles={candles}
         replayDateRange={activeDataset ? { from: activeDataset.from, to: activeDataset.to } : undefined}
@@ -671,6 +688,7 @@ export function PlayerPage() {
         account={accountSettings}
         trades={state.trades}
         datasetOptions={datasetOptions}
+        timeZone={chartTimeZoneIana}
         onClose={() => setJournal(false)}
         onCancelOrder={cancelOrder}
         onCloseTrade={closeTrade}

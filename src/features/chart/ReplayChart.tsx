@@ -4,6 +4,7 @@ import {
   CrosshairMode,
   createChart,
   HistogramSeries,
+  TickMarkType,
   type CandlestickData,
   type HistogramData,
   type ISeriesApi,
@@ -34,6 +35,7 @@ import { attachSessionsOverlay } from "./sessionsOverlay";
 import { attachPriceMarkers } from "./priceMarkers";
 import { keepIncompleteLastBar } from "../replay/playheadCandle";
 import type { DrawingActions, DrawingCollections } from "../drawings/useDrawingCollections";
+import { formatChartCrosshairTime, formatChartTickMark } from "../../shared/lib/chartTimezones";
 
 const toCandlestickData = (candle: Candle): CandlestickData<UTCTimestamp> => ({
   time: candle.time as UTCTimestamp,
@@ -68,6 +70,31 @@ const defaultFocusRange = (barIndex: number) => {
 
 const cloneDatasetItems = <Item extends { datasetId: string }>(items: Item[], datasetId: string): Item[] =>
   structuredClone(items.filter((item) => item.datasetId === datasetId));
+
+function unixFromChartTime(time: Time): number | null {
+  if (typeof time === "number" && Number.isFinite(time)) return time;
+  if (typeof time === "object" && time && "year" in time) {
+    return Math.floor(Date.UTC(time.year, time.month - 1, time.day) / 1_000);
+  }
+  return null;
+}
+
+function chartTimeFormatters(getTimeZone: () => string) {
+  return {
+    localization: {
+      timeFormatter: (time: Time) => {
+        const unix = unixFromChartTime(time);
+        return unix == null ? "" : formatChartCrosshairTime(unix, getTimeZone());
+      },
+    },
+    timeScale: {
+      tickMarkFormatter: (time: Time, tickMarkType: TickMarkType) => {
+        const unix = unixFromChartTime(time);
+        return unix == null ? null : formatChartTickMark(unix, tickMarkType, getTimeZone());
+      },
+    },
+  };
+}
 
 interface PriceRange {
   from: number;
@@ -107,6 +134,8 @@ interface ReplayChartProps {
   onEntryMarkerChange: (id: string, price: number) => void;
   showClosedTradeOverlays: boolean;
   showTradingSessions: boolean;
+  /** IANA-зона подписей оси. Свечи остаются UTC. */
+  timeZone?: string;
   markersEditable: boolean;
   drawings: DrawingCollections;
   drawingActions: DrawingActions;
@@ -140,6 +169,7 @@ export function ReplayChart({
   onEntryMarkerChange,
   showClosedTradeOverlays,
   showTradingSessions,
+  timeZone = "UTC",
   markersEditable,
   drawings,
   drawingActions,
@@ -191,6 +221,8 @@ export function ReplayChart({
   // forceFocus уходит в scrollToPosition(0) и прижимает бары к правому краю.
   const pricePrecisionRef = useRef(pricePrecision);
   pricePrecisionRef.current = pricePrecision;
+  const timeZoneRef = useRef(timeZone);
+  timeZoneRef.current = timeZone;
   const candlestickSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   // Заведомо «непринятая» ревизия: на переключении ТФ вверх candles на кадр
   // пустеет, PlayerPage размонтирует график, и все ref'ы сбрасываются. Если
@@ -211,6 +243,7 @@ export function ReplayChart({
     syncOverlays: () => void;
     setDrawingsVisible: (visible: boolean) => void;
     setDrawingMode: (mode: DrawingMode) => void;
+    setTimeZone: (timeZone: string) => void;
     rebuildTradeOverlays: () => void;
     lockPriceScale: () => void;
   } | null>(null);
@@ -286,6 +319,7 @@ export function ReplayChart({
       if (!Number.isFinite(low) || !Number.isFinite(high)) return false;
       return Math.max(range.from, range.to) >= low && Math.min(range.from, range.to) <= high;
     };
+    const timeFmt = chartTimeFormatters(() => timeZoneRef.current);
     const chart = createChart(ref.current, {
       autoSize: true,
       layout: { background: { color: "#0d0f15" }, textColor: "#7f8494" },
@@ -308,6 +342,7 @@ export function ReplayChart({
         axisPressedMouseMove: { time: true, price: true },
       },
       rightPriceScale: { borderColor: "#232632" },
+      localization: timeFmt.localization,
       timeScale: {
         borderColor: "#232632",
         timeVisible: true,
@@ -315,6 +350,7 @@ export function ReplayChart({
         // races overlay coordinate sync and causes a 1-bar flicker.
         shiftVisibleRangeOnNewBar: false,
         allowShiftVisibleRangeOnWhitespaceReplacement: false,
+        tickMarkFormatter: timeFmt.timeScale.tickMarkFormatter,
       },
     });
     const drawingManager = new DrawingManager(ref.current, {
@@ -838,6 +874,11 @@ export function ReplayChart({
           },
         });
       },
+      setTimeZone: (next) => {
+        timeZoneRef.current = next;
+        chart.applyOptions(chartTimeFormatters(() => timeZoneRef.current));
+        drawingManager.scheduleOverlaySync();
+      },
       rebuildTradeOverlays,
       lockPriceScale: primePriceScaleInteraction,
     };
@@ -910,6 +951,7 @@ export function ReplayChart({
       candleStore: drawingCandleStore,
       active: drawingMode === "measure",
       pricePrecision: pricePrecisionRef.current,
+      getTimeZone: () => timeZoneRef.current,
       onComplete: () => callbacksRef.current.onDrawingComplete(),
     });
     const cleanupRectangles = attachRectangleTool({
@@ -1128,6 +1170,10 @@ export function ReplayChart({
   useLayoutEffect(() => {
     chartRuntimeRef.current?.setDrawingMode(drawingMode);
   }, [drawingMode]);
+
+  useLayoutEffect(() => {
+    chartRuntimeRef.current?.setTimeZone(timeZone);
+  }, [timeZone]);
 
   // useEffect (not useLayoutEffect): layout-sync on every replay tick blocks paint
   // and pointer events at high speed, making the crosshair feel stuck to candle ticks.

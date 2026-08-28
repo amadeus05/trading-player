@@ -9,6 +9,7 @@ interface ReplayControlsProps {
   playing: boolean;
   speed: number;
   currentCandle?: Candle;
+  timeZone?: string;
   /** Позиция головы и объём датасета — считаются от его границ, а не от загруженного окна. */
   replayPosition: number;
   datasetCandleCount: number;
@@ -29,6 +30,7 @@ export function ReplayControls({
   playing,
   speed,
   currentCandle,
+  timeZone = "UTC",
   replayPosition,
   datasetCandleCount,
   startJumpPending = false,
@@ -87,7 +89,7 @@ export function ReplayControls({
         ) : null}
         <div className="clock">
           <Clock3 size={15} />
-          {currentCandle ? formatDateTime(currentCandle.time) : "—"}
+          {currentCandle ? formatDateTime(currentCandle.time, timeZone) : "—"}
           <span>{replayPosition.toLocaleString("ru-RU")} / {datasetCandleCount.toLocaleString("ru-RU")}</span>
         </div>
       </div>

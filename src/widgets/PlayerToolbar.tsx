@@ -2,6 +2,7 @@ import { Button, Select } from "antd";
 import { Globe2 } from "lucide-react";
 import { ChartFocusIcon } from "./ChartFocusIcon";
 import { TimeframePicker } from "./TimeframePicker";
+import { TimezonePicker } from "./TimezonePicker";
 import type { MarketDatasetOption } from "../features/datasets/useMarketCatalog";
 
 interface PlayerToolbarProps {
@@ -11,6 +12,9 @@ interface PlayerToolbarProps {
   timeframe: number;
   onDatasetChange: (datasetId: string) => void;
   onTimeframeChange: (timeframe: number) => void;
+  chartTimeZone: string;
+  onChartTimeZoneChange: (id: string) => void;
+  chartTimeZoneCategory?: string;
   chartFullscreenActive?: boolean;
   onToggleChartFullscreen?: () => void;
   tradingSessionsActive?: boolean;
@@ -24,6 +28,9 @@ export function PlayerToolbar({
   timeframe,
   onDatasetChange,
   onTimeframeChange,
+  chartTimeZone,
+  onChartTimeZoneChange,
+  chartTimeZoneCategory,
   chartFullscreenActive = false,
   onToggleChartFullscreen,
   tradingSessionsActive = false,
@@ -55,6 +62,11 @@ export function PlayerToolbar({
         style={{ minWidth: 128 }}
       />
       <TimeframePicker timeframe={timeframe} onTimeframeChange={onTimeframeChange} />
+      <TimezonePicker
+        value={chartTimeZone}
+        category={chartTimeZoneCategory}
+        onChange={onChartTimeZoneChange}
+      />
       {onToggleTradingSessions ? (
         <Button
           type="text"

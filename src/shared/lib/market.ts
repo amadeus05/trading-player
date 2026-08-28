@@ -6,14 +6,12 @@ export const formatNumber = (value: number) =>
   value.toLocaleString("en-US", { maximumFractionDigits: 2 });
 
 /**
- * Всё время в приложении — рыночное UTC, как и ось графика (lightweight-charts
- * рисует её в UTC). Без явной зоны часы плеера показывали местное время, и
- * «начало суток» на часах не совпадало с началом дневной свечи: летом на три
- * часа. На младших ТФ это почти незаметно, а на 1д уводило в предыдущие сутки.
+ * Рыночное время. По умолчанию UTC — как ось lightweight-charts без выбора зоны.
+ * timeZone — IANA, только подпись: 1D по-прежнему режется по UTC.
  */
-export const formatDateTime = (timestamp: number) =>
+export const formatDateTime = (timestamp: number, timeZone = "UTC") =>
   new Date(timestamp * 1_000).toLocaleString("ru-RU", {
-    timeZone: "UTC",
+    timeZone,
     day: "2-digit",
     month: "short",
     hour: "2-digit",

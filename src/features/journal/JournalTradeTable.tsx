@@ -21,6 +21,7 @@ export interface JournalTradeTableProps {
   trades: Trade[];
   datasetName: (id?: string) => string;
   knownTags: string[];
+  timeZone?: string;
   onJumpToTrade?: (trade: Trade) => void;
   onCancelOrder: (id: string) => void;
   onCloseTrade: (trade: Trade) => void;
@@ -64,6 +65,7 @@ export function JournalTradeTable({
   trades,
   datasetName,
   knownTags,
+  timeZone = "UTC",
   onJumpToTrade,
   onCancelOrder,
   onCloseTrade,
@@ -88,7 +90,7 @@ export function JournalTradeTable({
         <span className="journalSortHead">
           <SortButton
             label="История"
-            title="Время свечи входа, UTC. Повторный клик меняет направление."
+            title="Время свечи входа. Повторный клик меняет направление."
             sortKey="entryTime"
             activeKey={sort.key}
             dir={sort.dir}
@@ -137,7 +139,7 @@ export function JournalTradeTable({
             >
               <span className="journalRowTime">
                 <b className={sort.key === "entryTime" ? "is-sort" : undefined}>
-                  {formatDateTime(trade.entryTime)}
+                  {formatDateTime(trade.entryTime, timeZone)}
                 </b>
                 <i className={sort.key === "placedAt" ? "is-sort" : undefined}>
                   {trade.placedAt ? formatLocalDateTime(trade.placedAt) : "—"}

@@ -19,6 +19,7 @@ interface JournalCalendarProps {
   trades: Trade[];
   datasetName: (id?: string) => string;
   knownTags: string[];
+  timeZone?: string;
   onJumpToTrade?: (trade: Trade) => void;
   onCancelOrder: (id: string) => void;
   onCloseTrade: (trade: Trade) => void;
@@ -63,13 +64,14 @@ export function JournalCalendar({
   trades,
   datasetName,
   knownTags,
+  timeZone = "UTC",
   onJumpToTrade,
   onCancelOrder,
   onCloseTrade,
   onDeleteTrade,
   onUpdateTradeJournal,
 }: JournalCalendarProps) {
-  const model = useMemo(() => buildJournalCalendar(trades), [trades]);
+  const model = useMemo(() => buildJournalCalendar(trades, timeZone), [timeZone, trades]);
   const [year, setYear] = useState<number | null>(null);
   const [month, setMonth] = useState<number | null>(null);
   const [dayKey, setDayKey] = useState<string | null>(null);
@@ -104,8 +106,8 @@ export function JournalCalendar({
   const peakMonth = Math.max(1, ...(yearRow?.months.map((item) => Math.abs(item.pnl)) ?? [1]));
   const dayTrades = useMemo(() => {
     if (!dayKey) return [];
-    return trades.filter((trade) => trade.status === "CLOSED" && tradeDayKey(trade) === dayKey);
-  }, [dayKey, trades]);
+    return trades.filter((trade) => trade.status === "CLOSED" && tradeDayKey(trade, timeZone) === dayKey);
+  }, [dayKey, timeZone, trades]);
 
   if (!model.years.length) {
     return <div className="journalEmpty">Закрытых сделок пока нет — календарь появится после первой.</div>;
@@ -204,6 +206,7 @@ export function JournalCalendar({
               trades={dayTrades}
               datasetName={datasetName}
               knownTags={knownTags}
+              timeZone={timeZone}
               onJumpToTrade={onJumpToTrade}
               onCancelOrder={onCancelOrder}
               onCloseTrade={onCloseTrade}
@@ -313,6 +316,7 @@ function DayTrades({
   trades,
   datasetName,
   knownTags,
+  timeZone,
   onJumpToTrade,
   onCancelOrder,
   onCloseTrade,
@@ -323,6 +327,7 @@ function DayTrades({
   trades: Trade[];
   datasetName: (id?: string) => string;
   knownTags: string[];
+  timeZone: string;
   onJumpToTrade?: (trade: Trade) => void;
   onCancelOrder: (id: string) => void;
   onCloseTrade: (trade: Trade) => void;
@@ -340,6 +345,7 @@ function DayTrades({
         trades={trades}
         datasetName={datasetName}
         knownTags={knownTags}
+        timeZone={timeZone}
         onJumpToTrade={onJumpToTrade}
         onCancelOrder={onCancelOrder}
         onCloseTrade={onCloseTrade}

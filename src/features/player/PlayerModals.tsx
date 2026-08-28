@@ -1,6 +1,12 @@
 import dayjs from 'dayjs';
 import { Button, DatePicker, InputNumber, Modal, Select, Switch } from 'antd';
 import type { AccountSettings, AmbiguousExitPolicy, Candle, HeaderStatsVariant, SimulationSettings } from '../../types';
+import { zonedDateBarStart, zonedDateParts } from '../../shared/lib/chartTimezones';
+
+function unixToPickerDate(unixSeconds: number, timeZone: string) {
+  const parts = zonedDateParts(timeZone, unixSeconds);
+  return dayjs(new Date(parts.year, parts.month - 1, parts.day));
+}
 
 const HEADER_STATS_VARIANTS: Array<{ value: HeaderStatsVariant; label: string }> = [
   { value: "ticker", label: "Тикер" },
@@ -16,13 +22,15 @@ interface PlayerModalsProps {
   settingsOpen: boolean;
   datePickerOpen: boolean;
   settings: SimulationSettings;
+  chartTimeZone?: string;
+  timeframeMinutes: number;
   account: AccountSettings;
   candles: Candle[];
   replayDateRange?: { from: number; to: number };
   onSettingsClose: () => void;
   onSettingsReset: () => void;
   onSettingChange: (
-    key: Exclude<keyof SimulationSettings, 'showClosedTradeOverlays' | 'followCandle' | 'tradePanelTabPinned' | 'headerStatsVariant' | 'showTradingSessions' | 'ambiguousExitPolicy'>,
+    key: Exclude<keyof SimulationSettings, 'showClosedTradeOverlays' | 'followCandle' | 'tradePanelTabPinned' | 'headerStatsVariant' | 'showTradingSessions' | 'ambiguousExitPolicy' | 'chartTimeZone'>,
     value: number | null,
   ) => void;
   onInitialBalanceChange: (value: number | null) => void;
@@ -39,6 +47,8 @@ export function PlayerModals({
   settingsOpen,
   datePickerOpen,
   settings,
+  chartTimeZone = "UTC",
+  timeframeMinutes,
   account,
   candles,
   replayDateRange,
@@ -133,13 +143,24 @@ export function PlayerModals({
       >
         <DatePicker
           style={{ width: "100%" }}
-          minDate={replayDateRange ? dayjs(replayDateRange.from) : candles[0] ? dayjs(candles[0].time * 1_000) : undefined}
-          maxDate={replayDateRange ? dayjs(replayDateRange.to - 1) : candles.at(-1) ? dayjs(candles.at(-1)!.time * 1_000) : undefined}
+          minDate={replayDateRange ? unixToPickerDate(replayDateRange.from / 1_000, chartTimeZone) : candles[0] ? unixToPickerDate(candles[0].time, chartTimeZone) : undefined}
+          maxDate={replayDateRange ? unixToPickerDate((replayDateRange.to - 1) / 1_000, chartTimeZone) : candles.at(-1) ? unixToPickerDate(candles.at(-1)!.time, chartTimeZone) : undefined}
           onChange={(value) => {
             if (!value) return;
-            // Полночь именно по UTC: startOf("day") даёт местную, и прыжок
-            // попадал в предыдущие сутки рынка — на дневке это целая свеча мимо.
-            onReplayTimeSelect(Date.UTC(value.year(), value.month(), value.date()) / 1_000);
+            // Гражданская дата в поясе графика, не полночь браузера.
+            const target = zonedDateBarStart(
+              chartTimeZone,
+              value.year(),
+              value.month() + 1,
+              value.date(),
+              timeframeMinutes * 60,
+            );
+            // Округление вверх на последней доступной дате может уйти за конец
+            // набора — тогда голова так и осталась бы в ожидании данных.
+            const lastTime = replayDateRange
+              ? Math.floor((replayDateRange.to - 1) / 1_000)
+              : candles.at(-1)?.time;
+            onReplayTimeSelect(lastTime != null ? Math.min(target, lastTime) : target);
             onDatePickerClose();
           }}
         />
