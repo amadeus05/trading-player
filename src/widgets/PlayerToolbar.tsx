@@ -4,6 +4,7 @@ import { ChartFocusIcon } from "./ChartFocusIcon";
 import { TimeframePicker } from "./TimeframePicker";
 import { TimezonePicker } from "./TimezonePicker";
 import type { MarketDatasetOption } from "../features/datasets/useMarketCatalog";
+import type { TradingSessionsVariant } from "../types";
 
 interface PlayerToolbarProps {
   datasetOptions: MarketDatasetOption[];
@@ -17,8 +18,8 @@ interface PlayerToolbarProps {
   chartTimeZoneCategory?: string;
   chartFullscreenActive?: boolean;
   onToggleChartFullscreen?: () => void;
-  tradingSessionsActive?: boolean;
-  onToggleTradingSessions?: () => void;
+  tradingSessionsVariant?: TradingSessionsVariant;
+  onCycleTradingSessions?: () => void;
 }
 
 export function PlayerToolbar({
@@ -33,8 +34,8 @@ export function PlayerToolbar({
   chartTimeZoneCategory,
   chartFullscreenActive = false,
   onToggleChartFullscreen,
-  tradingSessionsActive = false,
-  onToggleTradingSessions,
+  tradingSessionsVariant = "off",
+  onCycleTradingSessions,
 }: PlayerToolbarProps) {
   return (
     <div className="toolbar">
@@ -67,14 +68,20 @@ export function PlayerToolbar({
         category={chartTimeZoneCategory}
         onChange={onChartTimeZoneChange}
       />
-      {onToggleTradingSessions ? (
+      {onCycleTradingSessions ? (
         <Button
           type="text"
-          className={`drawing-tool-btn ${tradingSessionsActive ? "is-active" : ""}`}
+          className={`drawing-tool-btn ${tradingSessionsVariant !== "off" ? "is-active" : ""}`}
           aria-label="Торговые сессии"
-          aria-pressed={tradingSessionsActive}
-          title={tradingSessionsActive ? "Скрыть торговые сессии" : "Показать торговые сессии (Сидней, Токио, Лондон, Нью-Йорк)"}
-          onClick={onToggleTradingSessions}
+          aria-pressed={tradingSessionsVariant !== "off"}
+          title={
+            tradingSessionsVariant === "off"
+              ? "Торговые сессии: выкл · клик — лента"
+              : tradingSessionsVariant === "ribbon"
+                ? "Сессии: лента · клик — коробки Tokyo / pre-London / London / NY"
+                : "Сессии: коробки · клик — скрыть"
+          }
+          onClick={onCycleTradingSessions}
         >
           <Globe2 size={18} />
         </Button>

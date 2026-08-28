@@ -11,7 +11,7 @@ import { AppHeader } from "../../widgets/AppHeader";
 import { PlayerToolbar } from "../../widgets/PlayerToolbar";
 import { DrawingToolsRail, DRAWING_TOOL_SHORTCUTS } from "../../widgets/DrawingToolsRail";
 import { TradingSidebar } from "../trading/TradingSidebar";
-import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SIMULATION_SETTINGS, REPLAY_START_BAR_INDEX } from "../../shared/config/simulation";
+import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SIMULATION_SETTINGS, REPLAY_START_BAR_INDEX, cycleTradingSessionsVariant } from "../../shared/config/simulation";
 import { formatMarketPair, formatTimeframe, getMarketAssets, inferPricePrecision } from "../../shared/lib/market";
 import { resolveChartTimeZoneIana, sanitizeChartTimeZone } from "../../shared/lib/chartTimezones";
 import { usePersistedPlayerState } from "./usePersistedPlayerState";
@@ -384,7 +384,7 @@ export function PlayerPage() {
     takerFeePct: simulationSettings.takerFeePct,
   });
   function updateSimulationSetting(
-    key: Exclude<keyof SimulationSettings, "showClosedTradeOverlays" | "followCandle" | "tradePanelTabPinned" | "headerStatsVariant" | "showTradingSessions" | "ambiguousExitPolicy" | "chartTimeZone">,
+    key: Exclude<keyof SimulationSettings, "showClosedTradeOverlays" | "followCandle" | "tradePanelTabPinned" | "headerStatsVariant" | "tradingSessionsVariant" | "ambiguousExitPolicy" | "chartTimeZone">,
     value: number | null,
   ) {
     setState((current) => ({
@@ -480,13 +480,13 @@ export function PlayerPage() {
             }))}
             chartFullscreenActive={chartFullscreenActive}
             onToggleChartFullscreen={toggleChartFullscreen}
-            tradingSessionsActive={simulationSettings.showTradingSessions}
-            onToggleTradingSessions={() => setState((current) => ({
+            tradingSessionsVariant={simulationSettings.tradingSessionsVariant}
+            onCycleTradingSessions={() => setState((current) => ({
               ...current,
               settings: {
                 ...DEFAULT_SIMULATION_SETTINGS,
                 ...current.settings,
-                showTradingSessions: !simulationSettings.showTradingSessions,
+                tradingSessionsVariant: cycleTradingSessionsVariant(simulationSettings.tradingSessionsVariant),
               },
             }))}
           />
@@ -521,7 +521,7 @@ export function PlayerPage() {
                   entryMarker={chartDisplay.entryMarker}
                   onEntryMarkerChange={moveEntryMarker}
                   showClosedTradeOverlays={simulationSettings.showClosedTradeOverlays}
-                  showTradingSessions={simulationSettings.showTradingSessions}
+                  tradingSessionsVariant={simulationSettings.tradingSessionsVariant}
                   timeZone={chartTimeZoneIana}
                   markersEditable={chartDisplay.markersEditable}
                   drawings={drawings}

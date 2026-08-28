@@ -1665,6 +1665,18 @@ g[data-channel-id].selected .pc-edge-line {
   fill-opacity: 0.95;
 }
 
+/* Session Boxes: только заливка, без рамки — как klmn1k / Trading Volium. */
+.sessions-overlay .session-box {
+  fill-opacity: 0.22;
+  stroke: none;
+}
+
+.sessions-overlay .session-box-label {
+  font-size: 10px;
+  font-weight: 600;
+  fill-opacity: 0.95;
+}
+
 .closed-trades-overlay .trade-zone.target {
   fill: #20b996;
   fill-opacity: .22;

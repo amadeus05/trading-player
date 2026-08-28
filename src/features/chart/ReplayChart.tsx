@@ -17,6 +17,7 @@ import type {
   Barrier,
   Candle,
   Trade,
+  TradingSessionsVariant,
 } from "../../types";
 import {
   attachFibonacciTool,
@@ -133,7 +134,7 @@ interface ReplayChartProps {
   entryMarker?: { id: string; price: number };
   onEntryMarkerChange: (id: string, price: number) => void;
   showClosedTradeOverlays: boolean;
-  showTradingSessions: boolean;
+  tradingSessionsVariant: TradingSessionsVariant;
   /** IANA-зона подписей оси. Свечи остаются UTC. */
   timeZone?: string;
   markersEditable: boolean;
@@ -168,7 +169,7 @@ export function ReplayChart({
   entryMarker,
   onEntryMarkerChange,
   showClosedTradeOverlays,
-  showTradingSessions,
+  tradingSessionsVariant,
   timeZone = "UTC",
   markersEditable,
   drawings,
@@ -253,7 +254,7 @@ export function ReplayChart({
     entryMarker,
     markersEditable,
     showClosedTradeOverlays,
-    showTradingSessions,
+    tradingSessionsVariant,
   });
   overlayPropsRef.current = {
     barriers,
@@ -261,7 +262,7 @@ export function ReplayChart({
     entryMarker,
     markersEditable,
     showClosedTradeOverlays,
-    showTradingSessions,
+    tradingSessionsVariant,
   };
   const prevReplayIndexRef = useRef(index);
   const callbacksRef = useRef({
@@ -684,8 +685,9 @@ export function ReplayChart({
       sessionsOverlay = attachSessionsOverlay({
         container: ref.current,
         chart,
+        series: cs,
         candleStore,
-        visible: props.showTradingSessions,
+        variant: props.tradingSessionsVariant,
       });
       priceMarkers = attachPriceMarkers({
         container: ref.current,
@@ -1157,11 +1159,11 @@ export function ReplayChart({
     // считается из размера. Без него смена риска меняла объём тикета, ключ
     // оставался прежним, и на метках висели суммы от прошлого размера.
     const tradesKey = trades.map((t) => `${t.id}:${t.status}:${t.entry}:${t.size}:${t.tp ?? ""}:${t.sl ?? ""}:${t.exitTime ?? ""}:${t.exit ?? ""}`).join("|");
-    const key = [barriersKey, tradesKey, entryMarker?.price ?? "", markersEditable, showClosedTradeOverlays, showTradingSessions].join(";");
+    const key = [barriersKey, tradesKey, entryMarker?.price ?? "", markersEditable, showClosedTradeOverlays, tradingSessionsVariant].join(";");
     if (key === prevOverlayKeyRef.current) return;
     prevOverlayKeyRef.current = key;
     chartRuntimeRef.current?.rebuildTradeOverlays();
-  }, [barriers, trades, entryMarker, markersEditable, showClosedTradeOverlays, showTradingSessions]);
+  }, [barriers, trades, entryMarker, markersEditable, showClosedTradeOverlays, tradingSessionsVariant]);
 
   useLayoutEffect(() => {
     chartRuntimeRef.current?.setDrawingsVisible(drawingsVisible);

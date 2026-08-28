@@ -1,4 +1,4 @@
-import type { AccountSettings, Barrier, Persisted, SimulationSettings } from "../../types";
+import type { AccountSettings, Barrier, Persisted, SimulationSettings, TradingSessionsVariant } from "../../types";
 import { DEFAULT_CHART_TIMEZONE } from "../lib/chartTimezones";
 
 export const PAPER_BALANCE_USDT = 1_000;
@@ -79,7 +79,7 @@ export const DEFAULT_SIMULATION_SETTINGS: SimulationSettings = {
   slippagePct: 0.02,
   stopSlippagePct: 0.05,
   showClosedTradeOverlays: true,
-  showTradingSessions: false,
+  tradingSessionsVariant: "off",
   followCandle: false,
   /** true — вкладка Trade всегда видна при свёрнутой панели; false — выезжает от правого края. */
   tradePanelTabPinned: true,
@@ -103,3 +103,20 @@ export const INITIAL_PLAYER_STATE: Persisted = {
 };
 
 export const NO_BARRIERS: Barrier[] = [];
+
+export const TRADING_SESSIONS_VARIANTS = ["off", "ribbon", "boxes"] as const;
+
+export function sanitizeTradingSessionsVariant(
+  value: unknown,
+  legacyShow?: unknown,
+): TradingSessionsVariant {
+  if (value === "off" || value === "ribbon" || value === "boxes") return value;
+  if (legacyShow === true) return "ribbon";
+  return "off";
+}
+
+export function cycleTradingSessionsVariant(current: TradingSessionsVariant): TradingSessionsVariant {
+  const index = TRADING_SESSIONS_VARIANTS.indexOf(current);
+  const next = (index + 1 + TRADING_SESSIONS_VARIANTS.length) % TRADING_SESSIONS_VARIANTS.length;
+  return TRADING_SESSIONS_VARIANTS[next];
+}

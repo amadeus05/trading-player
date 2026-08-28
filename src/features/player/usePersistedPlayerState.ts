@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Persisted } from "../../types";
 import { loadPlayerState, savePlayerState } from "../../shared/api/playerStateApi";
-import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SIMULATION_SETTINGS, DEFAULT_TIMEFRAME_MINUTES, INITIAL_PLAYER_STATE, isTimeframeOption } from "../../shared/config/simulation";
+import { DEFAULT_ACCOUNT_SETTINGS, DEFAULT_SIMULATION_SETTINGS, DEFAULT_TIMEFRAME_MINUTES, INITIAL_PLAYER_STATE, isTimeframeOption, sanitizeTradingSessionsVariant } from "../../shared/config/simulation";
 import { sanitizeChartTimeZone } from "../../shared/lib/chartTimezones";
 
 export function usePersistedPlayerState() {
@@ -23,6 +23,10 @@ export function usePersistedPlayerState() {
             ...DEFAULT_SIMULATION_SETTINGS,
             ...loadedState.settings,
             chartTimeZone: sanitizeChartTimeZone(loadedState.settings?.chartTimeZone),
+            tradingSessionsVariant: sanitizeTradingSessionsVariant(
+              loadedState.settings?.tradingSessionsVariant,
+              (loadedState.settings as { showTradingSessions?: boolean } | undefined)?.showTradingSessions,
+            ),
           },
           account: { ...DEFAULT_ACCOUNT_SETTINGS, ...loadedState.account },
         });
