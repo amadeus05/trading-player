@@ -220,6 +220,7 @@ test("replay clock formatDateTime defaults to UTC and accepts a zone", () => {
   assert.notEqual(utc, moscow);
   assert.match(utc, /12:00/);
   assert.match(moscow, /15:00/);
+  assert.match(utc, /26/);
 });
 
 test("journal calendar buckets follow the display zone, UTC stays the default", () => {

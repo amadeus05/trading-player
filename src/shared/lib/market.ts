@@ -5,27 +5,31 @@ const QUOTE_ASSETS = ["USDT", "USDC", "BUSD", "USD", "BTC", "ETH"] as const;
 export const formatNumber = (value: number) =>
   value.toLocaleString("en-US", { maximumFractionDigits: 2 });
 
+const formatRuDateTime = (date: Date, timeZone?: string) => {
+  const parts = new Intl.DateTimeFormat("ru-RU", {
+    timeZone,
+    day: "2-digit",
+    month: "short",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return `${value("day")} ${value("month")} ${value("year")}, ${value("hour")}:${value("minute")}`;
+};
+
 /**
  * Рыночное время. По умолчанию UTC — как ось lightweight-charts без выбора зоны.
  * timeZone — IANA, только подпись: 1D по-прежнему режется по UTC.
  */
 export const formatDateTime = (timestamp: number, timeZone = "UTC") =>
-  new Date(timestamp * 1_000).toLocaleString("ru-RU", {
-    timeZone,
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  formatRuDateTime(new Date(timestamp * 1_000), timeZone);
 
 /** Фактическое время клика — локальная зона, не UTC графика. */
 export const formatLocalDateTime = (timestamp: number) =>
-  new Date(timestamp * 1_000).toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  formatRuDateTime(new Date(timestamp * 1_000));
 
 export const formatMarketDate = (timestampMs: number) =>
   new Date(timestampMs).toLocaleDateString("ru-RU", {

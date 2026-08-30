@@ -2265,7 +2265,7 @@ g[data-channel-id].selected .pc-edge-line {
 .journalRowsHead,
 .journalRowMain {
   display: grid;
-  grid-template-columns: 118px minmax(0, 1fr) 52px minmax(0, 1.1fr) 96px 92px;
+  grid-template-columns: 132px minmax(0, 1fr) 52px minmax(0, 1.1fr) 96px 92px;
   gap: 8px;
   align-items: center;
 }
