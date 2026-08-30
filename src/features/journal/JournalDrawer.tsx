@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { Button, DatePicker, Drawer, Dropdown, Popover, Segmented, Select } from "antd";
+import { Button, DatePicker, Drawer, Popover, Segmented, Select } from "antd";
 import type { Dayjs } from "dayjs";
-import { ChartNoAxesCombined, CalendarDays, Filter, List, MoreHorizontal, Trash2 } from "lucide-react";
+import { ChartNoAxesCombined, CalendarDays, Filter, List, Trash2 } from "lucide-react";
 import type { AccountSettings, Trade, TradeScreenshot } from "../../types";
 import { formatNumber, formatTimeframe } from "../../shared/lib/market";
 import { zonedDayBounds } from "../../shared/lib/chartTimezones";
@@ -334,26 +334,20 @@ export function JournalDrawer({
               {filterSummary}
             </Button>
           </Popover>
-          <Dropdown
-            trigger={["click"]}
-            menu={{
-              items: [{
-                key: "delete-all",
-                danger: true,
-                disabled: !trades.length,
-                icon: <Trash2 size={14} />,
-                label: `Удалить все сделки${trades.length ? ` (${trades.length})` : ""}`,
-              }],
-              onClick: () => confirmDelete({
-                title: "Удалить все сделки?",
-                content: `Сделок: ${trades.length}, включая скрытые фильтром. Удалятся вместе с разметкой на графике. Отменить нельзя.`,
-                okText: "Удалить всё",
-                onConfirm: onDeleteAllTrades,
-              }),
-            }}
-          >
-            <Button type="text" className="journalHeadMenu" aria-label="Действия журнала" icon={<MoreHorizontal size={16} />} />
-          </Dropdown>
+          <Button
+            type="text"
+            className="journalHeadDelete"
+            disabled={!trades.length}
+            aria-label={trades.length ? `Удалить все сделки (${trades.length})` : "Удалить все сделки"}
+            title={trades.length ? `Удалить все сделки (${trades.length})` : "Нет сделок"}
+            icon={<Trash2 size={15} />}
+            onClick={() => confirmDelete({
+              title: "Удалить все сделки?",
+              content: `Сделок: ${trades.length}, включая скрытые фильтром. Удалятся вместе с разметкой на графике. Отменить нельзя.`,
+              okText: "Удалить всё",
+              onConfirm: onDeleteAllTrades,
+            })}
+          />
         </div>
       )}
     >

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { Button, Dropdown } from "antd";
-import { ChevronDown, ChevronUp, MessageSquare, MoreHorizontal, Trash2 } from "lucide-react";
+import { Button } from "antd";
+import { ChevronDown, ChevronUp, MessageSquare, Trash2, X } from "lucide-react";
 import type { Trade, TradeScreenshot } from "../../types";
 import { formatDateTime, formatLocalDateTime, formatNumber, formatTimeframe } from "../../shared/lib/market";
 import { useConfirmDelete } from "../../shared/ui/useConfirmDelete";
@@ -181,35 +181,33 @@ export function JournalTradeTable({
                   icon={<MessageSquare size={15} />}
                   onClick={() => setNotesTradeId(notesOpen ? null : trade.id)}
                 />
-                <Dropdown
-                  trigger={["click"]}
-                  menu={{
-                    items: [
-                      { key: "notes", label: notesOpen ? "Скрыть заметку" : "Заметка, теги и скрины" },
-                      ...(trade.status === "PENDING"
-                        ? [{ key: "cancel", label: "Отменить заявку" }]
-                        : []),
-                      ...(trade.status === "OPEN"
-                        ? [{ key: "close", label: "Закрыть сделку" }]
-                        : []),
-                      { key: "delete", danger: true, icon: <Trash2 size={14} />, label: "Удалить" },
-                    ],
-                    onClick: ({ key }) => {
-                      if (key === "notes") setNotesTradeId(notesOpen ? null : trade.id);
-                      if (key === "cancel") onCancelOrder(trade.id);
-                      if (key === "close") onCloseTrade(trade);
-                      if (key === "delete") {
-                        confirmDelete({
-                          title: "Удалить сделку?",
-                          content: "Сделка, заметка, теги и скрины будут удалены.",
-                          onConfirm: () => onDeleteTrade(trade.id),
-                        });
-                      }
-                    },
-                  }}
-                >
-                  <Button size="small" type="text" aria-label="Действия со сделкой" icon={<MoreHorizontal size={15} />} />
-                </Dropdown>
+                {(trade.status === "PENDING" || trade.status === "OPEN") && (
+                  <Button
+                    size="small"
+                    type="text"
+                    className="journalRowAction"
+                    aria-label={trade.status === "PENDING" ? "Отменить заявку" : "Закрыть сделку"}
+                    title={trade.status === "PENDING" ? "Отменить заявку" : "Закрыть сделку"}
+                    icon={<X size={15} />}
+                    onClick={() => {
+                      if (trade.status === "PENDING") onCancelOrder(trade.id);
+                      else onCloseTrade(trade);
+                    }}
+                  />
+                )}
+                <Button
+                  size="small"
+                  type="text"
+                  className="journalRowDelete"
+                  aria-label="Удалить сделку"
+                  title="Удалить"
+                  icon={<Trash2 size={14} />}
+                  onClick={() => confirmDelete({
+                    title: "Удалить сделку?",
+                    content: "Сделка, заметка, теги и скрины будут удалены.",
+                    onConfirm: () => onDeleteTrade(trade.id),
+                  })}
+                />
               </span>
             </div>
             {notesOpen && (
@@ -219,6 +217,7 @@ export function JournalTradeTable({
                 onCommentChange={(comment) => onUpdateTradeJournal(trade.id, { comment })}
                 onScreenshotsChange={(screenshots) => onUpdateTradeJournal(trade.id, { screenshots })}
                 onTagsChange={(nextTags) => onUpdateTradeJournal(trade.id, { tags: nextTags })}
+                onCollapse={() => setNotesTradeId(null)}
               />
             )}
           </div>

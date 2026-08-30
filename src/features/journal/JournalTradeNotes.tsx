@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { App as AntApp, Image, Input, Select } from "antd";
-import { ImagePlus, X } from "lucide-react";
+import { ChevronUp, ImagePlus, X } from "lucide-react";
 import type { Trade, TradeScreenshot } from "../../types";
 import { compressJournalImage, JOURNAL_IMAGE_ACCEPT, isJournalImageFile } from "./compressJournalImage";
 import { MAX_TRADE_TAGS, normalizeTradeTags } from "./tradeTags";
@@ -13,6 +13,7 @@ interface JournalTradeNotesProps {
   onCommentChange: (comment: string) => void;
   onScreenshotsChange: (screenshots: TradeScreenshot[]) => void;
   onTagsChange: (tags: string[]) => void;
+  onCollapse: () => void;
 }
 
 function filesFromClipboard(data: DataTransfer | null): File[] {
@@ -32,6 +33,7 @@ export function JournalTradeNotes({
   onCommentChange,
   onScreenshotsChange,
   onTagsChange,
+  onCollapse,
 }: JournalTradeNotesProps) {
   const { message } = AntApp.useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -127,12 +129,36 @@ export function JournalTradeNotes({
       <Select
         mode="tags"
         className="journalTagSelect"
+        popupClassName="journalTagDropdown"
         value={trade.tags ?? []}
         options={knownTags.map((tag) => ({ value: tag, label: tag }))}
         placeholder="Теги: FVG, breakout, ошибка входа…"
         tokenSeparators={[","]}
         maxCount={MAX_TRADE_TAGS}
         allowClear
+        virtual={false}
+        placement="bottomLeft"
+        getPopupContainer={(node) => {
+          const host = node.closest(".journalNotes");
+          return host instanceof HTMLElement ? host : document.body;
+        }}
+        removeIcon={<X size={11} strokeWidth={2.2} />}
+        tagRender={({ label, closable, onClose }) => (
+          <span className="journalTagChip">
+            <span className="journalTagChipLabel">{label}</span>
+            {closable ? (
+              <button
+                type="button"
+                className="journalTagChipRemove"
+                aria-label="Удалить тег"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={onClose}
+              >
+                <X size={11} strokeWidth={2.2} />
+              </button>
+            ) : null}
+          </span>
+        )}
         onChange={(value) => onTagsChange(normalizeTradeTags(value))}
       />
       <Input.TextArea
@@ -185,9 +211,20 @@ export function JournalTradeNotes({
           }}
         />
       </div>
-      <p className="journalNotesHint">
-        Enter или запятая создаёт тег. Скрин можно вставить из буфера (Ctrl+V) или перетащить. До {MAX_TRADE_SCREENSHOTS} штук.
-      </p>
+      <div className="journalNotesFoot">
+        <p className="journalNotesHint">
+          Enter или запятая создаёт тег. Скрин можно вставить из буфера (Ctrl+V) или перетащить. До {MAX_TRADE_SCREENSHOTS} штук.
+        </p>
+        <button
+          type="button"
+          className="journalNotesCollapse"
+          aria-label="Свернуть заметку"
+          title="Свернуть"
+          onClick={onCollapse}
+        >
+          <ChevronUp size={14} strokeWidth={2.4} />
+        </button>
+      </div>
     </div>
   );
 }
