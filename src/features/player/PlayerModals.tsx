@@ -30,7 +30,7 @@ interface PlayerModalsProps {
   onSettingsClose: () => void;
   onSettingsReset: () => void;
   onSettingChange: (
-    key: Exclude<keyof SimulationSettings, 'showClosedTradeOverlays' | 'followCandle' | 'tradePanelTabPinned' | 'headerStatsVariant' | 'tradingSessionsVariant' | 'ambiguousExitPolicy' | 'chartTimeZone'>,
+    key: Exclude<keyof SimulationSettings, 'showClosedTradeOverlays' | 'followCandle' | 'tradePanelTabPinned' | 'headerStatsVariant' | 'tradingSessionsVariant' | 'showFairValueGaps' | 'ambiguousExitPolicy' | 'chartTimeZone'>,
     value: number | null,
   ) => void;
   onInitialBalanceChange: (value: number | null) => void;

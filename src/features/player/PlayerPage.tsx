@@ -384,7 +384,7 @@ export function PlayerPage() {
     takerFeePct: simulationSettings.takerFeePct,
   });
   function updateSimulationSetting(
-    key: Exclude<keyof SimulationSettings, "showClosedTradeOverlays" | "followCandle" | "tradePanelTabPinned" | "headerStatsVariant" | "tradingSessionsVariant" | "ambiguousExitPolicy" | "chartTimeZone">,
+    key: Exclude<keyof SimulationSettings, "showClosedTradeOverlays" | "followCandle" | "tradePanelTabPinned" | "headerStatsVariant" | "tradingSessionsVariant" | "showFairValueGaps" | "ambiguousExitPolicy" | "chartTimeZone">,
     value: number | null,
   ) {
     setState((current) => ({
@@ -489,6 +489,15 @@ export function PlayerPage() {
                 tradingSessionsVariant: cycleTradingSessionsVariant(simulationSettings.tradingSessionsVariant),
               },
             }))}
+            fairValueGapsActive={simulationSettings.showFairValueGaps}
+            onToggleFairValueGaps={() => setState((current) => ({
+              ...current,
+              settings: {
+                ...DEFAULT_SIMULATION_SETTINGS,
+                ...current.settings,
+                showFairValueGaps: !simulationSettings.showFairValueGaps,
+              },
+            }))}
           />
           <div className="chartArea">
             <DrawingToolsRail
@@ -522,6 +531,7 @@ export function PlayerPage() {
                   onEntryMarkerChange={moveEntryMarker}
                   showClosedTradeOverlays={simulationSettings.showClosedTradeOverlays}
                   tradingSessionsVariant={simulationSettings.tradingSessionsVariant}
+                  showFairValueGaps={simulationSettings.showFairValueGaps}
                   timeZone={chartTimeZoneIana}
                   markersEditable={chartDisplay.markersEditable}
                   drawings={drawings}

@@ -1,5 +1,5 @@
 import { Button, Select } from "antd";
-import { Globe2 } from "lucide-react";
+import { BetweenHorizontalStart, Globe2 } from "lucide-react";
 import { ChartFocusIcon } from "./ChartFocusIcon";
 import { TimeframePicker } from "./TimeframePicker";
 import { TimezonePicker } from "./TimezonePicker";
@@ -20,6 +20,8 @@ interface PlayerToolbarProps {
   onToggleChartFullscreen?: () => void;
   tradingSessionsVariant?: TradingSessionsVariant;
   onCycleTradingSessions?: () => void;
+  fairValueGapsActive?: boolean;
+  onToggleFairValueGaps?: () => void;
 }
 
 export function PlayerToolbar({
@@ -36,6 +38,8 @@ export function PlayerToolbar({
   onToggleChartFullscreen,
   tradingSessionsVariant = "off",
   onCycleTradingSessions,
+  fairValueGapsActive = false,
+  onToggleFairValueGaps,
 }: PlayerToolbarProps) {
   return (
     <div className="toolbar">
@@ -84,6 +88,18 @@ export function PlayerToolbar({
           onClick={onCycleTradingSessions}
         >
           <Globe2 size={18} />
+        </Button>
+      ) : null}
+      {onToggleFairValueGaps ? (
+        <Button
+          type="text"
+          className={`drawing-tool-btn ${fairValueGapsActive ? "is-active" : ""}`}
+          aria-label="Fair Value Gap"
+          aria-pressed={fairValueGapsActive}
+          title={fairValueGapsActive ? "Скрыть Fair Value Gap" : "Показать Fair Value Gap (до полного поглощения)"}
+          onClick={onToggleFairValueGaps}
+        >
+          <BetweenHorizontalStart size={18} />
         </Button>
       ) : null}
       </div>

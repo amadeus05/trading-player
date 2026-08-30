@@ -80,6 +80,7 @@ export const DEFAULT_SIMULATION_SETTINGS: SimulationSettings = {
   stopSlippagePct: 0.05,
   showClosedTradeOverlays: true,
   tradingSessionsVariant: "off",
+  showFairValueGaps: false,
   followCandle: false,
   /** true — вкладка Trade всегда видна при свёрнутой панели; false — выезжает от правого края. */
   tradePanelTabPinned: true,
