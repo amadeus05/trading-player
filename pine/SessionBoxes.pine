@@ -1,0 +1,189 @@
+    //@version=6
+    // Session Boxes — тот же алгоритм, что detectSessionBoxes() в player.
+    //
+    // Как пользоваться:
+    // 1. TradingView → Pine Editor → вставить скрипт → Add to chart.
+    // 2. Только внутридневные ТФ (1m–4h). На D/W/M коробки не рисуются.
+    //
+    // Алгоритм (как в src/features/chart/sessionBoxes.ts):
+    // - окно сессии считается в её IANA-зоне (DST сам сдвигается);
+    // - свеча входит в коробку, если time >= start и time < end (конец исключительный);
+    // - ширина коробки — всё расписание сессии по оси времени;
+    // - высота — high/low свечей внутри окна;
+    // - незакрытая сессия обрывается на голове графика (time последней свечи + длина бара),
+    //   а не на будущем scheduled close;
+    // - заливка без рамки, прозрачность ~14%; лимит 500 коробок.
+    indicator("Session Boxes", shorttitle="Sessions", overlay=true, max_boxes_count=500, max_labels_count=500)
+
+    // ── настройки ────────────────────────────────────────────────────────────────
+
+    gGen = "Общее"
+    showNames = input.bool(true, "Названия сессий", group=gGen)
+
+    gTok = "Tokyo"
+    tokyoOn    = input.bool(true, "Вкл", group=gTok)
+    tokyoTitle = input.string("Tokyo", "Название", group=gTok)
+    tokyoTz    = input.string("Asia/Tokyo", "Часовой пояс", group=gTok)
+    tokyoFromH = input.int(9, "Старт, час", minval=0, maxval=23, group=gTok)
+    tokyoFromM = input.int(0, "Старт, мин", minval=0, maxval=59, group=gTok)
+    tokyoToH   = input.int(16, "Конец, час", minval=0, maxval=23, group=gTok)
+    tokyoToM   = input.int(0, "Конец, мин", minval=0, maxval=59, group=gTok)
+    tokyoCol   = input.color(#c9a0ff, "Цвет", group=gTok)
+
+    gPre = "pre-London"
+    preOn    = input.bool(true, "Вкл", group=gPre)
+    preTitle = input.string("pre-London", "Название", group=gPre)
+    preTz    = input.string("Europe/Berlin", "Часовой пояс", group=gPre)
+    preFromH = input.int(8, "Старт, час", minval=0, maxval=23, group=gPre)
+    preFromM = input.int(0, "Старт, мин", minval=0, maxval=59, group=gPre)
+    preToH   = input.int(9, "Конец, час", minval=0, maxval=23, group=gPre)
+    preToM   = input.int(0, "Конец, мин", minval=0, maxval=59, group=gPre)
+    preCol   = input.color(#f0a070, "Цвет", group=gPre)
+
+    gLdn = "London"
+    londonOn    = input.bool(true, "Вкл", group=gLdn)
+    londonTitle = input.string("London", "Название", group=gLdn)
+    londonTz    = input.string("Europe/London", "Часовой пояс", group=gLdn)
+    londonFromH = input.int(8, "Старт, час", minval=0, maxval=23, group=gLdn)
+    londonFromM = input.int(0, "Старт, мин", minval=0, maxval=59, group=gLdn)
+    londonToH   = input.int(16, "Конец, час", minval=0, maxval=23, group=gLdn)
+    londonToM   = input.int(30, "Конец, мин", minval=0, maxval=59, group=gLdn)
+    londonCol   = input.color(#7dcc90, "Цвет", group=gLdn)
+
+    gNy = "New York"
+    nyOn    = input.bool(true, "Вкл", group=gNy)
+    nyTitle = input.string("New York", "Название", group=gNy)
+    nyTz    = input.string("America/New_York", "Часовой пояс", group=gNy)
+    nyFromH = input.int(9, "Старт, час", minval=0, maxval=23, group=gNy)
+    nyFromM = input.int(30, "Старт, мин", minval=0, maxval=59, group=gNy)
+    nyToH   = input.int(16, "Конец, час", minval=0, maxval=23, group=gNy)
+    nyToM   = input.int(0, "Конец, мин", minval=0, maxval=59, group=gNy)
+    nyCol   = input.color(#7eb6e8, "Цвет", group=gNy)
+
+    // 14% непрозрачности, как fill-opacity: 0.14 у .session-box
+    fillOf(color c) =>
+        color.new(c, 86)
+
+    labelOf(color c) =>
+        color.new(c, 5)
+
+    type Session
+        bool   enabled
+        string title
+        string tz
+        int    startH
+        int    startM
+        int    endH
+        int    endM
+        color  col
+        box    bx = na
+        label  nameLbl = na
+        float  hi = na
+        float  lo = na
+        int    winStart = na
+        bool   live = false
+
+    // label якорится по центру строки. Слева столько же em-пробелов — видимое
+    // название начинается у левого края коробки и идёт вправо, не вылезая за него.
+    caption(string title) =>
+        str.repeat(" ", str.length(title)) + title
+
+    // Последняя свеча сессии — та, у которой time < конец (NY 5m = 19:55).
+    // Середина этого бара, не open 20:00 и не правый борт 19:55.
+    barMid() =>
+        time + int(math.max(1, time_close - time) / 2)
+
+    paintBox(Session s) =>
+        box.set_top(s.bx, s.hi)
+        box.set_bottom(s.bx, s.lo)
+        box.set_right(s.bx, barMid())
+        if not na(s.nameLbl)
+            label.set_xy(s.nameLbl, s.winStart, s.hi)
+        true
+
+    openBox(Session s, int winStart) =>
+        s.hi := high
+        s.lo := low
+        s.winStart := winStart
+        s.live := true
+        s.bx := box.new(winStart, s.hi, barMid(), s.lo, xloc=xloc.bar_time, border_width=0, bgcolor=fillOf(s.col), text="", force_overlay=true)
+        s.nameLbl := na
+        if showNames
+            // style_label_down — над коробкой; прозрачный фон, только цветной текст.
+            s.nameLbl := label.new(winStart, s.hi, caption(s.title), xloc=xloc.bar_time, yloc=yloc.price, style=label.style_label_down, color=color.new(color.black, 100), textcolor=labelOf(s.col), size=size.small, force_overlay=true)
+        true
+
+    closeBox(Session s) =>
+        s.live := false
+        true
+
+    method process(Session s) =>
+        if not s.enabled or timeframe.isdwm
+            closeBox(s)
+        else
+            int t = time
+            int y = year(t, s.tz)
+            int mo = month(t, s.tz)
+            int d = dayofmonth(t, s.tz)
+            int winStart = timestamp(s.tz, y, mo, d, s.startH, s.startM)
+            int winEnd = timestamp(s.tz, y, mo, d, s.endH, s.endM)
+            bool inside = t >= winStart and t < winEnd
+
+            if inside
+                bool newWindow = not s.live or na(s.winStart) or s.winStart != winStart
+                if newWindow
+                    closeBox(s)
+                    openBox(s, winStart)
+                else
+                    s.hi := math.max(s.hi, high)
+                    s.lo := math.min(s.lo, low)
+                    paintBox(s)
+            else
+                closeBox(s)
+        true
+
+    var Session tokyo  = Session.new(tokyoOn, tokyoTitle, tokyoTz, tokyoFromH, tokyoFromM, tokyoToH, tokyoToM, tokyoCol)
+    var Session pre    = Session.new(preOn, preTitle, preTz, preFromH, preFromM, preToH, preToM, preCol)
+    var Session london = Session.new(londonOn, londonTitle, londonTz, londonFromH, londonFromM, londonToH, londonToM, londonCol)
+    var Session ny     = Session.new(nyOn, nyTitle, nyTz, nyFromH, nyFromM, nyToH, nyToM, nyCol)
+
+    tokyo.enabled := tokyoOn
+    tokyo.title := tokyoTitle
+    tokyo.tz := tokyoTz
+    tokyo.startH := tokyoFromH
+    tokyo.startM := tokyoFromM
+    tokyo.endH := tokyoToH
+    tokyo.endM := tokyoToM
+    tokyo.col := tokyoCol
+
+    pre.enabled := preOn
+    pre.title := preTitle
+    pre.tz := preTz
+    pre.startH := preFromH
+    pre.startM := preFromM
+    pre.endH := preToH
+    pre.endM := preToM
+    pre.col := preCol
+
+    london.enabled := londonOn
+    london.title := londonTitle
+    london.tz := londonTz
+    london.startH := londonFromH
+    london.startM := londonFromM
+    london.endH := londonToH
+    london.endM := londonToM
+    london.col := londonCol
+
+    ny.enabled := nyOn
+    ny.title := nyTitle
+    ny.tz := nyTz
+    ny.startH := nyFromH
+    ny.startM := nyFromM
+    ny.endH := nyToH
+    ny.endM := nyToM
+    ny.col := nyCol
+
+    tokyo.process()
+    pre.process()
+    london.process()
+    ny.process()
