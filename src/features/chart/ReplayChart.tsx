@@ -30,7 +30,9 @@ import {
   attachVolumeProfileTool,
   DrawingManager,
   type DrawingMode,
+  type MagnetMode,
 } from "../../drawing";
+import { magnetPlotHeight, snapPixelsWithMagnet } from "../../drawing/shared/magnet";
 import { attachClosedTradeOverlay } from "./closedTradeOverlay";
 import { attachSessionsOverlay } from "./sessionsOverlay";
 import { attachFvgOverlay } from "./fvgOverlay";
@@ -144,6 +146,7 @@ interface ReplayChartProps {
   drawingActions: DrawingActions;
   drawingRestoreRevision: number;
   drawingMode: DrawingMode;
+  magnetMode: MagnetMode;
   datasetId: string;
   drawingsVisible: boolean;
   followCandle: boolean;
@@ -179,6 +182,7 @@ export function ReplayChart({
   drawingActions,
   drawingRestoreRevision,
   drawingMode,
+  magnetMode,
   datasetId,
   drawingsVisible,
   followCandle,
@@ -247,6 +251,7 @@ export function ReplayChart({
     syncOverlays: () => void;
     setDrawingsVisible: (visible: boolean) => void;
     setDrawingMode: (mode: DrawingMode) => void;
+    setMagnetMode: (mode: MagnetMode) => void;
     setTimeZone: (timeZone: string) => void;
     rebuildTradeOverlays: () => void;
     lockPriceScale: () => void;
@@ -364,6 +369,7 @@ export function ReplayChart({
     });
     drawingManagerRef.current = drawingManager;
     drawingManager.setMode(drawingMode);
+    drawingManager.setMagnetMode(magnetMode);
     drawingManager.setDrawingsVisible(drawingsVisible);
     const cs = chart.addSeries(CandlestickSeries, {
       upColor: "#2bd9a8",
@@ -872,6 +878,55 @@ export function ReplayChart({
     ref.current.addEventListener("pointerdown", markManualScale);
     ref.current.addEventListener("dblclick", resetManualScale);
     ref.current.addEventListener("wheel", zoomPriceScale, { capture: true, passive: false });
+    let magnetRaf = 0;
+    let lastMagnetPointer: PointerEvent | null = null;
+    let magnetOwnsCrosshair = false;
+    const releaseMagnetCrosshair = () => {
+      if (!magnetOwnsCrosshair) return;
+      magnetOwnsCrosshair = false;
+      chart.clearCrosshairPosition();
+    };
+    const applyMagnetCrosshair = (event: PointerEvent) => {
+      const mode = drawingManager.getMagnetMode();
+      const tool = drawingManager.getMode();
+      if (mode === "off" || tool === "none" || tool === "measure") {
+        releaseMagnetCrosshair();
+        return;
+      }
+      const bounds = ref.current?.getBoundingClientRect();
+      if (!bounds || !ref.current) return;
+      const x = event.clientX - bounds.left;
+      const y = event.clientY - bounds.top;
+      const snap = snapPixelsWithMagnet(
+        drawingManager,
+        chart,
+        cs,
+        drawingCandleStore.candles,
+        x,
+        y,
+        magnetPlotHeight(ref.current, chart),
+      );
+      if (snap.magnetApplied && snap.time != null && snap.price != null) {
+        magnetOwnsCrosshair = true;
+        chart.setCrosshairPosition(snap.price, snap.time as Time, cs);
+        return;
+      }
+      releaseMagnetCrosshair();
+    };
+    const onMagnetPointerMove = (event: PointerEvent) => {
+      lastMagnetPointer = event;
+      if (magnetRaf) return;
+      magnetRaf = requestAnimationFrame(() => {
+        magnetRaf = 0;
+        if (lastMagnetPointer) applyMagnetCrosshair(lastMagnetPointer);
+      });
+    };
+    const onMagnetPointerLeave = () => {
+      lastMagnetPointer = null;
+      releaseMagnetCrosshair();
+    };
+    ref.current.addEventListener("pointermove", onMagnetPointerMove);
+    ref.current.addEventListener("pointerleave", onMagnetPointerLeave);
     chartRuntimeRef.current = {
       applyReplayIndex,
       // Точечное обновление последнего бара: незакрытая свеча пересобирается,
@@ -895,6 +950,11 @@ export function ReplayChart({
             mode: mode === "measure" ? CrosshairMode.Hidden : CrosshairMode.Normal,
           },
         });
+        if (mode === "none" || mode === "measure") releaseMagnetCrosshair();
+      },
+      setMagnetMode: (mode) => {
+        drawingManager.setMagnetMode(mode);
+        if (mode === "off") releaseMagnetCrosshair();
       },
       setTimeZone: (next) => {
         timeZoneRef.current = next;
@@ -1099,6 +1159,9 @@ export function ReplayChart({
       ref.current?.removeEventListener("pointerdown", markManualScale);
       ref.current?.removeEventListener("dblclick", resetManualScale);
       ref.current?.removeEventListener("wheel", zoomPriceScale, { capture: true });
+      cancelAnimationFrame(magnetRaf);
+      ref.current?.removeEventListener("pointermove", onMagnetPointerMove);
+      ref.current?.removeEventListener("pointerleave", onMagnetPointerLeave);
       destroyTradeOverlays();
       cancelAnimationFrame(deferredTimeRangeFrame);
       chart.unsubscribeClick(selectStart);
@@ -1192,6 +1255,10 @@ export function ReplayChart({
   useLayoutEffect(() => {
     chartRuntimeRef.current?.setDrawingMode(drawingMode);
   }, [drawingMode]);
+
+  useLayoutEffect(() => {
+    chartRuntimeRef.current?.setMagnetMode(magnetMode);
+  }, [magnetMode]);
 
   useLayoutEffect(() => {
     chartRuntimeRef.current?.setTimeZone(timeZone);

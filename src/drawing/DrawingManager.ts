@@ -1,4 +1,5 @@
 import type { DrawingMode } from "./shared/types";
+import type { MagnetMode } from "./shared/magnet";
 import { cloneClipboardItem, type DrawingClipboardItem } from "./shared/clipboard";
 
 export type DrawingSelectionKind = "trendline" | "horizontalline" | "rectangle" | "fibonacci" | "fibtrendext" | "parallelchannel" | "volumeprofile";
@@ -49,6 +50,7 @@ export class DrawingManager {
   private throttledOverlaySyncTimer = 0;
   private clipboard: DrawingClipboardItem | null = null;
   private drawingsVisible = true;
+  private magnetMode: MagnetMode = "off";
   private readonly onKeyDown: (event: KeyboardEvent) => void;
   private readonly onContextMenu: (event: MouseEvent) => void;
 
@@ -278,6 +280,14 @@ export class DrawingManager {
 
   getDrawingsVisible(): boolean {
     return this.drawingsVisible;
+  }
+
+  setMagnetMode(mode: MagnetMode): void {
+    this.magnetMode = mode;
+  }
+
+  getMagnetMode(): MagnetMode {
+    return this.magnetMode;
   }
 
   destroy(): void {

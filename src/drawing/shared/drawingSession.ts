@@ -6,31 +6,40 @@
  */
 
 import type { IChartApi } from "lightweight-charts";
-import type { DrawingMode, ChartCandleStore } from "./types";
+import type { DrawingMode, ChartCandleStore, SeriesApiLike } from "./types";
 import type { DrawingManager } from "../DrawingManager";
 import { bindDrawingPointerClick, type DrawingPointerClickEvent } from "./drawingPointerClick";
-import { snapXToNearestCandle, xToSnappedTime, type PixelPoint, type DrawingPoint } from "./coordinates";
-import { clampPlotX, getPlotWidth } from "./ManagedDrawingTool";
+import { type PixelPoint, type DrawingPoint } from "./coordinates";
+import { getPlotWidth } from "./ManagedDrawingTool";
+import { magnetPlotHeight, snapPixelsWithMagnet } from "./magnet";
 
-/** Клик по графику → точка time/price (со снапом X к свече). */
+/** Клик по графику → точка time/price (со снапом X к свече и магнитом к OHLC). */
 export function drawingPointFromClick(
   event: DrawingPointerClickEvent,
   opts: {
     container: HTMLElement;
     chart: IChartApi;
-    series: { coordinateToPrice(y: number): number | null };
+    series: SeriesApiLike;
     candleStore: ChartCandleStore;
+    manager: DrawingManager;
     clampX?: boolean;
   },
 ): DrawingPoint | null {
   const rect = opts.container.getBoundingClientRect();
-  let x = event.sourceEvent.clientX - rect.left;
+  const x = event.sourceEvent.clientX - rect.left;
   const y = event.sourceEvent.clientY - rect.top;
-  if (opts.clampX) x = clampPlotX(x, getPlotWidth(opts.chart));
-  const time = xToSnappedTime(opts.chart, x, opts.candleStore.candles);
-  const price = opts.series.coordinateToPrice(y);
-  if (time == null || price == null || price <= 0) return null;
-  return { time, price };
+  const snap = snapPixelsWithMagnet(
+    opts.manager,
+    opts.chart,
+    opts.series,
+    opts.candleStore.candles,
+    x,
+    y,
+    magnetPlotHeight(opts.container, opts.chart),
+    opts.clampX ? { clampX: true, plotWidth: getPlotWidth(opts.chart) } : undefined,
+  );
+  if (snap.time == null || snap.price == null || snap.price <= 0) return null;
+  return { time: snap.time, price: snap.price };
 }
 
 export interface DrawingSessionOptions<P> {
@@ -38,6 +47,8 @@ export interface DrawingSessionOptions<P> {
   manager: DrawingManager;
   container: HTMLElement;
   chart: IChartApi;
+  series: SeriesApiLike;
+  candleStore: ChartCandleStore;
   /** Сколько кликов собирает сессия (2 — линия/прямоугольник, 3 — канал). */
   pointCount: number;
   /** Клик → точка; null — клик игнорируется. */
@@ -74,9 +85,19 @@ export function createDrawingSession<P>(options: DrawingSessionOptions<P>): Draw
 
   const cursorFromClient = (clientX: number, clientY: number): PixelPoint => {
     const rect = options.container.getBoundingClientRect();
-    let x = clientX - rect.left;
-    if (options.clampCursorX) x = clampPlotX(x, getPlotWidth(options.chart));
-    return { x: snapXToNearestCandle(options.chart, x), y: clientY - rect.top };
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const snap = snapPixelsWithMagnet(
+      options.manager,
+      options.chart,
+      options.series,
+      options.candleStore.candles,
+      x,
+      y,
+      magnetPlotHeight(options.container, options.chart),
+      options.clampCursorX ? { clampX: true, plotWidth: getPlotWidth(options.chart) } : undefined,
+    );
+    return { x: snap.x, y: snap.y };
   };
 
   const flushGhost = () => {

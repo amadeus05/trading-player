@@ -5,6 +5,7 @@
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { Rectangle } from "../../types";
 import { pointToPixel, snapXToNearestCandle, timeToX, xToSnappedTime } from "../shared/coordinates";
+import { magnetPlotHeight, snapPixelsWithMagnet } from "../shared/magnet";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
 import { getNewDrawingStyle } from "../shared/drawingTemplates";
 import { attachManagedDrawingLifecycle, createClipboardBridge, getPlotWidth, runManagedDragSession } from "../shared/ManagedDrawingTool";
@@ -494,18 +495,22 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       target: startEv.target as Element,
       onMove: (event) => {
         latestEv = event;
-        const mx = snapXToNearestCandle(chart, event.clientX - cb.left);
-        const my = event.clientY - cb.top;
-        const nb = calcResizedBounds(origB, pos, mx, my);
+        const snap = snapPixelsWithMagnet(
+          manager, chart, series, candleStore.candles,
+          event.clientX - cb.left, event.clientY - cb.top, magnetPlotHeight(container, chart),
+        );
+        const nb = calcResizedBounds(origB, pos, snap.x, snap.y);
         const els = elMap.get(id);
         if (!els) return;
         applyPixelBounds(els, nb, rect, true);
       },
       onEnd: (_event, moved) => {
         if (!moved || !latestEv) return;
-        const mx = snapXToNearestCandle(chart, latestEv.clientX - cb.left);
-        const my = latestEv.clientY - cb.top;
-        const nb = calcResizedBounds(origB, pos, mx, my);
+        const snap = snapPixelsWithMagnet(
+          manager, chart, series, candleStore.candles,
+          latestEv.clientX - cb.left, latestEv.clientY - cb.top, magnetPlotHeight(container, chart),
+        );
+        const nb = calcResizedBounds(origB, pos, snap.x, snap.y);
         const r = rectangles.find((item) => item.id === id);
         if (!r) return;
         const tL = xToSnappedTime(chart, nb.x, candleStore.candles);
@@ -586,9 +591,11 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     manager,
     container,
     chart,
+    series,
+    candleStore,
     pointCount: 2,
     clampCursorX: true,
-    pointFromClick: (event) => drawingPointFromClick(event, { container, chart, series, candleStore, clampX: true }),
+    pointFromClick: (event) => drawingPointFromClick(event, { container, chart, series, candleStore, manager, clampX: true }),
     ghostUpdate: ([point1], cursor) => {
       if (!ghostEls) ghostEls = createGhostEls();
       const p1 = pointToPixel(chart, series, point1, candleStore.candles);

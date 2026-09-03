@@ -7,6 +7,7 @@
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { TrendLine } from "../../types";
 import { logicalToCoordinateFloat, pointToPixel, snapXToNearestCandle, timeToLogical, xToSnappedTime } from "../shared/coordinates";
+import { magnetPlotHeight, snapPixelsWithMagnet } from "../shared/magnet";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
 import { getNewDrawingStyle } from "../shared/drawingTemplates";
 import { lineLabelLayout } from "../shared/lineLabelLayout";
@@ -599,20 +600,25 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
       target: startEvent.target as Element,
       onMove: (event) => {
         latestEvent = event;
-        const x = snapXToNearestCandle(chart, event.clientX - rect.left);
+        const snap = snapPixelsWithMagnet(
+          manager, chart, series, candleStore.candles,
+          event.clientX - rect.left, event.clientY - rect.top, magnetPlotHeight(container, chart),
+        );
         const anchor = which === "point1" ? originalP2 : originalP1;
-        const rawY = event.clientY - rect.top;
-        const y = snapsToHorizontal(anchor.y, rawY) ? anchor.y : rawY;
-        previewAtPixels(tl, which === "point1" ? { x, y } : originalP1, which === "point2" ? { x, y } : originalP2);
+        const y = snapsToHorizontal(anchor.y, snap.y) ? anchor.y : snap.y;
+        previewAtPixels(tl, which === "point1" ? { x: snap.x, y } : originalP1, which === "point2" ? { x: snap.x, y } : originalP2);
       },
       onEnd: (_event, moved) => {
         if (!moved || !latestEvent) return;
-        const x = latestEvent.clientX - rect.left;
-        const y = latestEvent.clientY - rect.top;
+        const snap = snapPixelsWithMagnet(
+          manager, chart, series, candleStore.candles,
+          latestEvent.clientX - rect.left, latestEvent.clientY - rect.top, magnetPlotHeight(container, chart),
+        );
         const anchor = which === "point1" ? originalP2 : originalP1;
         const anchorPrice = which === "point1" ? tl.point2.price : tl.point1.price;
-        const time = xToSnappedTime(chart, x, candleStore.candles);
-        const price = snapsToHorizontal(anchor.y, y) ? anchorPrice : pxToPrice(series, y);
+        const y = snapsToHorizontal(anchor.y, snap.y) ? anchor.y : snap.y;
+        const time = snap.time;
+        const price = snapsToHorizontal(anchor.y, snap.y) ? anchorPrice : (snap.price ?? pxToPrice(series, y));
         if (time != null && price != null && price > 0) {
           updateLine(id, which === "point1" ? { point1: { time, price } } : { point2: { time, price } });
         } else {
@@ -674,8 +680,10 @@ export function attachTrendLineTool(opts: ManagedDrawingToolOptions & {
     manager,
     container,
     chart,
+    series,
+    candleStore,
     pointCount: 2,
-    pointFromClick: (event) => drawingPointFromClick(event, { container, chart, series, candleStore }),
+    pointFromClick: (event) => drawingPointFromClick(event, { container, chart, series, candleStore, manager }),
     ghostUpdate: (points, cursor) => {
       const drawingArrow = manager.getMode() === "arrow";
       if (!ghostLine) {

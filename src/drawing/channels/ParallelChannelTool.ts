@@ -6,6 +6,7 @@
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { ParallelChannel } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
+import { magnetPlotHeight, snapPixelsWithMagnet } from "../shared/magnet";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
 import { getNewDrawingStyle } from "../shared/drawingTemplates";
 import { attachManagedDrawingLifecycle, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
@@ -628,19 +629,21 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       target: startEvent.target as Element,
       onMove: (event) => {
         latestEvent = event;
-        const cursor = {
-          x: event.clientX - rect.left,
-          y: event.clientY - rect.top,
-        };
+        const snap = snapPixelsWithMagnet(
+          manager, chart, series, candleStore.candles,
+          event.clientX - rect.left, event.clientY - rect.top, magnetPlotHeight(container, chart),
+        );
+        const cursor = { x: snap.x, y: snap.y };
         previewWidthDrag(channel, originalP1, originalP2, startOffset, startCursor, cursor, rail);
       },
       onEnd: (_event, moved) => {
         const current = parallelChannels.find((item) => item.id === id);
         if (current && moved && latestEvent) {
-          const cursor = {
-            x: latestEvent.clientX - rect.left,
-            y: latestEvent.clientY - rect.top,
-          };
+          const snap = snapPixelsWithMagnet(
+            manager, chart, series, candleStore.candles,
+            latestEvent.clientX - rect.left, latestEvent.clientY - rect.top, magnetPlotHeight(container, chart),
+          );
+          const cursor = { x: snap.x, y: snap.y };
           const next = widthDragGeometry(originalP1, originalP2, startOffset, startCursor, cursor, rail);
           if (next) {
             const wp = pointOnParallel(next.p1, next.p2, next.offset, 1);
@@ -676,9 +679,11 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       target: startEvent.currentTarget as Element,
       onMove: (event) => {
         latestEvent = event;
-        const x = snapXToNearestCandle(chart, event.clientX - rect.left);
-        const y = event.clientY - rect.top;
-        const cursor = { x, y };
+        const snap = snapPixelsWithMagnet(
+          manager, chart, series, candleStore.candles,
+          event.clientX - rect.left, event.clientY - rect.top, magnetPlotHeight(container, chart),
+        );
+        const cursor = { x: snap.x, y: snap.y };
         const baseCursor = corner.startsWith("edge2")
           ? { x: cursor.x, y: cursor.y - offset }
           : cursor;
@@ -691,9 +696,11 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
       onEnd: (_event, moved) => {
         const current = parallelChannels.find((item) => item.id === id);
         if (current && moved && latestEvent) {
-          const x = snapXToNearestCandle(chart, latestEvent.clientX - rect.left);
-          const y = latestEvent.clientY - rect.top;
-          const cursor = { x, y };
+          const snap = snapPixelsWithMagnet(
+            manager, chart, series, candleStore.candles,
+            latestEvent.clientX - rect.left, latestEvent.clientY - rect.top, magnetPlotHeight(container, chart),
+          );
+          const cursor = { x: snap.x, y: snap.y };
           const baseCursor = corner.startsWith("edge2")
             ? { x: cursor.x, y: cursor.y - offset }
             : cursor;
@@ -771,9 +778,11 @@ export function attachParallelChannelTool(opts: ManagedDrawingToolOptions & {
     manager,
     container,
     chart,
+    series,
+    candleStore,
     pointCount: 3,
     ignoreClick: (event) => isChannelHandleTarget(event.sourceEvent.target),
-    pointFromClick: (event) => drawingPointFromClick(event, { container, chart, series, candleStore }),
+    pointFromClick: (event) => drawingPointFromClick(event, { container, chart, series, candleStore, manager }),
     ghostUpdate: (points, cursor) => {
       if (!ghostBaseLine) {
         ghostBaseLine = document.createElementNS(SVG_NS, "line");

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App as AntApp, Button, Empty } from "antd";
 import { PanelRightOpen } from "lucide-react";
 import type { AmbiguousExitPolicy, Candle, Dataset, SimulationSettings } from "../../types";
-import type { DrawingMode } from "../../drawing";
+import type { DrawingMode, MagnetMode } from "../../drawing";
+import { isMagnetMode } from "../../drawing";
 import { ReplayChart, type ChartViewportRef } from "../chart/ReplayChart";
 import { PlayerModals } from "./PlayerModals";
 import { JournalDrawer } from "../journal/JournalDrawer";
@@ -68,6 +69,14 @@ export function PlayerPage() {
     }),
     [settingsOpen, setSettingsOpen] = useState(false),
     [drawingMode, setDrawingMode] = useState<DrawingMode>("none"),
+    [magnetMode, setMagnetMode] = useState<MagnetMode>(() => {
+      try {
+        const stored = localStorage.getItem("player:magnet-mode");
+        return isMagnetMode(stored) ? stored : "off";
+      } catch {
+        return "off";
+      }
+    }),
     [drawingsVisible, setDrawingsVisible] = useState(true),
     [tradePanelTabPeek, setTradePanelTabPeek] = useState(false);
   const tradePanelTabHideTimerRef = useRef<number | null>(null);
@@ -78,6 +87,13 @@ export function PlayerPage() {
       /* ignore quota / private mode */
     }
   }, [tradePanelOpen]);
+  useEffect(() => {
+    try {
+      localStorage.setItem("player:magnet-mode", magnetMode);
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }, [magnetMode]);
   const drawingCount = useMemo(
     () => (dataset ? countDrawingsForDataset(drawings, dataset) : 0),
     [drawings, dataset],
@@ -502,11 +518,13 @@ export function PlayerPage() {
           <div className="chartArea">
             <DrawingToolsRail
               drawingMode={drawingMode}
+              magnetMode={magnetMode}
               drawingsVisible={drawingsVisible}
               drawingCount={drawingCount}
               canUndoDrawings={drawingActions.canUndo}
               canRedoDrawings={drawingActions.canRedo}
               onDrawingModeChange={setDrawingMode}
+              onMagnetModeChange={setMagnetMode}
               onDrawingsVisibleChange={setDrawingsVisible}
               onUndoDrawings={drawingActions.undo}
               onRedoDrawings={drawingActions.redo}
@@ -538,6 +556,7 @@ export function PlayerPage() {
                   drawingActions={drawingActions}
                   drawingRestoreRevision={drawingActions.restoreRevision}
                   drawingMode={drawingMode}
+                  magnetMode={magnetMode}
                   datasetId={dataset}
                   drawingsVisible={drawingsVisible}
                   followCandle={simulationSettings.followCandle}

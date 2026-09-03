@@ -11,6 +11,7 @@ import {
 } from "../shared/ManagedDrawingTool";
 import type { ChartCandleStore, DrawingCrudCallbacks, DrawingMode, ManagedDrawingToolOptions } from "../shared/types";
 import { createSelectionController } from "../shared/selection";
+import { magnetPlotHeight, snapPixelsWithMagnet } from "../shared/magnet";
 
 export type HorizontalLineCallbacks = DrawingCrudCallbacks<HorizontalLine>;
 
@@ -186,7 +187,11 @@ export function attachHorizontalLineTool(opts: ManagedDrawingToolOptions & {
         target: event.currentTarget as Element,
         onMove: (moveEvent) => {
           const bounds = container.getBoundingClientRect();
-          const price = series.coordinateToPrice(moveEvent.clientY - bounds.top);
+          const snap = snapPixelsWithMagnet(
+            manager, chart, series, candleStore.candles,
+            moveEvent.clientX - bounds.left, moveEvent.clientY - bounds.top, magnetPlotHeight(container, chart),
+          );
+          const price = snap.price;
           if (price == null || price <= 0) return;
           draft = { ...draft, price };
           syncOne(draft);
@@ -265,7 +270,11 @@ export function attachHorizontalLineTool(opts: ManagedDrawingToolOptions & {
     mode: "horizontalline",
     onClick: ({ sourceEvent }) => {
       const bounds = container.getBoundingClientRect();
-      const price = series.coordinateToPrice(sourceEvent.clientY - bounds.top);
+      const snap = snapPixelsWithMagnet(
+        manager, chart, series, candleStore.candles,
+        sourceEvent.clientX - bounds.left, sourceEvent.clientY - bounds.top, magnetPlotHeight(container, chart),
+      );
+      const price = snap.price;
       if (price == null || price <= 0) return;
       const template = getNewDrawingStyle("horizontalline");
       const created: HorizontalLine = {

@@ -797,6 +797,8 @@ export function attachVolumeProfileTool(opts: ManagedDrawingToolOptions & {
     manager,
     container,
     chart,
+    series,
+    candleStore,
     pointCount: 2,
     clampCursorX: true,
     pointFromClick: (event) => {

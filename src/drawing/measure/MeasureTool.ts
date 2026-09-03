@@ -4,10 +4,11 @@
 
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { Candle } from "../../types";
-import { timeToLogical, timeToX, xToTime } from "../shared/coordinates";
+import { timeToLogical, timeToX } from "../shared/coordinates";
+import { magnetPlotHeight, snapPixelsWithMagnet } from "../shared/magnet";
 import { bindDrawingPointerClick } from "../shared/drawingPointerClick";
 import { createDrawingOverlay } from "../shared/overlay";
-import type { ManagedDrawingToolOptions, ChartCandleStore, SeriesApiLike } from "../shared/types";
+import type { ManagedDrawingToolOptions, ChartCandleStore } from "../shared/types";
 import { formatChartAxisTime } from "../../shared/lib/chartTimezones";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -17,10 +18,6 @@ const TV_RED = "#F23645";
 function clampPrecision(precision: number): number {
   if (!Number.isFinite(precision)) return 2;
   return Math.max(0, Math.min(10, Math.round(precision)));
-}
-
-function pxToPrice(series: SeriesApiLike, y: number): number | null {
-  return series.coordinateToPrice(y);
 }
 
 function formatPrice(value: number, precision: number): string {
@@ -397,11 +394,17 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
     if (completed) return;
     const bounds = container.getBoundingClientRect();
     const sourceEvent = event.sourceEvent as PointerEvent | undefined;
-    const x = sourceEvent ? sourceEvent.clientX - bounds.left : null;
-    const y = sourceEvent ? sourceEvent.clientY - bounds.top : null;
-    const time = x != null ? xToTime(chart, x, candleStore.candles) : (event.time as number | undefined);
-    const price = y != null ? pxToPrice(series, y) : null;
-    if (time == null || price == null || price <= 0) return;
+    const snap = sourceEvent
+      ? snapPixelsWithMagnet(
+          manager, chart, series, candleStore.candles,
+          sourceEvent.clientX - bounds.left, sourceEvent.clientY - bounds.top, magnetPlotHeight(container, chart),
+        )
+      : null;
+    const time = snap?.time ?? (event.time as number | undefined);
+    const price = snap?.price ?? null;
+    const x = snap?.x ?? null;
+    const y = snap?.y ?? null;
+    if (time == null || price == null || price <= 0 || x == null || y == null) return;
 
     if (!point1) {
       point1 = { time, price, px: { x: x!, y: y! } };
@@ -418,13 +421,15 @@ export function attachMeasureTool(opts: ManagedDrawingToolOptions & {
     if (manager.getMode() !== "measure") return;
     if (completed || !point1) return;
     const bounds = container.getBoundingClientRect();
-    const x = event.clientX - bounds.left;
-    const y = event.clientY - bounds.top;
+    const snap = snapPixelsWithMagnet(
+      manager, chart, series, candleStore.candles,
+      event.clientX - bounds.left, event.clientY - bounds.top, magnetPlotHeight(container, chart),
+    );
     const p1px = toPixel(point1) || point1.px;
-    const time2 = xToTime(chart, x, candleStore.candles);
-    const price2 = pxToPrice(series, y);
+    const time2 = snap.time;
+    const price2 = snap.price;
     if (time2 == null || price2 == null || price2 <= 0) return;
-    drawMeasurement(point1, { time: time2, price: price2 }, p1px, { x, y });
+    drawMeasurement(point1, { time: time2, price: price2 }, p1px, { x: snap.x, y: snap.y });
   }
 
   function syncOverlayPositions() {

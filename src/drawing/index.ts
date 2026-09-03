@@ -17,3 +17,5 @@ export {
 } from "./shared/ManagedDrawingTool";
 export { DrawingManager, type DrawingManagerOptions, type DrawingSelectionBridge, type DrawingSelectionKind } from "./DrawingManager";
 export type { DrawingClipboardItem } from "./shared/clipboard";
+export type { MagnetMode } from "./shared/magnet";
+export { isMagnetMode } from "./shared/magnet";

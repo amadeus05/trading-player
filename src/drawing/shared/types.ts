@@ -1,5 +1,6 @@
 export type DrawingMode = "none" | "trendline" | "arrow" | "horizontalline" | "measure" | "rectangle" | "fibonacci" | "fibtrendext" | "parallelchannel" | "volumeprofile";
 
+
 /**
  * Контракт состояния attach-инструментов: каждый инструмент при подключении
  * копирует переданный массив фигур (`let items = [...opts.items]`) и дальше
@@ -34,8 +35,17 @@ export interface SeriesApiLike {
   coordinateToPrice(y: number): number | null;
 }
 
+export interface ChartCandle {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+}
+
 export interface ChartCandleStore {
-  candles: Array<{ time: number; volume?: number }>;
+  candles: ChartCandle[];
 }
 
 export interface ManagedDrawingToolOptions {

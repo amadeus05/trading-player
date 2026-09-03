@@ -7,7 +7,9 @@ import { useConfirmDelete } from "../shared/ui/useConfirmDelete";
 import showDrawingsIcon from "../drawing/icons/ui/hide-all-drawings.svg?raw";
 import hideDrawingsIcon from "../drawing/icons/ui/hide-all-drawings-off.svg?raw";
 import removeDrawingIcon from "../drawing/icons/ui/remove-drawing.svg?raw";
-import type { DrawingMode } from "../drawing";
+import type { DrawingMode, MagnetMode } from "../drawing";
+import magnetWeakIcon from "../drawing/icons/ui/magnet-weak.svg?raw";
+import magnetStrongIcon from "../drawing/icons/ui/magnet-strong.svg?raw";
 
 type ToolMode = Exclude<DrawingMode, "none">;
 
@@ -85,11 +87,13 @@ export const DRAWING_TOOL_SHORTCUTS: Array<{ mode: ToolMode; code: string }> = T
 
 interface DrawingToolsRailProps {
   drawingMode: DrawingMode;
+  magnetMode: MagnetMode;
   drawingsVisible: boolean;
   drawingCount: number;
   canUndoDrawings: boolean;
   canRedoDrawings: boolean;
   onDrawingModeChange: (mode: DrawingMode) => void;
+  onMagnetModeChange: (mode: MagnetMode) => void;
   onDrawingsVisibleChange: (visible: boolean) => void;
   onUndoDrawings: () => void;
   onRedoDrawings: () => void;
@@ -225,13 +229,123 @@ function ToolGroupButton({ group, drawingMode, activeTool, onSelect }: ToolGroup
   );
 }
 
+function magnetIconSvg(kind: "weak" | "strong"): string {
+  const raw = kind === "strong" ? magnetStrongIcon : magnetWeakIcon;
+  return raw
+    .replace(/\s(width|height)="[^"]*"/g, "")
+    .replace("<svg", '<svg class="drawing-tool-icon__svg" focusable="false"');
+}
+
+function MagnetIcon({ kind }: { kind: "weak" | "strong" }) {
+  return (
+    <span
+      className="drawing-tool-icon"
+      aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: magnetIconSvg(kind) }}
+    />
+  );
+}
+
+interface MagnetButtonProps {
+  magnetMode: MagnetMode;
+  lastMagnet: "weak" | "strong";
+  onChange: (mode: MagnetMode) => void;
+}
+
+function MagnetButton({ magnetMode, lastMagnet, onChange }: MagnetButtonProps) {
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const [flyout, setFlyout] = useState<{ top: number; left: number } | null>(null);
+  const active = magnetMode !== "off";
+  const displayKind = magnetMode === "strong" || (magnetMode === "off" && lastMagnet === "strong")
+    ? "strong"
+    : "weak";
+
+  const openFlyout = () => {
+    const el = anchorRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const railRight = el.closest(".drawing-rail")?.getBoundingClientRect().right ?? rect.right;
+    setFlyout({ top: rect.top, left: railRight + 8 });
+  };
+
+  const toggleFlyout = () => {
+    if (flyout) setFlyout(null);
+    else openFlyout();
+  };
+
+  useEffect(() => {
+    if (!flyout) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      const insideGroup = target != null && anchorRef.current?.contains(target);
+      const insideFlyout = target instanceof Element && target.closest(".drawing-tool-flyout") != null;
+      if (insideGroup || insideFlyout) return;
+      setFlyout(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [flyout]);
+
+  return (
+    <div ref={anchorRef} className={`drawing-tool-group ${flyout ? "is-open" : ""}`}>
+      <Button
+        type="text"
+        className={`drawing-tool-btn ${active ? "is-active" : ""} ${flyout ? "is-open" : ""}`}
+        onClick={() => onChange(active ? "off" : lastMagnet)}
+        title={active ? (magnetMode === "strong" ? "Сильный магнит" : "Слабый магнит") : "Магнит"}
+      >
+        <MagnetIcon kind={displayKind} />
+      </Button>
+      <button
+        type="button"
+        className="drawing-tool-caret"
+        title="Режим магнита"
+        aria-label="Режим магнита: открыть список"
+        aria-expanded={flyout != null}
+        onClick={toggleFlyout}
+      >
+        <span role="img" className="drawing-tool-caret__icon" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 16" width="5" height="8">
+            <path d="M.6 1.4l1.4-1.4 8 8-8 8-1.4-1.4 6.389-6.532-6.389-6.668z" fill="currentColor" />
+          </svg>
+        </span>
+      </button>
+      {flyout &&
+        createPortal(
+          <div className="drawing-tool-flyout" style={{ top: flyout.top, left: flyout.left }}>
+            {([
+              { mode: "weak" as const, label: "Слабый магнит" },
+              { mode: "strong" as const, label: "Сильный магнит" },
+            ]).map((item) => (
+              <button
+                key={item.mode}
+                type="button"
+                className={`drawing-tool-flyout__item ${magnetMode === item.mode ? "is-active" : ""}`}
+                onClick={() => {
+                  onChange(item.mode);
+                  setFlyout(null);
+                }}
+              >
+                <MagnetIcon kind={item.mode} />
+                <span className="drawing-tool-flyout__label">{item.label}</span>
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}
+
 export function DrawingToolsRail({
   drawingMode,
+  magnetMode,
   drawingsVisible,
   drawingCount,
   canUndoDrawings,
   canRedoDrawings,
   onDrawingModeChange,
+  onMagnetModeChange,
   onDrawingsVisibleChange,
   onUndoDrawings,
   onRedoDrawings,
@@ -246,12 +360,27 @@ export function DrawingToolsRail({
   const [lastUsed, setLastUsed] = useState<Record<string, ToolMode>>(() =>
     Object.fromEntries(TOOL_GROUPS.map((group) => [group.id, group.tools[0].mode])),
   );
+  const [lastMagnet, setLastMagnet] = useState<"weak" | "strong">(() => {
+    try {
+      const stored = localStorage.getItem("player:magnet-last");
+      if (stored === "weak" || stored === "strong") return stored;
+    } catch { /* ignore */ }
+    return magnetMode === "strong" ? "strong" : "weak";
+  });
 
   useEffect(() => {
     if (drawingMode === "none") return;
     const group = TOOL_GROUPS.find((g) => g.tools.some((t) => t.mode === drawingMode));
     if (group) setLastUsed((prev) => ({ ...prev, [group.id]: drawingMode as ToolMode }));
   }, [drawingMode]);
+
+  useEffect(() => {
+    if (magnetMode !== "weak" && magnetMode !== "strong") return;
+    setLastMagnet(magnetMode);
+    try {
+      localStorage.setItem("player:magnet-last", magnetMode);
+    } catch { /* ignore quota / private mode */ }
+  }, [magnetMode]);
 
   return (
     <div className="drawing-rail">
@@ -278,6 +407,12 @@ export function DrawingToolsRail({
           />
         ),
       )}
+      <div className="drawing-rail-sep" />
+      <MagnetButton
+        magnetMode={magnetMode}
+        lastMagnet={lastMagnet}
+        onChange={onMagnetModeChange}
+      />
       <div className="drawing-rail-sep" />
       <Button
         type="text"

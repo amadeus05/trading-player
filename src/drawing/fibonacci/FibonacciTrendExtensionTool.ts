@@ -6,6 +6,7 @@
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { FibonacciTrendExtension } from "../../types";
 import { pointToPixel, snapXToNearestCandle, xToSnappedTime } from "../shared/coordinates";
+import { magnetPlotHeight, snapPixelsWithMagnet } from "../shared/magnet";
 import { DrawingToolbarController } from "../shared/DrawingToolbarController";
 import { getNewDrawingStyle } from "../shared/drawingTemplates";
 import { attachManagedDrawingLifecycle, attachScaleInteractionSync, createClipboardBridge, runManagedDragSession } from "../shared/ManagedDrawingTool";
@@ -793,10 +794,12 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       target: startEvent.target as Element,
       onMove: (event) => {
         latestEvent = event;
-        const dragged = clampPlotPoint({
-          x: snapXToNearestCandle(chart, event.clientX - rect.left),
-          y: event.clientY - rect.top,
-        });
+        const snap = snapPixelsWithMagnet(
+          manager, chart, series, candleStore.candles,
+          event.clientX - rect.left, event.clientY - rect.top, magnetPlotHeight(container, chart),
+          { clampX: true, plotWidth: chart.timeScale().width() },
+        );
+        const dragged = clampPlotPoint({ x: snap.x, y: snap.y });
         const p1 = which === "point1" ? dragged : originalP1;
         const p2 = which === "point2" ? dragged : originalP2;
         const p3 = which === "point3" ? dragged : originalP3;
@@ -804,12 +807,13 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
       },
       onEnd: (_event, moved) => {
         if (!moved || !latestEvent) return;
-        const clamped = clampPlotPoint({
-          x: latestEvent.clientX - rect.left,
-          y: latestEvent.clientY - rect.top,
-        });
-        const time = xToSnappedTime(chart, clamped.x, candleStore.candles);
-        const price = pxToPrice(series, clamped.y);
+        const snap = snapPixelsWithMagnet(
+          manager, chart, series, candleStore.candles,
+          latestEvent.clientX - rect.left, latestEvent.clientY - rect.top, magnetPlotHeight(container, chart),
+          { clampX: true, plotWidth: chart.timeScale().width() },
+        );
+        const time = snap.time;
+        const price = snap.price;
         if (time != null && price != null && price > 0) {
           updateFib(id, { [which]: { time, price } } as Partial<FibonacciTrendExtension>);
         } else {
@@ -880,9 +884,11 @@ export function attachFibonacciTrendExtensionTool(opts: ManagedDrawingToolOption
     manager,
     container,
     chart,
+    series,
+    candleStore,
     pointCount: 3,
     clampCursorX: true,
-    pointFromClick: (event) => drawingPointFromClick(event, { container, chart, series, candleStore, clampX: true }),
+    pointFromClick: (event) => drawingPointFromClick(event, { container, chart, series, candleStore, manager, clampX: true }),
     ghostUpdate: (points, cursor) => {
       const p1 = toPixel(points[0]);
       if (!p1) return;
