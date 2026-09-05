@@ -5271,7 +5271,7 @@ aside {
 
 .rect-templates-menu {
   position: absolute;
-  z-index: 40;
+  z-index: 60;
   min-width: 200px;
   max-width: min(360px, calc(100% - 16px));
   overflow: hidden;

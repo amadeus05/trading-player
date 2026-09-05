@@ -6,7 +6,7 @@
     "dev:web": "vite",
     "dev:server": "tsx watch server/index.ts",
     "build": "tsc -b && vite build",
-    "test": "tsx --test server/tests/resampler.test.ts server/tests/intrabar-exit-resolver.test.ts server/tests/trading-engine.test.ts server/tests/market-candle-ranges.test.ts server/tests/account-stats.test.ts server/tests/market-request.test.ts server/tests/trade-analytics.test.ts server/tests/order-risk.test.ts server/tests/volume-profile.test.ts server/tests/time-ranges.test.ts server/tests/journal-calendar.test.ts server/tests/journal-trade-sort.test.ts server/tests/market-window.test.ts server/tests/price-precision.test.ts server/tests/playhead-candle.test.ts server/tests/order-ticket-margin.test.ts server/tests/chart-timezones.test.ts server/tests/session-boxes.test.ts server/tests/fvg-detect.test.ts server/tests/magnet-snapping.test.ts",
+    "test": "tsx --test server/tests/resampler.test.ts server/tests/intrabar-exit-resolver.test.ts server/tests/trading-engine.test.ts server/tests/market-candle-ranges.test.ts server/tests/account-stats.test.ts server/tests/market-request.test.ts server/tests/trade-analytics.test.ts server/tests/order-risk.test.ts server/tests/volume-profile.test.ts server/tests/time-ranges.test.ts server/tests/journal-calendar.test.ts server/tests/journal-trade-sort.test.ts server/tests/market-window.test.ts server/tests/price-precision.test.ts server/tests/playhead-candle.test.ts server/tests/order-ticket-margin.test.ts server/tests/chart-timezones.test.ts server/tests/session-boxes.test.ts server/tests/fvg-detect.test.ts server/tests/magnet-snapping.test.ts server/tests/drawing-templates.test.ts",
     "start": "tsx server/index.ts"
   },
   "dependencies": {

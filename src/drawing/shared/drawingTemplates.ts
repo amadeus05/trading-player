@@ -84,6 +84,21 @@ const DEFAULTS: Record<DrawingTemplateKind, DrawingTemplateState> = {
   },
 };
 
+function ensureTemplateIds(templates: DrawingTemplate[]): { templates: DrawingTemplate[]; changed: boolean } {
+  const seen = new Set<string>();
+  let changed = false;
+  const next = templates.map((item) => {
+    let id = item.id;
+    if (!id || seen.has(id)) {
+      id = crypto.randomUUID();
+      changed = true;
+    }
+    seen.add(id);
+    return id === item.id ? item : { ...item, id };
+  });
+  return { templates: next, changed };
+}
+
 function readStore(): DrawingTemplatesStore {
   const empty: DrawingTemplatesStore = { templates: [], lastStyles: {} };
   try {
@@ -91,11 +106,14 @@ function readStore(): DrawingTemplatesStore {
     if (!raw) return empty;
     const parsed = JSON.parse(raw) as Partial<DrawingTemplatesStore>;
     if (!Array.isArray(parsed.templates)) return empty;
-    return {
-      templates: parsed.templates,
+    const { templates, changed } = ensureTemplateIds(parsed.templates);
+    const store: DrawingTemplatesStore = {
+      templates,
       // Ключ появился позже шаблонов — у прежних пользователей его в хранилище нет.
       lastStyles: parsed.lastStyles ?? {},
     };
+    if (changed) writeStore(store);
+    return store;
   } catch {
     return empty;
   }
@@ -162,6 +180,17 @@ export function listDrawingTemplates(kind: DrawingTemplateKind): DrawingTemplate
     .templates
     .filter((item) => item.kind === kind)
     .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+}
+
+/**
+ * Состояние именно того пункта, по которому кликнули.
+ *
+ * Раньше искали шаблон в storage по id: у старых записей id не было или он
+ * совпадал, и `find` всегда отдавал первый в списке — «4h FVG» становился
+ * «1h FVG». Список меню уже актуальный, перечитывать его не нужно.
+ */
+export function resolveDrawingTemplateState(clicked: DrawingTemplate): DrawingTemplateState {
+  return { ...clicked.state, text: clicked.name };
 }
 
 export function saveDrawingTemplate(

@@ -56,6 +56,8 @@ export interface EditableLabelStore {
   startEdit(id: string): void;
   /** Коммитит активный редактор, если он открыт. */
   commitActive(): void;
+  /** Сбрасывает редактор без записи — шаблон не должен затираться старым текстом. */
+  cancelActive(): void;
   /**
    * Обновляет текст/цвет/placeholder. Возвращает состояние: инструмент сам
    * решает, что делать с display и позицией ("hidden" — текста нет и фигура
@@ -219,6 +221,17 @@ export function createEditableLabelStore(options: EditableLabelStoreOptions): Ed
     startEdit,
     commitActive: () => {
       if (editingId) commitEdit(editingId);
+    },
+    cancelActive: () => {
+      if (!editingId) return;
+      const id = editingId;
+      editingId = null;
+      const el = labels.get(id);
+      if (el) {
+        el.contentEditable = "false";
+        el.classList.remove("is-editing");
+      }
+      options.onCancel(id);
     },
     syncContent(id, selected) {
       const el = labels.get(id) ?? build(id);

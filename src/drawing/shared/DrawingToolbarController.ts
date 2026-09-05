@@ -5,6 +5,7 @@ import {
   getDefaultDrawingTemplateState,
   rememberDrawingStyle,
   listDrawingTemplates,
+  resolveDrawingTemplateState,
   saveDrawingTemplate,
   type DrawingTemplateKind,
   type DrawingTemplateState,
@@ -540,13 +541,15 @@ export class DrawingToolbarController<T> {
       applyBtn.type = "button";
       applyBtn.className = "rect-line-menu-item rect-templates-item";
       applyBtn.textContent = template.name;
-      applyBtn.addEventListener("click", (event) => {
+      const apply = (event: Event) => {
+        event.preventDefault();
         event.stopPropagation();
-        // Перечитываем из storage — на случай если state в списке устарел.
-        const fresh = listDrawingTemplates(this.options.templateKind).find((item) => item.id === template.id);
-        this.applyTemplate(target, fresh?.state ?? template.state);
+        this.applyTemplate(target, resolveDrawingTemplateState(template));
         this.closePopups();
-      });
+      };
+      // pointerdown: click часто не доходит — лейбл фигуры или снятие попапа
+      // съедают mouseup, и выбранный пункт «молчит».
+      applyBtn.addEventListener("pointerdown", apply);
 
       const deleteBtn = document.createElement("button");
       deleteBtn.type = "button";

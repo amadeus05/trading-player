@@ -302,6 +302,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
       locked: rect.locked,
     }),
     onPatch: (rect, patch) => {
+      if (patch.text != null) labelStore.cancelActive();
       patchRect(rect, {
         ...(patch.lineColor != null ? { borderColor: patch.lineColor } : {}),
         ...(patch.fillColor != null ? { fillColor: patch.fillColor } : {}),
@@ -315,6 +316,7 @@ export function attachRectangleTool(opts: ManagedDrawingToolOptions & {
     },
     onDelete: (rect) => deleteRect(rect.id),
     onSync: () => syncAll(),
+    resolveDrawing: (rect) => rectangles.find((item) => item.id === rect.id) ?? rect,
   });
 
   const unregisterLifecycle = attachManagedDrawingLifecycle({
